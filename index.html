@@ -10,7 +10,6 @@
 <link rel="apple-touch-icon" href="/icons/icon-192.png">
 <meta name="theme-color" content="#1a1a18">
 <title>Absolute Injury Management — Pre-Employment Medical Assessment</title>
-<!-- PEMA PWA v1.0 — AIM Traralgon -->
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -1652,10 +1651,9 @@
 
 <div id="screen-patient" class="screen">
   <div class="patient-header">
-
     <div class="clinic-name">Absolute Injury Management</div>
     <div class="form-title">Pre-Employment Medical Assessment — Patient Questionnaire</div>
-    <div class="client-tag" id="patient-client-tag">—</div>
+    <div class="client-tag" id="patient-client-tag">your prospective employer</div>
   </div>
 
   <div class="progress-bar-wrap">
@@ -3301,32 +3299,27 @@ function savePatientDataImmediate() {
 }
 
 function restorePatientSession(data) {
-  // Restore input/select/textarea values
   Object.keys(data).forEach(function(key) {
     if (key.startsWith('yn_') || key.startsWith('checked_') || key.startsWith('sig_') || key.startsWith('cond_yes_')) return;
     var el = document.getElementById(key);
     if (el && data[key] !== undefined) el.value = data[key];
   });
-
-  // Restore Y/N button states
   Object.keys(data).forEach(function(key) {
     if (!key.startsWith('yn_')) return;
     var group = key.replace('yn_', '');
-    var val = data[key];
+    var answer = data[key];
     document.querySelectorAll('#screen-patient .yn-btn').forEach(function(btn) {
-      var match = btn.getAttribute('onclick') && btn.getAttribute('onclick').indexOf("'" + group + "'") !== -1;
-      if (!match) return;
-      if (val === 'yes') {
+      var oc = btn.getAttribute('onclick') || '';
+      if (oc.indexOf("'" + group + "'") === -1) return;
+      if (answer === 'yes') {
         btn.classList.remove('selected-no');
         btn.classList.toggle('selected-yes', btn.textContent.trim().toLowerCase() === 'yes');
-      } else if (val === 'no') {
+      } else if (answer === 'no') {
         btn.classList.remove('selected-yes');
         btn.classList.toggle('selected-no', btn.textContent.trim().toLowerCase() === 'no');
       }
     });
   });
-
-  // Restore checked condition boxes
   Object.keys(data).forEach(function(key) {
     if (!key.startsWith('checked_')) return;
     var label = key.replace('checked_', '');
@@ -3335,8 +3328,6 @@ function restorePatientSession(data) {
       if (lbl && lbl.textContent.trim() === label) item.classList.add('checked');
     });
   });
-
-  // Restore condition yes selections
   Object.keys(data).forEach(function(key) {
     if (!key.startsWith('cond_yes_')) return;
     var text = key.replace('cond_yes_', '');
@@ -3348,8 +3339,6 @@ function restorePatientSession(data) {
       }
     });
   });
-
-  // Restore signatures
   Object.keys(data).forEach(function(key) {
     if (!key.startsWith('sig_')) return;
     var sigId = key.replace('sig_', '');
@@ -3367,53 +3356,26 @@ function restorePatientSession(data) {
 }
 
 function showRecoveryBanner(timestamp) {
-  var existing = document.getElementById('pema-recovery-banner');
-  if (existing) return;
-
+  if (document.getElementById('pema-recovery-banner')) return;
   var ts = new Date(timestamp);
   var timeStr = ts.toLocaleDateString('en-AU') + ' at ' + ts.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' });
-
   var banner = document.createElement('div');
   banner.id = 'pema-recovery-banner';
-  banner.style.cssText = [
-    'position:fixed','top:0','left:0','right:0','z-index:9999',
-    'background:#2e2e2a','border-bottom:2px solid #b07d2e',
-    'padding:16px 24px','display:flex','align-items:center',
-    'gap:16px','font-family:\'DM Sans\',sans-serif'
-  ].join(';');
-
-  banner.innerHTML = [
-    '<div style="flex:1">',
-      '<div style="color:#f0f0eb;font-weight:600;font-size:14px;margin-bottom:2px">',
-        '&#9888; Unsaved assessment found',
-      '</div>',
-      '<div style="color:#a8a89f;font-size:13px">Started ' + timeStr + '</div>',
-    '</div>',
-    '<button id="pema-resume-btn" style="background:#6d6f57;border:none;color:#fff;padding:8px 18px;',
-      'border-radius:6px;font-size:13px;cursor:pointer;font-family:\'DM Sans\',sans-serif;font-weight:500">',
-      'Resume Assessment',
-    '</button>',
-    '<button id="pema-discard-btn" style="background:transparent;border:1px solid rgba(255,255,255,0.2);',
-      'color:#a8a89f;padding:8px 18px;border-radius:6px;font-size:13px;cursor:pointer;',
-      'font-family:\'DM Sans\',sans-serif">',
-      'Discard &amp; Start Fresh',
-    '</button>'
-  ].join('');
-
+  banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:#2e2e2a;border-bottom:2px solid #b07d2e;padding:16px 24px;display:flex;align-items:center;gap:16px;font-family:DM Sans,sans-serif';
+  var inner = '<div style="flex:1"><div style="color:#f0f0eb;font-weight:600;font-size:14px;margin-bottom:2px">&#9888; Unsaved assessment found</div>';
+  inner += '<div style="color:#a8a89f;font-size:13px">Started ' + timeStr + '</div></div>';
+  inner += '<button id="pema-resume-btn" style="background:#6d6f57;border:none;color:#fff;padding:8px 18px;border-radius:6px;font-size:13px;cursor:pointer;font-weight:500">Resume Assessment</button>';
+  inner += '<button id="pema-discard-btn" style="background:transparent;border:1px solid rgba(255,255,255,0.2);color:#a8a89f;padding:8px 18px;border-radius:6px;font-size:13px;cursor:pointer">Discard &amp; Start Fresh</button>';
+  banner.innerHTML = inner;
   document.body.prepend(banner);
-
   document.getElementById('pema-resume-btn').addEventListener('click', function() {
     var saved = localStorage.getItem('aim_patient_data');
     if (saved) {
-      try {
-        var data = JSON.parse(saved);
-        restorePatientSession(data);
-      } catch(e) { console.warn('Session restore error:', e); }
+      try { restorePatientSession(JSON.parse(saved)); } catch(e) { console.warn('Session restore error:', e); }
     }
     banner.remove();
     showScreen('screen-clinician');
   });
-
   document.getElementById('pema-discard-btn').addEventListener('click', function() {
     clearPatientSession();
     banner.remove();
@@ -3423,29 +3385,19 @@ function showRecoveryBanner(timestamp) {
 function checkAndShowRecoveryBanner() {
   var saved = localStorage.getItem('aim_patient_data');
   var ts = localStorage.getItem('aim_patient_timestamp');
-  if (saved && ts) {
-    showRecoveryBanner(ts);
-  }
+  if (saved && ts) showRecoveryBanner(ts);
 }
 
 function wirePatientAutoSave() {
   var screen = document.getElementById('screen-patient');
   if (!screen) return;
-
-  // Debounced save for text inputs
   screen.addEventListener('input', function(e) {
     var tag = e.target.tagName;
-    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {
-      savePatientDataDebounced();
-    }
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') savePatientDataDebounced();
   });
-
-  // Immediate save for select changes
   screen.addEventListener('change', function(e) {
     if (e.target.tagName === 'SELECT') savePatientDataImmediate();
   });
-
-  // Immediate save for Y/N and chip/option button clicks
   screen.addEventListener('click', function(e) {
     var t = e.target;
     if (t.classList.contains('yn-btn') || t.classList.contains('option-chip') ||
@@ -3453,6 +3405,15 @@ function wirePatientAutoSave() {
         t.closest('.checkbox-item')) {
       setTimeout(savePatientDataImmediate, 50);
     }
+  });
+}
+
+function updatePatientClientRefs() {
+  var name = (window._activeClient && window._activeClient.name) || '';
+  var headerTag = document.getElementById('patient-client-tag');
+  if (headerTag) headerTag.textContent = name || 'your prospective employer';
+  document.querySelectorAll('.client-name-placeholder').forEach(function(el) {
+    el.textContent = name || 'this employer';
   });
 }
 
@@ -4487,15 +4448,6 @@ function applyClientToAssessment(id) {
   window._activeClient = client;
   updateLadderReps(client.classification);
   updatePatientClientRefs();
-}
-
-function updatePatientClientRefs() {
-  const name = (window._activeClient && window._activeClient.name) || '';
-  const headerTag = document.getElementById('patient-client-tag');
-  if (headerTag) headerTag.textContent = name || 'your prospective employer';
-  document.querySelectorAll('.client-name-placeholder').forEach(function(el) {
-    el.textContent = name || 'this employer';
-  });
 }
 
 function updateLadderReps(classification) {
@@ -6167,9 +6119,9 @@ function buildPDF() {
   doc.text('CONFIDENTIAL MEDICAL DOCUMENT',PW/2,y+10,{align:'center'});
   drawFooter();
 
-  const fname=(ptName.replace(/\s+/g,'_'))||'Applicant';
-  const dateStr=new Date().toISOString().split('T')[0];
-  const filename='AIM_PEMA_'+ptLast.replace(/\s+/g,'_')+'_'+dateStr+'.pdf';
+  const fname = (ptName.replace(/\s+/g, '_')) || 'Applicant';
+  const dateStr = new Date().toISOString().split('T')[0];
+  const filename = 'AIM_PEMA_' + (ptLast.replace(/\s+/g, '_') || 'Applicant') + '_' + dateStr + '.pdf';
 
   function doDownloadFallback() {
     doc.save(filename);
@@ -6177,23 +6129,19 @@ function buildPDF() {
   }
 
   if (navigator.canShare) {
-    const blob = doc.output('blob');
-    const pdfFile = new File([blob], filename, { type: 'application/pdf' });
-    if (navigator.canShare({ files: [pdfFile] })) {
-      const clientEmail = window._activeClient ? window._activeClient.email : '';
-      const shareTitle = clientEmail
-        ? 'AIM PEMA Report — send to ' + clientEmail
-        : 'AIM PEMA Report';
+    var _blob = doc.output('blob');
+    var _pdfFile = new File([_blob], filename, { type: 'application/pdf' });
+    if (navigator.canShare({ files: [_pdfFile] })) {
+      var _clientEmail = window._activeClient ? window._activeClient.email : '';
+      var _shareTitle = _clientEmail ? 'AIM PEMA Report — send to ' + _clientEmail : 'AIM PEMA Report';
       navigator.share({
-        files: [pdfFile],
-        title: shareTitle,
+        files: [_pdfFile],
+        title: _shareTitle,
         text: 'Pre-Employment Medical Assessment — ' + (ptLast || 'Applicant')
       }).then(function() {
         clearPatientSession();
       }).catch(function(err) {
-        if (err.name !== 'AbortError') {
-          doDownloadFallback();
-        }
+        if (err.name !== 'AbortError') doDownloadFallback();
       });
     } else {
       doDownloadFallback();
@@ -6202,6 +6150,7 @@ function buildPDF() {
     doDownloadFallback();
   }
 }
+
 
 const romJoints = ['Cervical/Neck','Thoracic/Mid Back','Lumbar/Low Back','Shoulder','Elbow','Wrist','Fingers/Thumb','Hip','Knee','Ankle'];
 function renderROM() {
