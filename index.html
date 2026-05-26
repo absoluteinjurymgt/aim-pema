@@ -3341,7 +3341,8 @@ function showScreen(id) {
 }
 
 function initPatientMode() {
-  if (new URLSearchParams(window.location.search).get('token')) return;
+  var _pm = window.location.pathname.match(/^\/q\/([A-Z0-9]{8})$/i);
+  if (_pm || new URLSearchParams(window.location.search).get('token')) return;
   const params = new URLSearchParams(window.location.search);
   if (params.get('mode') === 'patient') {
     window.PATIENT_MODE = true;
@@ -6820,7 +6821,7 @@ async function createAppointment() {
     var dateStr = d.toLocaleDateString('en-AU', { day: 'numeric', month: 'long' });
     var timeStr = apptTime ? formatApptTime(apptTime) : '';
 
-    var sms = 'Hi ' + firstName + ', your pre-employment medical assessment with Absolute Injury Management is on ' + dayStr + ' ' + dateStr + ' at ' + timeStr + '. Please complete your health questionnaire before your appointment — it takes about 10 minutes on your phone:\n\npema.absoluteim.com.au?token=' + token + '\n\nPlease complete this before your appointment. See you soon — AIM Team';
+    var sms = 'Hi ' + firstName + ', your pre-employment medical assessment with Absolute Injury Management is on ' + dayStr + ' ' + dateStr + ' at ' + timeStr + '. Please complete your health questionnaire before your appointment — it takes about 10 minutes on your phone:\n\npema.absoluteim.com.au/q/' + token + '\n\nPlease complete this before your appointment. See you soon — AIM Team';
 
     window._lastApptSMS = sms;
 
@@ -6865,7 +6866,8 @@ function legacyCopy(text) {
 
 // ─── TOKEN MODE ─────────────────────────────────────────────────────────────
 async function initTokenMode() {
-  var token = new URLSearchParams(window.location.search).get('token');
+  var pathMatch = window.location.pathname.match(/^\/q\/([A-Z0-9]{8})$/i);
+  var token = pathMatch ? pathMatch[1] : new URLSearchParams(window.location.search).get('token');
   if (!token) return false;
 
   window._currentToken = token;
