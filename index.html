@@ -6168,7 +6168,6 @@ function buildPDF() {
   drawFooter();
 
   const fname=(ptName.replace(/\s+/g,'_'))||'Applicant';
-  const ptLast=val('pt-surname')||'Applicant';
   const dateStr=new Date().toISOString().split('T')[0];
   const filename='AIM_PEMA_'+ptLast.replace(/\s+/g,'_')+'_'+dateStr+'.pdf';
 
