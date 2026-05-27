@@ -1539,8 +1539,8 @@
   <div id="appt-queue-section" style="width:100%;max-width:600px;margin:24px auto 48px;padding:0 16px">
     <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:24px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-        <h3 style="color:white;font-family:'DM Serif Display',serif;font-size:20px;margin:0">Today's Appointments</h3>
-        <button onclick="loadTodayAppointments()" style="padding:6px 14px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);border-radius:6px;color:var(--light);font-size:12px;font-family:'DM Sans',sans-serif;cursor:pointer;min-height:44px">&#8635; Refresh</button>
+        <h3 style="color:white;font-family:'DM Serif Display',serif;font-size:20px;margin:0">Upcoming Appointments</h3>
+        <button onclick="loadUpcomingAppointments()" style="padding:6px 14px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);border-radius:6px;color:var(--light);font-size:12px;font-family:'DM Sans',sans-serif;cursor:pointer;min-height:44px">&#8635; Refresh</button>
       </div>
       <div id="appt-queue-list"><div style="color:var(--mid);font-size:13px;font-style:italic">Loading appointments…</div></div>
     </div>
@@ -3341,7 +3341,7 @@ function showScreen(id) {
 }
 
 function initPatientMode() {
-  var _pm = window.location.pathname.match(/^\/q\/([A-Z0-9]{8})$/i);
+  var _pm = window.location.pathname.match(/^\/q\/([A-Z0-9]{8})\/?$/i);
   if (_pm || new URLSearchParams(window.location.search).get('token')) return;
   const params = new URLSearchParams(window.location.search);
   if (params.get('mode') === 'patient') {
@@ -6866,11 +6866,12 @@ function legacyCopy(text) {
 
 // ─── TOKEN MODE ─────────────────────────────────────────────────────────────
 async function initTokenMode() {
-  var pathMatch = window.location.pathname.match(/^\/q\/([A-Z0-9]{8})$/i);
+  var pathMatch = window.location.pathname.match(/^\/q\/([A-Z0-9]{8})\/?$/i);
   var token = pathMatch ? pathMatch[1] : new URLSearchParams(window.location.search).get('token');
   if (!token) return false;
 
   window._currentToken = token;
+  console.log('[PEMA] Token mode - token:', token, '| path:', window.location.pathname);
 
   // Show portal while we fetch
   var portalCards = document.querySelector('.portal-cards');
@@ -6925,6 +6926,7 @@ async function initTokenMode() {
     return true;
 
   } catch(e) {
+    console.error('[PEMA] initTokenMode error:', e);
     showTokenError('Unable to load your questionnaire. Please check your connection and try again.');
     return true;
   }
@@ -7003,17 +7005,18 @@ function showTokenComplete(firstName) {
   el.style.display = 'flex';
 }
 
-// ─── TODAY'S APPOINTMENT QUEUE ───────────────────────────────────────────────
-async function loadTodayAppointments() {
+
+// ─── UPCOMING APPOINTMENT QUEUE ──────────────────────────────────────────────
+async function loadUpcomingAppointments() {
   var container = document.getElementById('appt-queue-list');
   if (!container) return;
   container.innerHTML = '<div style="color:var(--mid);font-size:13px;padding:4px 0">Loading…</div>';
-  var today = new Date().toISOString().split('T')[0];
   try {
     var rows = await sbSelect('appointments',
-      'appointment_date=eq.' + today + '&status=neq.exported&order=appointment_time.asc');
+      'status=neq.exported&order=appointment_date.asc,appointment_time.asc');
     renderApptQueue(rows || []);
   } catch(e) {
+    console.error('[PEMA] loadUpcomingAppointments error:', e);
     container.innerHTML = '<div style="color:var(--mid);font-size:13px;padding:4px 0">Unable to load — check connection.</div>';
   }
 }
@@ -7022,42 +7025,70 @@ function renderApptQueue(appts) {
   var container = document.getElementById('appt-queue-list');
   if (!container) return;
   if (!appts.length) {
-    container.innerHTML = '<div style="color:var(--mid);font-size:13px;padding:4px 0;font-style:italic">No appointments today.</div>';
+    container.innerHTML = '<div style="color:var(--mid);font-size:13px;padding:4px 0;font-style:italic">No upcoming appointments.</div>';
     return;
   }
-  container.innerHTML = appts.map(function(a) {
+  container.innerHTML = appts.map(function(a, idx) {
     var isComplete = a.status === 'complete';
+    var cardId = 'appt-detail-' + idx;
+    var link = 'https://pema.absoluteim.com.au/q/' + a.token;
+    var d = a.appointment_date ? new Date(a.appointment_date + 'T12:00:00') : null;
+    var dateStr = d ? d.toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' }) : '—';
     var timeStr = a.appointment_time ? formatApptTime(a.appointment_time) : '—';
+
     var badge = isComplete
-      ? '<span style="background:#4a7c59;color:white;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;white-space:nowrap">✓ Ready</span>'
-      : '<span style="background:rgba(255,255,255,0.08);color:var(--light);padding:2px 8px;border-radius:4px;font-size:11px;white-space:nowrap">Pending</span>';
-    var action = isComplete
-      ? '<button onclick="loadPatientFromSupabase(\'' + a.token + '\')" style="background:var(--olive);border:none;color:white;padding:7px 14px;border-radius:6px;font-size:12px;cursor:pointer;font-family:\'DM Sans\',sans-serif;font-weight:500;white-space:nowrap">Load →</button>'
-      : '';
-    return '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.06)">' +
-      '<div style="flex:1;min-width:0">' +
-        '<div style="color:white;font-size:14px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + (a.patient_first_name || '') + ' ' + (a.patient_last_name || '') + '</div>' +
-        '<div style="color:var(--olive-light);font-size:12px">' + timeStr + ' · ' + (a.client_name || '—') + '</div>' +
-      '</div>' +
-      badge + action +
+      ? '<span style="display:inline-block;background:#4a7c59;color:white;padding:3px 9px;border-radius:4px;font-size:11px;font-weight:600">✓ Questionnaire Complete</span>'
+      : '<span style="display:inline-block;background:rgba(255,255,255,0.08);color:var(--light);padding:3px 9px;border-radius:4px;font-size:11px">Questionnaire Pending</span>';
+
+    var startStyle = isComplete
+      ? 'background:var(--olive);border:none;color:white;padding:10px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:\'DM Sans\',sans-serif;min-height:44px;white-space:nowrap'
+      : 'background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:var(--mid);padding:10px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:not-allowed;font-family:\'DM Sans\',sans-serif;min-height:44px;white-space:nowrap';
+    var startOnclick = isComplete ? 'onclick="startPEMA(this,\'' + a.token + '\')" ' : '';
+    var startDisabled = isComplete ? '' : 'disabled ';
+    var startBtn = '<button ' + startOnclick + startDisabled + 'style="' + startStyle + '">Start PEMA →</button>';
+
+    var detailsBtn = '<button onclick="(function(el){el.style.display=el.style.display===\'block\'?\'none\':\'block\';})(document.getElementById(\'' + cardId + '\'))" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:var(--light);padding:5px 10px;border-radius:6px;font-size:11px;cursor:pointer;font-family:\'DM Sans\',sans-serif;white-space:nowrap">Details ▾</button>';
+
+    var detailsPanel =
+      '<div id="' + cardId + '" style="display:none;margin-top:10px;background:rgba(255,255,255,0.03);border-radius:8px;padding:12px 14px">' +
+        '<div style="color:var(--mid);font-size:10px;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:3px">Token</div>' +
+        '<div style="color:white;font-family:monospace;font-size:15px;letter-spacing:2px;margin-bottom:10px">' + a.token + '</div>' +
+        '<div style="color:var(--mid);font-size:10px;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:3px">Questionnaire Link</div>' +
+        '<div style="color:var(--olive-light);font-size:12px;word-break:break-all;margin-bottom:10px">' + link + '</div>' +
+        '<button onclick="copyApptLink(this,\'' + a.token + '\')" style="padding:8px 16px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:white;font-size:13px;font-family:\'DM Sans\',sans-serif;cursor:pointer;min-height:44px">Copy Link</button>' +
       '</div>';
+
+    return (
+      '<div style="padding:12px 0;border-bottom:1px solid rgba(255,255,255,0.06)">' +
+        '<div style="display:flex;align-items:flex-start;gap:10px">' +
+          '<div style="flex:1;min-width:0">' +
+            '<div style="color:white;font-size:14px;font-weight:500">' + (a.patient_first_name || '') + ' ' + (a.patient_last_name || '') + '</div>' +
+            '<div style="color:var(--olive-light);font-size:12px;margin-top:2px">' + dateStr + ' at ' + timeStr + ' · ' + (a.client_name || '—') + '</div>' +
+            '<div style="margin-top:7px">' + badge + '</div>' +
+          '</div>' +
+          '<div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;flex-shrink:0">' +
+            startBtn +
+            detailsBtn +
+          '</div>' +
+        '</div>' +
+        detailsPanel +
+      '</div>'
+    );
   }).join('');
 }
 
-async function loadPatientFromSupabase(token) {
-  var btn = event && event.target ? event.target : null;
-  if (btn) { btn.textContent = 'Loading…'; btn.disabled = true; }
+async function startPEMA(btnEl, token) {
+  if (btnEl) { btnEl.textContent = 'Loading…'; btnEl.disabled = true; }
   try {
     var rows = await sbSelect('questionnaire_responses', 'token=eq.' + token + '&select=response_data');
     if (!rows || !rows.length) {
       alert('No questionnaire data found. The patient may not have completed their form yet.');
-      if (btn) { btn.textContent = 'Load →'; btn.disabled = false; } return;
+      if (btnEl) { btnEl.textContent = 'Start PEMA →'; btnEl.disabled = false; } return;
     }
     var data = rows[0].response_data;
     window._currentToken = token;
     localStorage.setItem('aim_patient_data', JSON.stringify(data));
 
-    // Set client context from appointment
     var apptRows = await sbSelect('appointments', 'token=eq.' + token + '&select=client_name');
     if (apptRows && apptRows.length) {
       var clientName = apptRows[0].client_name;
@@ -7073,9 +7104,23 @@ async function loadPatientFromSupabase(token) {
     showToast('Patient data loaded — ' + (name || 'Unknown'));
   } catch(e) {
     alert('Failed to load patient: ' + e.message);
-    if (btn) { btn.textContent = 'Load →'; btn.disabled = false; }
+    if (btnEl) { btnEl.textContent = 'Start PEMA →'; btnEl.disabled = false; }
   }
 }
+
+function copyApptLink(btnEl, token) {
+  var link = 'https://pema.absoluteim.com.au/q/' + token;
+  function done() {
+    if (!btnEl) return;
+    btnEl.textContent = '✓ Copied!';
+    btnEl.style.background = 'rgba(74,124,89,0.3)';
+    setTimeout(function() { btnEl.textContent = 'Copy Link'; btnEl.style.background = ''; }, 2500);
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(link).then(done).catch(function() { legacyCopy(link); done(); });
+  } else { legacyCopy(link); done(); }
+}
+
 
 function showToast(msg) {
   var t = document.getElementById('aim-toast');
@@ -7156,8 +7201,8 @@ document.addEventListener('DOMContentLoaded', () => {
   wirePatientAutoSave();
   checkAndShowRecoveryBanner();
   populateApptClientDropdown();
-  loadTodayAppointments();
-  setInterval(loadTodayAppointments, 60000);
+  var _isTokenUrl = !!(window.location.pathname.match(/^\/q\/([A-Z0-9]{8})\/?$/i) || new URLSearchParams(window.location.search).get('token'));
+  if (!_isTokenUrl) { loadUpcomingAppointments(); setInterval(loadUpcomingAppointments, 60000); }
   initTokenMode();
 });
 </script>
