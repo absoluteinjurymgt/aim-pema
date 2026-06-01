@@ -3366,7 +3366,7 @@ function savePatientDataToStorage() {
     data['checked_' + el.textContent.trim()] = true;
   });
   ['sig-consent'].forEach(id => {
-    const sig = getSig(id);
+    const sig = getSigGlobal(id);
     if (sig) data['sig_' + id] = sig;
   });
   document.querySelectorAll('.cy-btn.yes-sel').forEach(btn => {
