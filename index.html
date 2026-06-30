@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -2504,6 +2504,9 @@
                 </tbody>
               </table>
             </div>
+            <div style="margin:14px 0 4px 0;background:#fafaf7;border:1px solid #e8e8e0;border-radius:6px;padding:10px 8px 8px 8px">
+              <canvas id="audiogram-canvas" style="width:100%;height:380px;display:block"></canvas>
+            </div>
             <div class="form-row" style="margin-top:16px">
               <div class="form-group">
                 <label>% Hearing Loss — Left</label>
@@ -3898,6 +3901,7 @@ function loadPatientDataIntoClinician() {
       if (el && data[key]) el.value = data[key];
     });
     buildFlaggedItemsFromPatientData(data);
+    if (typeof drawAudiogram === 'function') setTimeout(drawAudiogram, 50);
     updatePatientSummary();
   } catch(e) { console.error('Failed to load patient data:', e); }
 }
@@ -4352,6 +4356,7 @@ function showClinSection(id, navItem) {
       if (el) el.textContent = name + (role ? ' — ' + role : '');
     }
   }
+  if (id === 'clin-audiometry') setTimeout(drawAudiogram, 50);
   window.scrollTo(0,0);
 }
 
@@ -7148,6 +7153,130 @@ function handleExportSupabaseCleanup() {
 }
 
 
+function drawAudiogram() {
+  var canvas = document.getElementById('audiogram-canvas');
+  if (!canvas) return;
+  var W = canvas.offsetWidth;
+  if (W < 10) return;
+  var H = 380;
+  canvas.width = W;
+  canvas.height = H;
+  var ctx = canvas.getContext('2d');
+
+  var ml = 55, mr = 20, mt = 20, mb = 45;
+  var pw = W - ml - mr;
+  var ph = H - mt - mb;
+  var freqs = [125, 250, 500, 750, 1000, 1500, 2000, 3000, 4000, 6000, 8000];
+  var logMin = Math.log10(125), logMax = Math.log10(8000);
+
+  function xForFreq(f) { return ml + (Math.log10(f) - logMin) / (logMax - logMin) * pw; }
+  function yForDb(db) { return mt + (db - (-10)) / (120 - (-10)) * ph; }
+
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, W, H);
+
+  for (var db = -10; db <= 120; db += 10) {
+    var y = yForDb(db);
+    ctx.beginPath(); ctx.moveTo(ml, y); ctx.lineTo(W - mr, y);
+    ctx.strokeStyle = (db === 0 || db === 25) ? '#cccccc' : '#e8e8e0';
+    ctx.lineWidth = (db === 0 || db === 25) ? 1.5 : 1;
+    ctx.stroke();
+    ctx.fillStyle = '#6b6b65'; ctx.font = '11px sans-serif';
+    ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+    ctx.fillText(db, ml - 6, y);
+  }
+
+  freqs.forEach(function(f) {
+    var x = xForFreq(f);
+    ctx.beginPath(); ctx.moveTo(x, mt); ctx.lineTo(x, H - mb);
+    ctx.strokeStyle = '#e8e8e0'; ctx.lineWidth = 1; ctx.stroke();
+    var label = f >= 1000 ? (f / 1000) + 'k' : String(f);
+    ctx.fillStyle = '#6b6b65'; ctx.font = '11px sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    ctx.fillText(label, x, H - mb + 6);
+  });
+
+  ctx.strokeStyle = '#aaa'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(ml, mt); ctx.lineTo(ml, H - mb); ctx.lineTo(W - mr, H - mb); ctx.stroke();
+
+  ctx.save();
+  ctx.translate(14, mt + ph / 2); ctx.rotate(-Math.PI / 2);
+  ctx.fillStyle = '#2e2e2a'; ctx.font = 'bold 12px sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('dB HL', 0, 0);
+  ctx.restore();
+
+  ctx.fillStyle = '#2e2e2a'; ctx.font = 'bold 12px sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+  ctx.fillText('Frequency (kHz)', ml + pw / 2, H - 1);
+
+  var colFreqs = [500, 1000, 1500, 2000, 3000, 4000, 6000, 8000];
+  var rows = document.querySelectorAll('#audio-table tbody tr');
+
+  function getEarData(rowIdx) {
+    var pts = [];
+    if (!rows[rowIdx]) return pts;
+    var inputs = rows[rowIdx].querySelectorAll('input');
+    for (var i = 0; i < colFreqs.length; i++) {
+      var val = parseFloat(inputs[i] ? inputs[i].value : '');
+      if (!isNaN(val)) pts.push({ f: colFreqs[i], db: val, colIdx: i });
+    }
+    return pts;
+  }
+
+  function drawEar(pts, color, symbol) {
+    if (!pts.length) return;
+    ctx.strokeStyle = color; ctx.lineWidth = 1.5;
+    for (var i = 0; i < pts.length - 1; i++) {
+      if (pts[i + 1].colIdx === pts[i].colIdx + 1) {
+        ctx.beginPath();
+        ctx.moveTo(xForFreq(pts[i].f), yForDb(pts[i].db));
+        ctx.lineTo(xForFreq(pts[i + 1].f), yForDb(pts[i + 1].db));
+        ctx.stroke();
+      }
+    }
+    ctx.lineWidth = 2;
+    pts.forEach(function(pt) {
+      var x = xForFreq(pt.f), y = yForDb(pt.db);
+      ctx.strokeStyle = color;
+      if (symbol === 'O') {
+        ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.stroke();
+      } else {
+        var s = 5;
+        ctx.beginPath();
+        ctx.moveTo(x - s, y - s); ctx.lineTo(x + s, y + s);
+        ctx.moveTo(x + s, y - s); ctx.lineTo(x - s, y + s);
+        ctx.stroke();
+      }
+    });
+  }
+
+  drawEar(getEarData(0), '#0055cc', 'X');
+  drawEar(getEarData(1), '#cc2200', 'O');
+
+  var lx = W - mr - 106, ly = mt + 8;
+  ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.fillRect(lx - 6, ly - 4, 104, 52);
+  ctx.strokeStyle = '#e0e0d8'; ctx.lineWidth = 1; ctx.strokeRect(lx - 6, ly - 4, 104, 52);
+
+  ctx.strokeStyle = '#cc2200'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(lx, ly + 8); ctx.lineTo(lx + 18, ly + 8); ctx.stroke();
+  ctx.beginPath(); ctx.arc(lx + 9, ly + 8, 5, 0, Math.PI * 2); ctx.lineWidth = 2; ctx.stroke();
+  ctx.fillStyle = '#2e2e2a'; ctx.font = '11px sans-serif';
+  ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillText('Right ear', lx + 24, ly + 8);
+
+  ctx.strokeStyle = '#0055cc'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(lx, ly + 28); ctx.lineTo(lx + 18, ly + 28); ctx.stroke();
+  ctx.lineWidth = 2;
+  var s = 5;
+  ctx.beginPath();
+  ctx.moveTo(lx + 9 - s, ly + 28 - s); ctx.lineTo(lx + 9 + s, ly + 28 + s);
+  ctx.moveTo(lx + 9 + s, ly + 28 - s); ctx.lineTo(lx + 9 - s, ly + 28 + s);
+  ctx.stroke();
+  ctx.fillStyle = '#2e2e2a'; ctx.font = '11px sans-serif';
+  ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillText('Left ear', lx + 24, ly + 28);
+}
+
+
 document.addEventListener('DOMContentLoaded', () => {
   initPatientMode();
   loadSavedLogos();
@@ -7204,6 +7333,9 @@ document.addEventListener('DOMContentLoaded', () => {
   var _isTokenUrl = !!(window.location.pathname.match(/^\/q\/([A-Z0-9]{8})\/?$/i) || new URLSearchParams(window.location.search).get('token'));
   if (!_isTokenUrl) { loadUpcomingAppointments(); setInterval(loadUpcomingAppointments, 60000); }
   initTokenMode();
+  document.querySelector('#audio-table')?.addEventListener('input', drawAudiogram);
+  var _audioResizeTimer;
+  window.addEventListener('resize', function() { clearTimeout(_audioResizeTimer); _audioResizeTimer = setTimeout(drawAudiogram, 200); });
 });
 </script>
 <script>
