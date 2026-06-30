@@ -353,7 +353,8 @@
     outline: none;
   }
   .form-control:focus { border-color: var(--olive); }
-  select.form-control { cursor: pointer; }
+  select.form-control { cursor: pointer; background-color: white; color: var(--black); }
+  select.form-control option { background-color: white; color: var(--black); }
 
   .badge {
     display: inline-flex;
@@ -6911,7 +6912,7 @@ async function createAppointment() {
     if (tokenSpan) tokenSpan.textContent = token;
     if (smsBox)    smsBox.style.display = 'block';
 
-    loadTodayAppointments();
+    loadUpcomingAppointments();
   } catch(e) {
     alert('Failed to create appointment: ' + e.message);
   } finally {
