@@ -7241,11 +7241,16 @@ function showErrorToast(msg) {
 
 async function checkSupabaseConnection() {
   try {
-    const res = await fetch(SUPABASE_URL + '/rest/v1/', {
-      headers: { 'apikey': SUPABASE_ANON_KEY }
+    const res = await fetch(SUPABASE_URL + '/rest/v1/appointments?select=id&limit=1', {
+      headers: {
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': 'Bearer ' + SUPABASE_ANON_KEY
+      }
     });
-    return res.ok || res.status === 404 || res.status === 400;
+    console.log('[PEMA] Supabase check status:', res.status);
+    return res.ok;
   } catch(e) {
+    console.error('[PEMA] Supabase connection check failed:', e);
     return false;
   }
 }
