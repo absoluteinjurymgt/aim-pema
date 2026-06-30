@@ -3932,11 +3932,77 @@ function loadPatientDataIntoClinician() {
   if (!stored) return;
   try {
     const data = JSON.parse(stored);
-    Object.keys(data).forEach(key => {
-      if (key.startsWith('yn_') || key.startsWith('checked_') || key.startsWith('sig_') || key.startsWith('cond_')) return;
+
+    // 1. Restore plain input/select/textarea values
+    Object.keys(data).forEach(function(key) {
+      if (key.startsWith('yn_') || key.startsWith('checked_') || key.startsWith('sig_') || key.startsWith('cond_') || /_row_\d+$/.test(key)) return;
       const el = document.getElementById(key);
-      if (el && data[key]) el.value = data[key];
+      if (el && data[key] !== undefined) el.value = data[key];
     });
+
+    // 2. Restore Y/N button visual states + show detail fields for yes answers
+    Object.keys(data).forEach(function(key) {
+      if (!key.startsWith('yn_')) return;
+      const group = key.slice(3);
+      const val = data[key];
+      const btns = Array.from(document.querySelectorAll('.yn-btn')).filter(function(btn) {
+        const m = (btn.getAttribute('onclick') || '').match(/toggleYN\(this,'([^']+)'/);
+        return m && m[1] === group;
+      });
+      if (!btns.length) return;
+      btns.forEach(function(b) { b.classList.remove('selected-yes', 'selected-no'); });
+      if (val === 'yes') {
+        const yesBtn = btns.find(function(b) { return b.textContent.trim().toLowerCase() === 'yes'; }) || btns[0];
+        yesBtn.classList.add('selected-yes');
+        const card = yesBtn.closest('.q-card');
+        if (card) { const df = card.querySelector('.detail-field'); if (df) df.classList.add('visible'); }
+      } else if (val === 'no') {
+        const noBtn = btns.find(function(b) { return b.textContent.trim().toLowerCase() === 'no'; }) || btns[btns.length - 1];
+        noBtn.classList.add('selected-no');
+      }
+    });
+
+    // 3. Restore condition (cy-btn) yes states
+    Object.keys(data).forEach(function(key) {
+      if (!key.startsWith('cond_yes_')) return;
+      const condText = key.slice(9);
+      document.querySelectorAll('.condition-row').forEach(function(row) {
+        const ct = row.querySelector('.condition-text');
+        if (ct && ct.textContent.trim() === condText) {
+          const yesBtn = row.querySelector('.cy-btn');
+          if (yesBtn) yesBtn.classList.add('yes-sel');
+        }
+      });
+    });
+
+    // 4. Restore checkbox checked states
+    Object.keys(data).forEach(function(key) {
+      if (!key.startsWith('checked_')) return;
+      const label = key.slice(8);
+      document.querySelectorAll('.checkbox-item').forEach(function(item) {
+        const lbl = item.querySelector('.checkbox-label');
+        if (lbl && lbl.textContent.trim() === label) item.classList.add('checked');
+      });
+    });
+
+    // 5. Restore Epworth/K10/AUDIT radio-dot selections and recalculate scores
+    [['epworth', '.radio-dot'], ['k10', '.radio-dot'], ['audit', '.audit-radio']].forEach(function(pair) {
+      const scale = pair[0], dotSel = pair[1];
+      const tbody = document.getElementById(scale + '-body');
+      if (!tbody) return;
+      tbody.querySelectorAll('tr').forEach(function(tr, i) {
+        const savedCol = data[scale + '_row_' + i];
+        if (savedCol === undefined || savedCol === null) return;
+        const dots = tr.querySelectorAll(dotSel);
+        dots.forEach(function(d) { d.classList.remove('selected'); });
+        if (dots[savedCol]) dots[savedCol].classList.add('selected');
+      });
+    });
+    if (typeof calcEpworthScore === 'function') calcEpworthScore();
+    if (typeof calcK10Score === 'function') calcK10Score();
+    if (typeof calcAUDITScore === 'function') calcAUDITScore();
+
+    // 6. Build flagged items now that DOM is fully restored
     buildFlaggedItemsFromPatientData(data);
     if (typeof drawAudiogram === 'function') setTimeout(drawAudiogram, 50);
     updatePatientSummary();
@@ -7042,6 +7108,16 @@ function collectPatientFormData() {
     var row = btn.closest('.condition-row');
     var ct = row && row.querySelector('.condition-text');
     if (ct) data['cond_yes_' + ct.textContent.trim()] = true;
+  });
+  // Save Epworth / K10 / AUDIT radio-dot selections by row index → selected column index
+  [['epworth', '.radio-dot'], ['k10', '.radio-dot'], ['audit', '.audit-radio']].forEach(function(pair) {
+    var scale = pair[0], dotSel = pair[1];
+    var tbody = document.getElementById(scale + '-body');
+    if (!tbody) return;
+    tbody.querySelectorAll('tr').forEach(function(tr, i) {
+      var sel = Array.from(tr.querySelectorAll(dotSel)).findIndex(function(d) { return d.classList.contains('selected'); });
+      if (sel >= 0) data[scale + '_row_' + i] = sel;
+    });
   });
   return data;
 }
