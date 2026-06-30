@@ -4138,7 +4138,7 @@ function insertPrompt(chipEl, text) {
 }
 
 function calcHearingLoss() {
-  const rows = document.querySelectorAll('#audio-table tbody tr');
+  const rows = document.querySelectorAll('.audio-table tbody tr');
   if (rows.length < 2) return;
 
   function rowAvg(row) {
@@ -7410,10 +7410,9 @@ function drawAudiogram() {
     var x = xForFreq(f);
     ctx.beginPath(); ctx.moveTo(x, mt); ctx.lineTo(x, H - mb);
     ctx.strokeStyle = '#e8e8e0'; ctx.lineWidth = 1; ctx.stroke();
-    var label = f >= 1000 ? (f / 1000) + 'k' : String(f);
-    ctx.fillStyle = '#6b6b65'; ctx.font = '11px sans-serif';
+    ctx.fillStyle = '#6b6b65'; ctx.font = '9px sans-serif';
     ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-    ctx.fillText(label, x, H - mb + 6);
+    ctx.fillText(String(f), x, H - mb + 6);
   });
 
   ctx.strokeStyle = '#aaa'; ctx.lineWidth = 1;
@@ -7431,7 +7430,7 @@ function drawAudiogram() {
   ctx.fillText('Frequency (kHz)', ml + pw / 2, H - 1);
 
   var colFreqs = [500, 1000, 1500, 2000, 3000, 4000, 6000, 8000];
-  var rows = document.querySelectorAll('#audio-table tbody tr');
+  var rows = document.querySelectorAll('.audio-table tbody tr');
 
   function getEarData(rowIdx) {
     var pts = [];
@@ -7554,7 +7553,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (!_isTokenUrl) { loadUpcomingAppointments(); setInterval(loadUpcomingAppointments, 60000); }
   initTokenMode();
   checkSupabaseConnection().then(function(ok) { showConnectionBanner(!ok); });
-  document.querySelector('#audio-table')?.addEventListener('input', drawAudiogram);
+  document.querySelector('.audio-table')?.addEventListener('input', drawAudiogram);
   var _audioResizeTimer;
   window.addEventListener('resize', function() { clearTimeout(_audioResizeTimer); _audioResizeTimer = setTimeout(drawAudiogram, 200); });
 });
