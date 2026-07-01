@@ -4439,6 +4439,7 @@ function calcGrip(side) {
 }
 
 function showClinSection(id, navItem) {
+  if (typeof saveClinicianDataToStorage === 'function') saveClinicianDataToStorage();
   const currentSection = document.querySelector('.clinician-section.active');
   if (currentSection && currentSection.id !== id) {
     preFillSection(currentSection.id);
@@ -5642,7 +5643,7 @@ function generatePDF() {
   if (btn) { btn.textContent = 'Preparing...'; btn.disabled = true; }
 
   function tryBuild() {
-    try { buildPDF(); restoreBtn(); }
+    try { buildPDF(); clearClinicianSession(); clearPatientSession(); restoreBtn(); }
     catch(e) { restoreBtn(); console.error('PDF error:', e); alert('PDF export error: ' + e.message); }
   }
 
@@ -7496,6 +7497,229 @@ function drawAudiogram() {
 }
 
 
+
+// ─── CLINICIAN ASSESSMENT CRASH RECOVERY ─────────────────────────────────────
+
+function saveClinicianDataToStorage() {
+  var data = {};
+  // 1. All identified inputs, selects, textareas
+  document.querySelectorAll('#screen-clinician input, #screen-clinician select, #screen-clinician textarea').forEach(function(el) {
+    if (el.id) data[el.id] = el.value;
+  });
+  // 2. Audiometry table inputs (no IDs — save by row/col position)
+  document.querySelectorAll('.audio-table tbody tr').forEach(function(tr, rowIdx) {
+    tr.querySelectorAll('input').forEach(function(inp, colIdx) {
+      data['audio_' + rowIdx + '_' + colIdx] = inp.value;
+    });
+  });
+  // 3. Option chips — save by onclick attribute as stable key
+  document.querySelectorAll('#screen-clinician .option-chip').forEach(function(chip) {
+    var sel = chip.classList.contains('selected-normal') ? 'selected-normal' :
+              chip.classList.contains('selected-pain')   ? 'selected-pain'   :
+              chip.classList.contains('selected-limited')? 'selected-limited': null;
+    if (sel) {
+      var oc = chip.getAttribute('onclick') || '';
+      if (oc) data['chip_' + oc] = sel;
+    }
+  });
+  // 4. Outcome / fitness tier selection
+  var selOutcome = document.querySelector('.outcome-option.selected') || document.querySelector('.outcome-option.suggested');
+  if (selOutcome) {
+    var radio = selOutcome.querySelector('input[type="radio"]');
+    if (radio) data['outcome_selected'] = radio.value;
+  }
+  // 5. Assessor signature
+  var sig = getSigGlobal('sig-assessor');
+  if (sig) data['sig_assessor'] = sig;
+  // 6. Session meta
+  data['_token'] = window._currentToken || null;
+  var fname = document.getElementById('pt-firstname') ? document.getElementById('pt-firstname').value : '';
+  var lname = document.getElementById('pt-surname')   ? document.getElementById('pt-surname').value   : '';
+  data['_patientName'] = (fname + ' ' + lname).trim() || null;
+
+  localStorage.setItem('aim_clinician_data',      JSON.stringify(data));
+  localStorage.setItem('aim_clinician_timestamp', new Date().toISOString());
+  if (window._currentToken) syncClinicianDataToSupabase(window._currentToken, data);
+}
+
+var _clinSyncTimer = null;
+function syncClinicianDataToSupabase(token, data) {
+  clearTimeout(_clinSyncTimer);
+  _clinSyncTimer = setTimeout(async function() {
+    try {
+      await fetch(SUPABASE_URL + '/rest/v1/clinician_progress', {
+        method: 'POST',
+        headers: {
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+          'Content-Type': 'application/json',
+          'Prefer': 'resolution=merge-duplicates'
+        },
+        body: JSON.stringify({ token: token, progress_data: data, updated_at: new Date().toISOString() })
+      });
+    } catch(e) { console.error('[PEMA] Clinician sync failed:', e); }
+  }, 5000);
+}
+
+function restoreClinicianData(data) {
+  // 1. Plain inputs/selects/textareas with IDs
+  Object.keys(data).forEach(function(key) {
+    if (key.startsWith('chip_') || key.startsWith('sig_') || key.startsWith('audio_') ||
+        key === 'outcome_selected' || key.charAt(0) === '_') return;
+    var el = document.getElementById(key);
+    if (el && data[key] !== undefined) el.value = data[key];
+  });
+  // 2. Audiometry table inputs
+  document.querySelectorAll('.audio-table tbody tr').forEach(function(tr, rowIdx) {
+    tr.querySelectorAll('input').forEach(function(inp, colIdx) {
+      var saved = data['audio_' + rowIdx + '_' + colIdx];
+      if (saved !== undefined) inp.value = saved;
+    });
+  });
+  // 3. Option chips — match by onclick
+  Object.keys(data).forEach(function(key) {
+    if (!key.startsWith('chip_')) return;
+    var oc = key.slice(5);
+    var selClass = data[key];
+    var chip = Array.from(document.querySelectorAll('#screen-clinician .option-chip')).find(function(c) {
+      return (c.getAttribute('onclick') || '') === oc;
+    });
+    if (chip) {
+      chip.classList.remove('selected-normal', 'selected-pain', 'selected-limited');
+      chip.classList.add(selClass);
+    }
+  });
+  // 4. Outcome tier
+  if (data['outcome_selected']) {
+    document.querySelectorAll('.outcome-option').forEach(function(opt) {
+      opt.classList.remove('selected', 'suggested');
+      var radio = opt.querySelector('input[type="radio"]');
+      if (radio && radio.value === data['outcome_selected']) opt.classList.add('selected');
+    });
+  }
+  // 5. Assessor signature
+  if (data['sig_assessor']) {
+    var canvas = document.getElementById('sig-assessor');
+    if (canvas) {
+      var ctx = canvas.getContext('2d');
+      var img = new Image();
+      img.onload = function() { ctx.drawImage(img, 0, 0); };
+      img.src = data['sig_assessor'];
+      var ph = document.getElementById('sig-assessor-ph');
+      if (ph) ph.style.display = 'none';
+    }
+  }
+  // 6. Re-run all derived calculations
+  if (typeof calcBMI            === 'function') calcBMI();
+  if (typeof calcSpiroPct       === 'function') calcSpiroPct();
+  if (typeof calcMaxHR          === 'function') calcMaxHR();
+  if (typeof calcGrip           === 'function') { calcGrip('left'); calcGrip('right'); }
+  if (typeof calcEpworthScore   === 'function') calcEpworthScore();
+  if (typeof calcK10Score       === 'function') calcK10Score();
+  if (typeof calcAUDITScore     === 'function') calcAUDITScore();
+  if (typeof buildFlaggedItemsFromPatientData === 'function') buildFlaggedItemsFromPatientData({});
+  if (typeof drawAudiogram      === 'function') setTimeout(drawAudiogram, 100);
+  if (typeof updatePatientSummary === 'function') updatePatientSummary();
+}
+
+function clearClinicianSession() {
+  localStorage.removeItem('aim_clinician_data');
+  localStorage.removeItem('aim_clinician_timestamp');
+  if (window._currentToken) {
+    fetch(SUPABASE_URL + '/rest/v1/clinician_progress?token=eq.' + encodeURIComponent(window._currentToken), {
+      method: 'DELETE',
+      headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY }
+    }).catch(function(e) { console.warn('[PEMA] Could not delete clinician progress:', e); });
+  }
+}
+
+function showClinicianRecoveryBanner(timestamp, savedData) {
+  if (document.getElementById('clin-recovery-banner')) return;
+  var ts = new Date(timestamp);
+  var diffMins = Math.floor((Date.now() - ts.getTime()) / 60000);
+  var diffHrs  = Math.floor(diffMins / 60);
+  var timeAgo  = diffHrs  > 0 ? diffHrs  + ' hr'  + (diffHrs  > 1 ? 's' : '') + ' ago' :
+                 diffMins > 1 ? diffMins + ' min ago' : 'just now';
+  var patientName  = savedData._patientName ? ' — ' + savedData._patientName : '';
+  var savedTimeStr = ts.toLocaleDateString('en-AU') + ' at ' + ts.toLocaleTimeString('en-AU', {hour:'2-digit', minute:'2-digit'});
+  var banner = document.createElement('div');
+  banner.id = 'clin-recovery-banner';
+  banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:#2e2e2a;border-bottom:2px solid #b07d2e;padding:14px 20px;display:flex;align-items:center;gap:14px;font-family:\'DM Sans\',sans-serif;box-shadow:0 2px 12px rgba(0,0,0,0.4)';
+  banner.innerHTML =
+    '<svg width="20" height="20" viewBox="0 0 24 24" fill="#ffe8a0"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>' +
+    '<div style="flex:1">' +
+      '<div style="color:#f0f0eb;font-weight:600;font-size:14px;margin-bottom:2px">Unfinished assessment found' + patientName + '</div>' +
+      '<div style="color:#a8a89f;font-size:12px">Last saved ' + timeAgo + ' · ' + savedTimeStr + '</div>' +
+    '</div>' +
+    '<button id="clin-resume-btn" style="background:#4a7c59;border:none;color:#fff;padding:9px 18px;border-radius:6px;font-size:13px;cursor:pointer;font-weight:600;white-space:nowrap">Resume — last saved ' + timeAgo + '</button>' +
+    '<button id="clin-discard-btn" style="background:transparent;border:1px solid rgba(255,255,255,0.2);color:#a8a89f;padding:9px 16px;border-radius:6px;font-size:13px;cursor:pointer;white-space:nowrap">Discard</button>';
+  document.body.prepend(banner);
+
+  document.getElementById('clin-resume-btn').addEventListener('click', async function() {
+    banner.remove();
+    var token = savedData._token;
+    if (token) {
+      try {
+        window._currentToken = token;
+        var rows = await sbSelect('questionnaire_responses', 'token=eq.' + token + '&select=response_data');
+        if (rows && rows.length) localStorage.setItem('aim_patient_data', JSON.stringify(rows[0].response_data));
+      } catch(e) { console.warn('[PEMA] Re-fetch patient data failed:', e); }
+    }
+    showScreen('screen-clinician');
+    loadPatientDataIntoClinician();
+    restoreClinicianData(savedData);
+  });
+
+  document.getElementById('clin-discard-btn').addEventListener('click', function() {
+    if (confirm('Discard this unfinished assessment? This cannot be undone.')) {
+      clearClinicianSession();
+      banner.remove();
+    }
+  });
+}
+
+async function checkAndShowClinicianRecoveryBanner() {
+  if (window._tokenSubmitMode) return;
+  var saved = localStorage.getItem('aim_clinician_data');
+  var ts    = localStorage.getItem('aim_clinician_timestamp');
+  if (!saved || !ts) return;
+  try {
+    var data = JSON.parse(saved);
+    showClinicianRecoveryBanner(ts, data);
+  } catch(e) { localStorage.removeItem('aim_clinician_data'); }
+}
+
+var _clinSaveTimer = null;
+function wireClinicianAutoSave() {
+  var screen = document.getElementById('screen-clinician');
+  if (!screen) return;
+  // Debounced save on text input (800ms); immediate for selects/checkboxes
+  screen.addEventListener('input', function(e) {
+    clearTimeout(_clinSaveTimer);
+    var delay = (e.target.tagName === 'TEXTAREA' || e.target.type === 'text' || e.target.type === 'number') ? 800 : 0;
+    _clinSaveTimer = setTimeout(saveClinicianDataToStorage, delay);
+  });
+  screen.addEventListener('change', function() {
+    clearTimeout(_clinSaveTimer);
+    _clinSaveTimer = setTimeout(saveClinicianDataToStorage, 100);
+  });
+  // Option chips and outcome buttons don't fire input events — catch via click
+  screen.addEventListener('click', function(e) {
+    var t = e.target;
+    if (t.classList.contains('option-chip')    || (t.closest && t.closest('.option-chip'))    ||
+        t.classList.contains('outcome-option') || (t.closest && t.closest('.outcome-option'))) {
+      clearTimeout(_clinSaveTimer);
+      _clinSaveTimer = setTimeout(saveClinicianDataToStorage, 100);
+    }
+  });
+  // Assessor signature canvas (mouseup/touchend after each stroke)
+  var sigCanvas = document.getElementById('sig-assessor');
+  if (sigCanvas) {
+    sigCanvas.addEventListener('mouseup',  function() { setTimeout(saveClinicianDataToStorage, 150); });
+    sigCanvas.addEventListener('touchend', function() { setTimeout(saveClinicianDataToStorage, 150); });
+  }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   initPatientMode();
   loadSavedLogos();
@@ -7548,6 +7772,8 @@ document.addEventListener('DOMContentLoaded', () => {
   addNextButtons();
   wirePatientAutoSave();
   checkAndShowRecoveryBanner();
+  wireClinicianAutoSave();
+  checkAndShowClinicianRecoveryBanner();
   populateApptClientDropdown();
   var _isTokenUrl = !!(window.location.pathname.match(/^\/q\/([A-Z0-9]{8})\/?$/i) || new URLSearchParams(window.location.search).get('token'));
   if (!_isTokenUrl) { loadUpcomingAppointments(); setInterval(loadUpcomingAppointments, 60000); }
