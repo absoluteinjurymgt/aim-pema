@@ -2529,6 +2529,9 @@
                 <input class="form-control" id="audio-pct-binaural" placeholder="e.g. 4.4%" oninput="preFillAudiometry()">
               </div>
             </div>
+            <div style="font-size:11px;color:var(--mid);margin-top:4px;font-style:italic">
+              Calculated using AMA (1979) method — PTA at 500, 1000, 2000, 3000 Hz. Low fence 25 dB. 1.5% per dB. Binaural: (better &times; 5 + worse) &divide; 6.
+            </div>
             <div class="form-row" style="margin-top:12px;margin-bottom:4px">
               <div class="form-group">
                 <label>Otoscopy / Auriscope Findings</label>
@@ -2913,8 +2916,8 @@
             <div class="vitals-grid">
               <div class="vital-item"><div class="vital-label">Max HR for Test</div><div class="vital-input" id="st-maxhr">—</div><div class="vital-unit">bpm</div></div>
               <div class="vital-item"><div class="vital-label">Baseline HR</div><input class="vital-input" placeholder="72"><div class="vital-unit">bpm</div></div>
-              <div class="vital-item"><div class="vital-label">3-Minute HR</div><input class="vital-input" placeholder="—"><div class="vital-unit">bpm</div></div>
-              <div class="vital-item"><div class="vital-label">1-Min Post HR</div><input class="vital-input" placeholder="—"><div class="vital-unit">bpm</div></div>
+              <div class="vital-item"><div class="vital-label">3-Minute HR</div><input class="vital-input" data-hr-field="peak" placeholder="—"><div class="vital-unit">bpm</div></div>
+              <div class="vital-item"><div class="vital-label">1-Min Post HR</div><input class="vital-input" data-hr-field="peak" placeholder="—"><div class="vital-unit">bpm</div></div>
               <div class="vital-item"><div class="vital-label">Pain Rating</div><input class="vital-input" placeholder="0"><div class="vital-unit">/10</div></div>
               <div class="vital-item"><div class="vital-label">RPE</div><input class="vital-input" placeholder="0"><div class="vital-unit">/10</div></div>
             </div>
@@ -2972,7 +2975,7 @@
               <div class="mh-field"><label>Occasional (1 rep)</label><select><option>Able</option><option>Unable</option></select></div>
               <div class="mh-field"><label>Frequent (5 in 1 min)</label><select><option>Able</option><option>Unable</option></select></div>
               <div class="mh-field"><label>Pain (0–10)</label><input placeholder="0" id="stepup-pain"></div>
-              <div class="mh-field"><label>Peak HR (bpm)</label><input placeholder="—" id="stepup-hr"></div>
+              <div class="mh-field"><label>Peak HR (bpm)</label><input placeholder="—" id="stepup-hr" data-hr-field="peak"></div>
               <div class="mh-field"><label>Knee Control</label><select id="stepup-knee"><option>Controlled</option><option>Mild valgus</option><option>Significant valgus</option></select></div>
               <div class="mh-field"><label>Movement Pattern</label><select id="stepup-pattern"><option>Correct</option><option>Compensatory</option></select></div>
             </div>
@@ -2999,7 +3002,7 @@
             <div class="mh-grid" style="margin-bottom:14px">
               <div class="mh-field"><label id="ladder-reps-label">Constant reps completed</label><input id="ladder-const" placeholder="e.g. 20"></div>
               <div class="mh-field"><label>Pain (0–10)</label><input placeholder="0" id="ladder-pain"></div>
-              <div class="mh-field"><label>Peak HR (bpm)</label><input placeholder="—" id="ladder-hr"></div>
+              <div class="mh-field"><label>Peak HR (bpm)</label><input placeholder="—" id="ladder-hr" data-hr-field="peak"></div>
               <div class="mh-field"><label>RPE (0–10)</label><input placeholder="0" id="ladder-rpe"></div>
               <div class="mh-field"><label>3-Point Contact</label><select id="ladder-contact"><option>Maintained throughout</option><option>Occasional breaks — noted</option><option>Not maintained</option></select></div>
               <div class="mh-field"><label>Movement Pattern</label><select id="ladder-pattern"><option>Correct</option><option>Compensatory</option></select></div>
@@ -3998,6 +4001,106 @@ function selectFlagSource(chip) {
   saveClinicianDataToStorage();
 }
 
+// ─── HR BREACH WARNING ────────────────────────────────────────────────────────
+
+var _hrBreachCounter = 0;
+function getHRBreachId(inputEl) {
+  if (!inputEl.dataset.hrBreachId) inputEl.dataset.hrBreachId = 'hr-breach-' + (++_hrBreachCounter);
+  return inputEl.dataset.hrBreachId;
+}
+
+function findHRLinkedTextarea(inputEl) {
+  var card = inputEl.closest('.clin-card');
+  if (card) { var ta = card.querySelector('.smart-textarea'); if (ta) return ta; }
+  var section = inputEl.closest('.clinician-section');
+  if (section) return section.querySelector('.smart-textarea') || null;
+  return null;
+}
+
+function findHRChipsInsertPoint(inputEl) {
+  var ta = findHRLinkedTextarea(inputEl);
+  if (ta) return ta.closest('.smart-field') || ta.parentElement;
+  return inputEl.closest('.postural-field') || inputEl.parentElement;
+}
+
+function checkHRBreach(inputEl) {
+  var val = parseFloat(inputEl.value);
+  var max85 = window._maxHR85 || 0;
+  var breachId = getHRBreachId(inputEl);
+  var existing = document.getElementById(breachId);
+  var breachActive = max85 > 0 && inputEl.value.trim() !== '' && val > max85;
+
+  if (!breachActive) {
+    if (existing) {
+      existing.remove();
+      var ta = findHRLinkedTextarea(inputEl);
+      if (ta && ta.dataset.hrAutoText) {
+        if (ta.value === ta.dataset.hrAutoText) {
+          ta.value = '';
+        } else if (ta.value.startsWith(ta.dataset.hrAutoText + '\n')) {
+          ta.value = ta.value.slice(ta.dataset.hrAutoText.length + 1);
+        }
+        delete ta.dataset.hrAutoText;
+      }
+    }
+    return;
+  }
+
+  var sentence = 'Peak HR ' + val + ' bpm exceeded 85% maximum HR (' + max85 + ' bpm) during this task.';
+  var ta = findHRLinkedTextarea(inputEl);
+
+  if (ta) {
+    if (!ta.value.trim() || ta.value === ta.dataset.hrAutoText) {
+      ta.value = sentence;
+      ta.dataset.hrAutoText = sentence;
+    } else if (ta.dataset.hrAutoText && ta.value.startsWith(ta.dataset.hrAutoText)) {
+      ta.value = sentence + ta.value.slice(ta.dataset.hrAutoText.length);
+      ta.dataset.hrAutoText = sentence;
+    }
+  }
+
+  if (existing) return;
+
+  var chipsDiv = document.createElement('div');
+  chipsDiv.id = breachId;
+  chipsDiv.className = 'hr-exertion-chips';
+  chipsDiv.style.marginTop = '8px';
+  chipsDiv.innerHTML =
+    '<div style="font-size:11px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px">Signs of Exertion Observed</div>' +
+    '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+      '<div class="prompt-chip" onclick="selectExertion(this,\'nil signs of exertion noted\')">Nil signs</div>' +
+      '<div class="prompt-chip" onclick="selectExertion(this,\'mild signs of exertion noted (mild perspiration)\')">Mild</div>' +
+      '<div class="prompt-chip" onclick="selectExertion(this,\'moderate signs of exertion noted (perspiration, shortness of breath)\')">Moderate</div>' +
+      '<div class="prompt-chip" onclick="selectExertion(this,\'significant signs of exertion noted (heavy perspiration, marked shortness of breath, pallor)\')">Significant</div>' +
+    '</div>';
+
+  var insertAfter = findHRChipsInsertPoint(inputEl);
+  if (insertAfter && insertAfter.parentElement) {
+    insertAfter.parentElement.insertBefore(chipsDiv, insertAfter.nextSibling);
+  }
+  if (typeof saveClinicianDataToStorage === 'function') saveClinicianDataToStorage();
+}
+
+function selectExertion(chip, text) {
+  var exertionDiv = chip.closest('.hr-exertion-chips');
+  if (!exertionDiv) return;
+  exertionDiv.querySelectorAll('.prompt-chip').forEach(function(c) { c.classList.remove('selected'); });
+  chip.classList.add('selected');
+  var container = exertionDiv.closest('.clin-card, .clinician-section');
+  var ta = container ? container.querySelector('.smart-textarea') : null;
+  if (ta) {
+    var prev = exertionDiv.dataset.prevExertion;
+    if (prev) {
+      var idx = ta.value.lastIndexOf('\n' + prev);
+      if (idx !== -1) ta.value = ta.value.slice(0, idx) + ta.value.slice(idx + prev.length + 1);
+      else if (ta.value === prev) ta.value = '';
+    }
+    ta.value = (ta.value.trim() ? ta.value.trim() + '\n' : '') + text;
+    exertionDiv.dataset.prevExertion = text;
+  }
+  if (typeof saveClinicianDataToStorage === 'function') saveClinicianDataToStorage();
+}
+
 function loadPatientDataIntoClinician() {
   const stored = localStorage.getItem('aim_patient_data');
   if (!stored) return;
@@ -4215,50 +4318,44 @@ function insertPrompt(chipEl, text) {
   if (ta) { ta.value = text; ta.focus(); }
 }
 
-function calcHearingLoss() {
-  const rows = document.querySelectorAll('.audio-table tbody tr');
+function calcHearingLossAMA() {
+  var rows = document.querySelectorAll('.audio-table tbody tr');
   if (rows.length < 2) return;
 
-  function rowAvg(row) {
-    const inputs = row.querySelectorAll('input');
-    const freqIndices = [0, 1, 3, 5]; // 500, 1000, 2000, 4000Hz
-    let sum = 0, count = 0;
-    freqIndices.forEach(i => {
-      const v = parseFloat(inputs[i]?.value);
-      if (!isNaN(v)) { sum += v; count++; }
-    });
-    return count === 4 ? sum / 4 : null;
+  function getMonauralLoss(row) {
+    var inputs = row.querySelectorAll('input');
+    var hz500  = parseFloat(inputs[0] ? inputs[0].value : '');
+    var hz1000 = parseFloat(inputs[1] ? inputs[1].value : '');
+    var hz2000 = parseFloat(inputs[3] ? inputs[3].value : '');
+    var hz3000 = parseFloat(inputs[4] ? inputs[4].value : '');
+    if ([hz500, hz1000, hz2000, hz3000].some(isNaN)) return null;
+    var pta = (hz500 + hz1000 + hz2000 + hz3000) / 4;
+    var impairment = Math.max(0, Math.min(100, (pta - 25) * 1.5));
+    return Math.round(impairment * 10) / 10;
   }
 
-  function avgToPct(avg) {
-    if (avg === null) return null;
-    if (avg <= 25) return 0;
-    if (avg >= 92) return 100;
-    return Math.round(((avg - 25) / (92 - 25)) * 100 * 10) / 10;
+  var leftLoss  = getMonauralLoss(rows[0]);
+  var rightLoss = getMonauralLoss(rows[1]);
+
+  var leftEl  = document.getElementById('audio-pct-left');
+  var rightEl = document.getElementById('audio-pct-right');
+  if (leftEl  && leftLoss  !== null) leftEl.value  = leftLoss  + '%';
+  if (rightEl && rightLoss !== null) rightEl.value = rightLoss + '%';
+
+  if (leftLoss !== null && rightLoss !== null) {
+    var better   = Math.min(leftLoss, rightLoss);
+    var worse    = Math.max(leftLoss, rightLoss);
+    var binaural = Math.round(((better * 5 + worse) / 6) * 10) / 10;
+    var binEl = document.getElementById('audio-pct-binaural');
+    if (binEl) binEl.value = binaural + '%';
   }
+}
 
-  const leftAvg = rowAvg(rows[0]);
-  const rightAvg = rowAvg(rows[1]);
-  const leftPct = avgToPct(leftAvg);
-  const rightPct = avgToPct(rightAvg);
-
-  const leftEl = document.getElementById('audio-pct-left');
-  const rightEl = document.getElementById('audio-pct-right');
-  const binEl = document.getElementById('audio-pct-binaural');
-
-  if (leftEl && leftPct !== null) leftEl.value = leftPct + '%';
-  if (rightEl && rightPct !== null) rightEl.value = rightPct + '%';
-
-  if (binEl && leftPct !== null && rightPct !== null) {
-    const better = Math.min(leftPct, rightPct);
-    const worse = Math.max(leftPct, rightPct);
-    const binaural = Math.round(((better * 5 + worse) / 6) * 10) / 10;
-    binEl.value = binaural + '%';
-  }
-
-  const audioSec = document.getElementById('clin-audiometry');
+function calcHearingLoss() {
+  calcHearingLossAMA();
+  var audioSec = document.getElementById('clin-audiometry');
   if (audioSec) {
-    const ta = audioSec.querySelector('.smart-textarea');
+    var ta = audioSec.querySelector('.smart-textarea');
     if (ta && !ta.classList.contains('user-edited')) { ta.value = ''; ta.classList.remove('prefilled'); }
   }
   preFillAudiometry();
@@ -6612,7 +6709,7 @@ function renderPosturalTol() {
       '<div class="postural-field"><label>Time Achieved</label><input placeholder="2:00"></div>' +
       '<div class="postural-field"><label>Pain (0–10)</label><input placeholder="0" oninput="preFillPosturalTol()"></div>' +
       '<div class="postural-field"><label>RPE (0–10)</label><input placeholder="0"></div>' +
-      '<div class="postural-field"><label>Peak HR (bpm)</label><input placeholder="—"></div>' +
+      '<div class="postural-field"><label>Peak HR (bpm)</label><input placeholder="—" data-hr-field="peak"></div>' +
       '<div id="unable-' + safeId + '" style="display:none;margin-top:8px;padding:8px;background:var(--olive-ultra);border-radius:6px;border:1px solid var(--border)">' +
         '<label style="font-size:10px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.04em;display:block;margin-bottom:6px">Reason Unable</label>' +
         '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">' +
@@ -6667,7 +6764,7 @@ function renderMHCard(tests, containerId) {
             <div class="mh-field"><label>Result</label><select><option>Demonstrated</option><option>Not demonstrated</option></select></div>
             <div class="mh-field"><label>Max Weight Achieved (kg)</label><input placeholder="${t.occ}"></div>
             <div class="mh-field"><label>Pain (0–10)</label><input placeholder="0"></div>
-            <div class="mh-field"><label>Peak HR (bpm)</label><input placeholder="—"></div>
+            <div class="mh-field"><label>Peak HR (bpm)</label><input placeholder="—" data-hr-field="peak"></div>
           </div>
         </div>
         <div class="mh-phase">
@@ -6679,7 +6776,7 @@ function renderMHCard(tests, containerId) {
             <div class="mh-field"><label>Result</label><select><option>Demonstrated</option><option>Not demonstrated</option></select></div>
             <div class="mh-field"><label>Reps completed</label><input placeholder="5"></div>
             <div class="mh-field"><label>Pain (0–10)</label><input placeholder="0"></div>
-            <div class="mh-field"><label>Peak HR (bpm)</label><input placeholder="—"></div>
+            <div class="mh-field"><label>Peak HR (bpm)</label><input placeholder="—" data-hr-field="peak"></div>
           </div>
         </div>
         <div style="margin-bottom:12px">
@@ -7472,7 +7569,7 @@ function drawAudiogram() {
   var freqs = [125, 250, 500, 750, 1000, 1500, 2000, 3000, 4000, 6000, 8000];
   var logMin = Math.log10(125), logMax = Math.log10(8000);
 
-  function xForFreq(f) { return ml + (Math.log10(f) - logMin) / (logMax - logMin) * pw; }
+  function xForFreq(f) { return ml + (freqs.indexOf(f) / (freqs.length - 1)) * pw; }
   function yForDb(db) { return mt + (db - (-10)) / (120 - (-10)) * ph; }
 
   ctx.fillStyle = '#ffffff';
@@ -7715,6 +7812,7 @@ function restoreClinicianData(data) {
   if (typeof calcAUDITScore     === 'function') calcAUDITScore();
   if (typeof buildFlaggedItemsFromPatientData === 'function') buildFlaggedItemsFromPatientData({});
   if (typeof drawAudiogram      === 'function') setTimeout(drawAudiogram, 100);
+  if (typeof calcHearingLossAMA === 'function') setTimeout(calcHearingLossAMA, 150);
   if (typeof updatePatientSummary === 'function') updatePatientSummary();
   // 7. Manual flags
   if (Array.isArray(data['_manualFlags']) && data['_manualFlags'].length) {
@@ -7884,7 +7982,10 @@ document.addEventListener('DOMContentLoaded', () => {
   if (!_isTokenUrl) { loadUpcomingAppointments(); setInterval(loadUpcomingAppointments, 60000); }
   initTokenMode();
   checkSupabaseConnection().then(function(ok) { showConnectionBanner(!ok); });
-  document.querySelector('.audio-table')?.addEventListener('input', drawAudiogram);
+  document.querySelector('.audio-table')?.addEventListener('input', function() { drawAudiogram(); calcHearingLossAMA(); });
+  document.getElementById('screen-clinician')?.addEventListener('input', function(e) {
+    if (e.target.dataset && e.target.dataset.hrField === 'peak') checkHRBreach(e.target);
+  });
   var _audioResizeTimer;
   window.addEventListener('resize', function() { clearTimeout(_audioResizeTimer); _audioResizeTimer = setTimeout(drawAudiogram, 200); });
 });
