@@ -2839,7 +2839,7 @@
           <div class="clin-card-header"><h3>Grip Strength Results</h3></div>
           <div class="clin-card-body">
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px">
-              <div>
+              <div style="min-width:0">
                 <div style="font-weight:600;margin-bottom:12px;font-size:14px">Right Hand</div>
                 <div class="form-row" style="margin-bottom:10px">
                   <div class="form-group"><label>Trial 1 (kg)</label><input class="form-control" id="grip-r1" oninput="calcGrip('r')"></div>
@@ -2850,9 +2850,9 @@
                   <div class="form-group"><label>Average (kg)</label><input class="form-control" id="grip-r-avg" readonly style="background:var(--olive-ultra)"></div>
                 </div>
                 <div class="form-group" style="margin-top:8px"><label>% Normative for Age <span style="font-size:10px;color:var(--mid)">(auto)</span></label><input class="form-control" id="grip-r-norm" placeholder="Auto" readonly style="background:var(--olive-ultra)"></div>
-              <div class="form-group" style="margin-top:8px"><label>Coefficient of Variation <span style="font-size:10px;color:var(--mid)">(auto, &gt;15% = flag)</span></label><input class="form-control" id="grip-r-cv" placeholder="Auto" readonly style="background:var(--olive-ultra)"></div>
+                <div class="form-group" style="margin-top:8px"><label>Coefficient of Variation <span style="font-size:10px;color:var(--mid)">(auto, &gt;15% = flag)</span></label><input class="form-control" id="grip-r-cv" placeholder="Auto" readonly style="background:var(--olive-ultra)"></div>
               </div>
-              <div>
+              <div style="min-width:0">
                 <div style="font-weight:600;margin-bottom:12px;font-size:14px">Left Hand</div>
                 <div class="form-row" style="margin-bottom:10px">
                   <div class="form-group"><label>Trial 1 (kg)</label><input class="form-control" id="grip-l1" oninput="calcGrip('l')"></div>
@@ -2863,16 +2863,20 @@
                   <div class="form-group"><label>Average (kg)</label><input class="form-control" id="grip-l-avg" readonly style="background:var(--olive-ultra)"></div>
                 </div>
                 <div class="form-group" style="margin-top:8px"><label>% Normative for Age <span style="font-size:10px;color:var(--mid)">(auto)</span></label><input class="form-control" id="grip-l-norm" placeholder="Auto" readonly style="background:var(--olive-ultra)"></div>
-              <div class="form-group" style="margin-top:8px"><label>Coefficient of Variation <span style="font-size:10px;color:var(--mid)">(auto, &gt;15% = flag)</span></label><input class="form-control" id="grip-l-cv" placeholder="Auto" readonly style="background:var(--olive-ultra)"></div>
+                <div class="form-group" style="margin-top:8px"><label>Coefficient of Variation <span style="font-size:10px;color:var(--mid)">(auto, &gt;15% = flag)</span></label><input class="form-control" id="grip-l-cv" placeholder="Auto" readonly style="background:var(--olive-ultra)"></div>
               </div>
             </div>
             <div class="smart-field" style="margin-top:16px">
               <label style="font-size:11px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.04em;display:block;margin-bottom:6px">Grip Strength Interpretation</label>
               <textarea class="smart-textarea" placeholder="Interpretation..."></textarea>
               <div class="prompt-chips">
-                <div class="prompt-chip" onclick="insertPrompt(this,'Grip strength within normal limits bilaterally for age and gender. Consistent effort demonstrated across trials.')">Normal bilaterally</div>
-                <div class="prompt-chip" onclick="insertPrompt(this,'Reduced grip strength noted in the right hand relative to normative values. Clinically significant. Employer to be advised.')">Reduced — right hand</div>
-                <div class="prompt-chip" onclick="insertPrompt(this,'Grip strength results demonstrate consistent effort across trials. Bilateral symmetry within acceptable limits.')">Consistent effort</div>
+                <div class="prompt-chip" onclick="insertGripPrompt(this,'Grip strength within normal limits bilaterally — Right [R]%, Left [L]% of age-matched normative values. Consistent effort across all three trials (CV ≤15%). Bilateral symmetry within acceptable limits.')">Normal bilaterally</div>
+                <div class="prompt-chip" onclick="insertGripPrompt(this,'Reduced grip strength noted in the right hand — [R]% of age-matched normative values. Left [L]%. Finding documented for employer awareness. Employer to consider implications for roles requiring significant grip strength.')">Reduced — right</div>
+                <div class="prompt-chip" onclick="insertGripPrompt(this,'Reduced grip strength noted in the left hand — [L]% of age-matched normative values. Right [R]%. Finding documented for employer awareness. Employer to consider implications for roles requiring significant grip strength.')">Reduced — left</div>
+                <div class="prompt-chip" onclick="insertGripPrompt(this,'Reduced grip strength identified bilaterally — Right [R]%, Left [L]% of age-matched normative values. Employer to be advised regarding implications for roles requiring significant grip strength.')">Reduced — bilateral</div>
+                <div class="prompt-chip" onclick="insertPrompt(this,'Consistent effort demonstrated across all three trials bilaterally (CV ≤15%). Results considered reliable and representative of maximal grip capacity.')">Consistent effort</div>
+                <div class="prompt-chip" onclick="insertPrompt(this,'Coefficient of variation &gt;15% noted — inconsistent effort across trials. Results may not reflect true maximal grip capacity. Possible submaximal effort or inconsistent technique. Clinical judgement applied.')">CV &gt;15% — flagged</div>
+                <div class="prompt-chip" onclick="insertGripPrompt(this,'Grip strength asymmetry noted between hands — Right [R]%, Left [L]% of age-matched normative values. Non-dominant hand expected to be approximately 10% lower. Asymmetry documented for employer awareness.')">Asymmetry noted</div>
               </div>
             </div>
           </div>
@@ -4604,15 +4608,19 @@ function calcGrip(side) {
         cvEl.title = cv > 15 ? 'CV >15% — possible submaximal effort or inconsistent technique' : 'CV ≤15% — consistent effort';
       }
     }
-    const dob = document.getElementById('pt-dob')?.value;
-    const gender = document.getElementById('pt-gender')?.value || '';
-    if (dob) {
+    const dob = document.getElementById('pt-dob')?.value || window._patientDOB || '';
+    const gender = document.getElementById('pt-gender')?.value || window._patientGender || '';
+    const normEl = document.getElementById('grip-'+side+'-norm');
+    if (!dob) {
+      if (normEl && !normEl.value) normEl.placeholder = 'Enter DOB/gender for normative %';
+    } else {
+      window._patientDOB = dob;
+      window._patientGender = gender;
       const age = Math.floor((Date.now() - new Date(dob)) / (1000*60*60*24*365.25));
       const norm = getGripNorm(side, age, gender);
       if (norm && norm > 0) {
         const pct = Math.round(parseFloat(avg) / norm * 100);
-        const normEl = document.getElementById('grip-'+side+'-norm');
-        if (normEl) normEl.value = pct + '% (norm: ' + norm + 'kg)';
+        if (normEl) { normEl.value = pct + '% (norm: ' + norm + 'kg)'; normEl.placeholder = 'Auto'; }
       }
     }
   }
@@ -4975,7 +4983,7 @@ function preFillSection(sectionId) {
     case 'clin-rom':          preFillROM(); break;
     case 'clin-postural':     preFillPostural(); break;
     case 'clin-msk':          preFillMSK(); break;
-    case 'clin-grip':         preFillGrip(); break;
+    case 'clin-grip':         calcGrip('r'); calcGrip('l'); preFillGrip(); break;
     case 'clin-postural-tol': preFillPosturalTol(); break;
     case 'clin-steptest':     preFillStepTest(); break;
     case 'clin-mh':           preFillManualHandling('mh-lifting-cards'); break;
@@ -5379,6 +5387,15 @@ function preFillMSK() {
     }
     ta.classList.add('prefilled');
   });
+}
+
+function insertGripPrompt(chip, text) {
+  var rNorm = document.getElementById('grip-r-norm')?.value || '';
+  var lNorm = document.getElementById('grip-l-norm')?.value || '';
+  var rPct = rNorm ? rNorm.split('%')[0].trim() + '%' : '—';
+  var lPct = lNorm ? lNorm.split('%')[0].trim() + '%' : '—';
+  text = text.replace(/\[R\]%/g, rPct).replace(/\[L\]%/g, lPct);
+  insertPrompt(chip, text);
 }
 
 function preFillGrip() {
