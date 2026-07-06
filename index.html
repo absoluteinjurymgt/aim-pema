@@ -3038,12 +3038,12 @@
         <div class="clin-card">
           <div class="clin-card-header"><h3>Summary of Key Findings</h3></div>
           <div class="clin-card-body">
+            <button onclick="refreshKeyFindings()" style="width:100%;padding:10px;background:var(--olive);color:white;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;margin-bottom:12px">↻ Refresh Findings — scan all sections for abnormal results</button>
             <div class="smart-field">
               <textarea class="smart-textarea" style="min-height:120px" placeholder="Key findings summary..."></textarea>
               <div class="prompt-chips">
-                <div class="prompt-chip" onclick="insertPrompt(this,'Pre-employment medical assessment completed in full. Vitals within normal limits. Musculoskeletal examination revealed no significant findings. Functional capacity assessment demonstrated full capacity across all tested parameters with 0/10 pain throughout.')">All clear — standard summary</div>
-                <div class="prompt-chip" onclick="insertPrompt(this,'Assessment completed. Pre-existing history noted and documented. Capacity demonstrated within the parameters detailed. Recommendations provided for employer consideration.')">Pre-existing history noted</div>
-                <div class="prompt-chip" onclick="insertPrompt(this,'Assessment completed. Findings indicate capacity for role with the restrictions noted below. Employer advised to consider the following recommendations when determining placement suitability.')">Capacity with restrictions</div>
+                <div class="prompt-chip" onclick="insertPrompt(this,'No abnormal findings identified across all assessment sections. All parameters within normal limits.')">All clear — no abnormal findings</div>
+                <div class="prompt-chip" onclick="refreshKeyFindings()">↻ Refresh from assessment data</div>
               </div>
             </div>
           </div>
@@ -4275,7 +4275,19 @@ function selectChip(el, group) {
 
 function toggleUnableReason(detailId, show) {
   const detail = document.getElementById(detailId);
-  if (detail) detail.style.display = show ? 'block' : 'none';
+  if (!detail) return;
+  detail.style.display = show ? 'block' : 'none';
+  const card = detail.closest('.postural-test-card');
+  if (!card) return;
+  if (!show) {
+    const timeInput = card.querySelector('input[placeholder="2:00"]');
+    if (timeInput && !timeInput.value) timeInput.value = '2:00';
+  }
+  const painDetail = card.querySelector('.postural-pain-detail');
+  if (painDetail) {
+    painDetail.style.display = show ? 'block' : 'none';
+    if (!show) painDetail.querySelectorAll('input, textarea').forEach(function(f) { f.value = ''; });
+  }
 }
 
 function selectDominant(btn, val) {
@@ -5598,24 +5610,163 @@ function preFillClimbing() {
   }
 }
 
-function preFillKeyFindings() {
-  const sec = document.getElementById('clin-findings');
-  if (!sec) return;
-  const ta = sec.querySelector('.smart-textarea');
+function generateAbnormalFindings() {
+  var findings = [];
+  function add(section, finding, severity) {
+    findings.push({ section: section, finding: finding, severity: severity || 'medium' });
+  }
 
-  window._findingFlags = window._findingFlags || [];
+  // Reset flags and run all pre-fill functions to populate _findingFlags
+  window._findingFlags = [];
+  window._posturalTolFindings = [];
   ['clin-audiometry','clin-spirometry','clin-vision','clin-urinalysis',
    'clin-rom','clin-msk','clin-grip','clin-postural-tol','clin-steptest',
    'clin-mh','clin-carrying','clin-climbing'].forEach(function(id) {
     preFillSection(id);
   });
 
-  const bullets = generateFindingsBullets();
-  if (bullets.length === 0) return;
+  // VITALS
+  var bpSys = parseInt(document.getElementById('v-bp-sys')?.value || '');
+  var bpDia = parseInt(document.getElementById('v-bp-dia')?.value || '');
+  if (!isNaN(bpSys) && (bpSys > 160 || (!isNaN(bpDia) && bpDia > 100))) {
+    add('VITALS', 'Elevated blood pressure — ' + bpSys + '/' + bpDia + ' mmHg', 'high');
+  }
+  var bmiText = (document.getElementById('v-bmi')?.textContent || '').trim();
+  var bmiVal  = parseFloat(bmiText);
+  var bmiCat  = (document.getElementById('bmi-cat')?.textContent || '').trim();
+  if (!isNaN(bmiVal) && bmiVal >= 35) add('VITALS', 'BMI ' + bmiVal + ' kg/m² — ' + (bmiCat || 'morbidly obese'), 'medium');
+  else if (!isNaN(bmiVal) && bmiVal >= 30) add('VITALS', 'BMI ' + bmiVal + ' kg/m² — ' + (bmiCat || 'obese'), 'low');
+  var hrRest = parseInt(document.getElementById('v-hr')?.value || '');
+  if (!isNaN(hrRest) && hrRest > 100) add('VITALS', 'Resting HR ' + hrRest + ' bpm — tachycardia (>100 bpm)', 'medium');
 
-  const existing = sec.querySelector('.bullet-selector');
+  // AUDIOMETRY — AMA percentage fields + raw threshold checks
+  var audioPctL = parseFloat(document.getElementById('audio-pct-left')?.value || '');
+  var audioPctR = parseFloat(document.getElementById('audio-pct-right')?.value || '');
+  if (!isNaN(audioPctL) && audioPctL > 0) add('AUDIOMETRY', 'Left ear hearing loss ' + audioPctL + '% (AMA 1979)', audioPctL > 10 ? 'high' : 'medium');
+  if (!isNaN(audioPctR) && audioPctR > 0) add('AUDIOMETRY', 'Right ear hearing loss ' + audioPctR + '% (AMA 1979)', audioPctR > 10 ? 'high' : 'medium');
+  var audioFreqLabels = ['500Hz','1000Hz','1500Hz','2000Hz','3000Hz','4000Hz','6000Hz','8000Hz'];
+  document.querySelectorAll('.audio-table tbody tr').forEach(function(tr, ri) {
+    var side = ri === 0 ? 'Right' : 'Left';
+    tr.querySelectorAll('input').forEach(function(inp, ci) {
+      var v = parseFloat(inp.value);
+      if (!isNaN(v) && v > 25) add('AUDIOMETRY', side + ' ear — ' + (audioFreqLabels[ci] || '') + ' threshold ' + v + ' dB (>25 dB)', v > 40 ? 'high' : 'low');
+    });
+  });
+
+  // SPIROMETRY — pattern chip + FEV1%
+  var spiroPattern = (document.querySelector('#spiro-pattern-chips .option-chip.selected-normal')?.textContent || '').trim();
+  if (spiroPattern && spiroPattern !== 'Normal') {
+    add('SPIROMETRY', 'Spirometry pattern: ' + spiroPattern, spiroPattern.toLowerCase().includes('obstruct') ? 'high' : 'medium');
+  }
+  var fev1Pct = parseFloat(document.getElementById('spiro-fev1-pct')?.value || '');
+  if (!isNaN(fev1Pct) && fev1Pct < 80) add('SPIROMETRY', 'FEV1 ' + fev1Pct + '% predicted — below 80%', 'medium');
+
+  // URINALYSIS — from _findingFlags
+  (window._findingFlags || []).filter(function(f) { return f.section === 'Urinalysis'; })
+    .forEach(function(f) { add('URINALYSIS', f.finding, 'medium'); });
+
+  // VISION — from _findingFlags
+  (window._findingFlags || []).filter(function(f) { return f.section === 'Vision' || f.section === 'Colour Vision'; })
+    .forEach(function(f) {
+      var sev = (f.finding.toLowerCase().includes('significant') || f.finding.toLowerCase().includes('deficiency') || f.finding.toLowerCase().includes('marked')) ? 'high' : 'medium';
+      add('VISION', f.finding, sev);
+    });
+
+  // ROM / MSK — from _findingFlags
+  (window._findingFlags || []).filter(function(f) {
+    return ['Range of Motion','Postural Analysis','Single Leg Balance','Shoulder Impingement',
+            'Knee Stability','Ankle Stability','Hip Testing'].some(function(s) { return (f.section || '').includes(s); });
+  }).forEach(function(f) { add('MSK', f.finding, 'medium'); });
+
+  // GRIP STRENGTH — direct numeric checks
+  var rNormStr = document.getElementById('grip-r-norm')?.value || '';
+  var lNormStr = document.getElementById('grip-l-norm')?.value || '';
+  var rPct = parseInt(rNormStr);
+  var lPct = parseInt(lNormStr);
+  if (!isNaN(rPct) && rPct < 80) add('GRIP STRENGTH', 'Right hand ' + rPct + '% of age-matched normative values — below 80% threshold', rPct < 60 ? 'high' : 'medium');
+  if (!isNaN(lPct) && lPct < 80) add('GRIP STRENGTH', 'Left hand ' + lPct + '% of age-matched normative values — below 80% threshold', lPct < 60 ? 'high' : 'medium');
+  var rCv = parseInt(document.getElementById('grip-r-cv')?.value || '');
+  var lCv = parseInt(document.getElementById('grip-l-cv')?.value || '');
+  if (!isNaN(rCv) && rCv > 15) add('GRIP STRENGTH', 'Right hand CV ' + rCv + '% — inconsistent effort (>15%)', 'medium');
+  if (!isNaN(lCv) && lCv > 15) add('GRIP STRENGTH', 'Left hand CV ' + lCv + '% — inconsistent effort (>15%)', 'medium');
+
+  // POSTURAL TOLERANCE — direct card scan
+  document.querySelectorAll('#postural-tol-grid .postural-test-card').forEach(function(card) {
+    var name = (card.querySelector('.postural-test-name')?.textContent || '').trim();
+    var selectedChip = card.querySelector('.option-chip.selected-normal');
+    var result = (selectedChip?.textContent || '').trim();
+    if (!result) return;
+    var inputs = card.querySelectorAll('input');
+    var time = (inputs[0]?.value || '').trim();
+    var pain = parseFloat(inputs[1]?.value || '');
+    var hr   = parseFloat(inputs[3]?.value || '');
+    if (result !== 'Able') {
+      add('POSTURAL TOLERANCE', name + ' — unable to complete', 'high');
+    } else {
+      if (time && time !== '2:00') {
+        var tp = time.split(':');
+        var totalS = (parseInt(tp[0]) || 0) * 60 + (parseInt(tp[1]) || 0);
+        if (totalS < 120) add('POSTURAL TOLERANCE', name + ' — ceased at ' + time + ' (< 2:00)', 'medium');
+      }
+      if (!isNaN(pain) && pain > 0) add('POSTURAL TOLERANCE', name + ' — pain ' + pain + '/10 reported', pain >= 3 ? 'high' : 'medium');
+    }
+    if (window._maxHR85 && !isNaN(hr) && hr >= window._maxHR85) {
+      add('POSTURAL TOLERANCE', name + ' — peak HR ' + hr + ' bpm (≥85% max HR)', 'high');
+    }
+  });
+
+  // STEP TEST
+  var stepResult = (document.querySelector('[onclick*="step-result"].selected-normal')?.textContent || '').trim();
+  if (stepResult && !['Excellent','Good'].includes(stepResult)) {
+    add('STEP TEST', '3-minute step test: ' + stepResult, (stepResult === 'Poor' || stepResult === 'Not completed') ? 'high' : 'medium');
+  }
+
+  // MANUAL HANDLING — from _findingFlags
+  (window._findingFlags || []).filter(function(f) { return f.section === 'Manual Handling'; })
+    .forEach(function(f) { add('MANUAL HANDLING', f.finding, 'high'); });
+
+  // CLIMBING — from _findingFlags
+  (window._findingFlags || []).filter(function(f) { return f.section === 'Climbing'; })
+    .forEach(function(f) { add('CLIMBING', f.finding, 'medium'); });
+
+  // QUESTIONNAIRE FLAGS — unresolved only
+  document.querySelectorAll('#flagged-items .clin-card:not(.manual-flag)').forEach(function(card) {
+    var header = (card.querySelector('.clin-card-header h3')?.textContent || '').trim();
+    if (!header) return;
+    var notes = (card.querySelector('.smart-textarea')?.value || '').trim().toLowerCase();
+    var isResolved = notes.includes('reviewed — no concern') || notes.includes('reviewed - no concern');
+    if (!isResolved) add('QUESTIONNAIRE FLAG', header.replace('⚑ ', ''), 'medium');
+  });
+  document.querySelectorAll('#flagged-items .manual-flag').forEach(function(card) {
+    var title = (card.querySelector('.clin-card-header input')?.value || '').trim();
+    if (title) add('QUESTIONNAIRE FLAG', title + ' (manual flag)', 'medium');
+  });
+
+  // Sort: high → medium → low
+  var sOrder = { high: 0, medium: 1, low: 2 };
+  findings.sort(function(a, b) { return (sOrder[a.severity] || 2) - (sOrder[b.severity] || 2); });
+  return findings;
+}
+
+function refreshKeyFindings() {
+  var ta = document.querySelector('#clin-findings .smart-textarea');
+  if (ta) { ta.classList.remove('user-edited', 'prefilled'); }
+  preFillKeyFindings();
+}
+
+function preFillKeyFindings() {
+  var sec = document.getElementById('clin-findings');
+  if (!sec) return;
+  var ta = sec.querySelector('.smart-textarea');
+  if (!ta || ta.classList.contains('user-edited')) return;
+  var existing = sec.querySelector('.bullet-selector');
   if (existing) existing.remove();
-  showBulletSelector(sec, bullets, ta);
+  var findings = generateAbnormalFindings();
+  var text = findings.length === 0
+    ? 'No abnormal findings identified across all assessment sections. All parameters within normal limits.'
+    : findings.map(function(f) { return f.section + ': ' + f.finding; }).join('\n');
+  ta.value = text;
+  ta.classList.add('prefilled');
 }
 
 function generateFindingsBullets() {
@@ -6457,6 +6608,7 @@ function buildPDF() {
   doc.text('Each posture sustained 2 minutes. Ceases if pain >0/10, HR exceeds max, or safety compromised.',ML,y); y+=7;
   const ptW=[46,20,20,20,20,56];
   tblRow(['Test','Result','Time','Pain/10','RPE/10','Peak HR (bpm)'],ptW,true);
+  const ptolNotes=[];
   posturalTests.forEach((test,i)=>{
     const card=document.querySelectorAll('#postural-tol-grid .postural-test-card')[i];
     let result='—',time='—',pain='—',rpe='—',hr='—';
@@ -6464,10 +6616,26 @@ function buildPDF() {
       result=card.querySelector('.option-chip.selected-normal')?.textContent?.trim()||'—';
       const ins=card.querySelectorAll('input');
       time=ins[0]?.value||'—'; pain=ins[1]?.value||'—'; rpe=ins[2]?.value||'—'; hr=ins[3]?.value||'—';
+      const painLoc=(card.querySelector('.postural-pain-detail input')?.value||'').trim();
+      const comments=(card.querySelector('.postural-pain-detail textarea')?.value||'').trim();
+      if(painLoc||comments) ptolNotes.push({test,painLoc,comments});
     }
     tblRow([test,result,time,pain,rpe,hr],ptW,false,i%2===1);
   });
-  y+=6;
+  y+=4;
+  if(ptolNotes.length){
+    checkY(10);
+    doc.setFontSize(7.5); doc.setFont('helvetica','bold'); doc.setTextColor(...CHARCOAL);
+    doc.text('Clinical Notes — Postural Tolerance',ML,y); y+=5;
+    ptolNotes.forEach(function(n){
+      checkY(14);
+      doc.setFont('helvetica','bold'); doc.setTextColor(...CHARCOAL); doc.text(n.test+':',ML,y); y+=4;
+      doc.setFont('helvetica','normal'); doc.setTextColor(...MID);
+      if(n.painLoc){ doc.text('Pain location: '+n.painLoc,ML+4,y); y+=4; }
+      if(n.comments){ const ls=doc.splitTextToSize(n.comments,CW-4); doc.text(ls,ML+4,y); y+=ls.length*4+2; }
+    });
+  }
+  y+=2;
 
   secHeader('3-Minute Step Test');
   doc.setFontSize(7.5); doc.setFont('helvetica','italic'); doc.setTextColor(...MID);
@@ -6758,7 +6926,7 @@ function renderMSK() {
   });
 }
 
-const posturalTests = ['Kneeling — sustained (2 min)','Reaching Overhead — arm fully extended, manipulating object (2 min)','Reaching Forward — arms at 90° shoulder flexion, manipulating object (2 min)','Deep Squat Sustained — resting on heels, manipulating object (2 min)','Bending Forward — tilting at hips, broomstick to knees (2 min)','Walking — metronome 115 bpm (2 min)'];
+const posturalTests = ['Kneeling','Reaching Overhead','Reaching Forward','Deep Squat','Bending Forward','Walking'];
 function renderPosturalTol() {
   const grid = document.getElementById('postural-tol-grid');
   if (!grid) return;
@@ -6787,6 +6955,12 @@ function renderPosturalTol() {
           '<button class="option-chip" onclick="selectChip(this,\'unable-reason-' + safeId + '\')">Other</button>' +
         '</div>' +
         '<input style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px" placeholder="Body area affected / additional details...">' +
+      '</div>' +
+      '<div class="postural-pain-detail" style="display:none;margin-top:8px">' +
+        '<div style="font-size:10px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px">Pain Location</div>' +
+        '<input class="form-control" placeholder="e.g. Right knee, lumbar spine..." style="font-size:13px;margin-bottom:6px">' +
+        '<div style="font-size:10px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px">Additional Comments</div>' +
+        '<textarea class="smart-textarea" placeholder="Additional clinical notes for this posture..." style="min-height:60px;font-size:13px"></textarea>' +
       '</div>';
     grid.appendChild(card);
   });
@@ -7892,6 +8066,14 @@ function saveClinicianDataToStorage() {
   });
   data['_manualFlags'] = manualFlags;
 
+  // 7. Postural tolerance pain detail fields (no IDs — keyed by card index)
+  document.querySelectorAll('#postural-tol-grid .postural-test-card').forEach(function(card, idx) {
+    var painLoc = card.querySelector('.postural-pain-detail input');
+    var comments = card.querySelector('.postural-pain-detail textarea');
+    if (painLoc) data['ptol_pain_loc_' + idx] = painLoc.value;
+    if (comments) data['ptol_comments_' + idx] = comments.value;
+  });
+
   localStorage.setItem('aim_clinician_data',      JSON.stringify(data));
   localStorage.setItem('aim_clinician_timestamp', new Date().toISOString());
   if (window._currentToken) syncClinicianDataToSupabase(window._currentToken, data);
@@ -7987,6 +8169,19 @@ function restoreClinicianData(data) {
       });
     }
   }
+  // 8. Postural tolerance pain detail fields (rendered dynamically — defer)
+  setTimeout(function() {
+    document.querySelectorAll('#postural-tol-grid .postural-test-card').forEach(function(card, idx) {
+      var painLoc = card.querySelector('.postural-pain-detail input');
+      var comments = card.querySelector('.postural-pain-detail textarea');
+      if (painLoc && data['ptol_pain_loc_' + idx] !== undefined) painLoc.value = data['ptol_pain_loc_' + idx];
+      if (comments && data['ptol_comments_' + idx] !== undefined) comments.value = data['ptol_comments_' + idx];
+      var painDetail = card.querySelector('.postural-pain-detail');
+      if (painDetail && (data['ptol_pain_loc_' + idx] || data['ptol_comments_' + idx])) {
+        painDetail.style.display = 'block';
+      }
+    });
+  }, 150);
 }
 
 function clearClinicianSession() {
