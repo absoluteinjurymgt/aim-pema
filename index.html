@@ -2114,7 +2114,7 @@
           </thead>
           <tbody id="epworth-body"></tbody>
         </table>
-        <div id="epworth-score" style="margin-top:10px;padding:10px 14px;background:var(--olive-ultra);border-radius:8px;font-size:14px;font-weight:600;border:1px solid var(--border);color:var(--mid)">Total: answer all 8 questions to calculate</div>
+        <div id="epworth-score" style="display:none;margin-top:10px;padding:10px 14px;background:var(--olive-ultra);border-radius:8px;font-size:14px;font-weight:600;border:1px solid var(--border);color:var(--mid)">Total: answer all 8 questions to calculate</div>
       </div>
       <div style="margin-top:10px;font-size:12px;color:var(--mid)">Score ≥10 indicates possible daytime sleepiness requiring further assessment. Minimum score is 8 (all Never).</div>
     </div>
@@ -2136,7 +2136,7 @@
           </thead>
           <tbody id="k10-body"></tbody>
         </table>
-        <div id="k10-score" style="margin-top:10px;padding:10px 14px;background:var(--olive-ultra);border-radius:8px;font-size:14px;font-weight:600;border:1px solid var(--border);color:var(--mid)">Total: answer all 10 questions to calculate</div>
+        <div id="k10-score" style="display:none;margin-top:10px;padding:10px 14px;background:var(--olive-ultra);border-radius:8px;font-size:14px;font-weight:600;border:1px solid var(--border);color:var(--mid)">Total: answer all 10 questions to calculate</div>
       </div>
     </div>
 
@@ -2153,7 +2153,7 @@
           </thead>
           <tbody id="audit-body"></tbody>
         </table>
-        <div id="audit-score" style="margin-top:10px;padding:10px 14px;background:var(--olive-ultra);border-radius:8px;font-size:14px;font-weight:600;border:1px solid var(--border);color:var(--mid)">Total: answer all 10 questions to calculate</div>
+        <div id="audit-score" style="display:none;margin-top:10px;padding:10px 14px;background:var(--olive-ultra);border-radius:8px;font-size:14px;font-weight:600;border:1px solid var(--border);color:var(--mid)">Total: answer all 10 questions to calculate</div>
       </div>
       <div style="margin-top:10px;font-size:12px;color:var(--mid)">Score 0–7 low risk · 8–12 risky or harmful · 13+ dependence likely</div>
     </div>
@@ -2569,14 +2569,12 @@
             <div style="overflow-x:auto">
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
                 <div class="form-group">
-                  <label>Acceptable blows obtained</label>
-                  <select class="form-control" id="spiro-blows">
-                    <option value="">Select...</option>
-                    <option>3 — ATS/ERS criteria met</option>
-                    <option>2 — criteria partially met</option>
-                    <option>1 — poor reproducibility</option>
-                    <option>Unable to obtain acceptable blow</option>
-                  </select>
+                  <label>ATS/ERS acceptable blows obtained</label>
+                  <div style="display:flex;gap:8px;align-items:center;margin-top:4px">
+                    <button class="yn-btn" id="ats-yes" onclick="toggleATSBlows('yes')">Yes</button>
+                    <button class="yn-btn" id="ats-no" onclick="toggleATSBlows('no')">No</button>
+                  </div>
+                  <input type="hidden" id="spiro-blows">
                 </div>
                 <div class="form-group" id="broncho-agent-wrap" style="display:none">
                   <label>Bronchodilator used</label>
@@ -2598,31 +2596,31 @@
                 </thead>
                 <tbody>
                   <tr><td><strong>FEV1</strong> <span style="font-size:10px;color:var(--mid)">L</span></td>
-                    <td><input id="spiro-fev1-meas" ></td>
-                    <td><input id="spiro-fev1-pred"></td>
+                    <td><input id="spiro-fev1-meas" oninput="calcSpiroPct()"></td>
+                    <td><input id="spiro-fev1-pred" oninput="calcSpiroPct()"></td>
                     <td><input id="spiro-fev1-pct"></td>
-                    <td class="postbroncho-col" style="display:none"><input id="spiro-fev1-post"></td>
+                    <td class="postbroncho-col" style="display:none"><input id="spiro-fev1-post" oninput="calcSpiroPct()"></td>
                     <td class="postbroncho-col" style="display:none"><input id="spiro-fev1-post-pct"></td>
                     <td class="postbroncho-col" style="display:none"><input id="spiro-fev1-chg"></td></tr>
                   <tr><td><strong>FVC</strong> <span style="font-size:10px;color:var(--mid)">L</span></td>
-                    <td><input id="spiro-fvc-meas" ></td>
-                    <td><input id="spiro-fvc-pred"></td>
+                    <td><input id="spiro-fvc-meas" oninput="calcSpiroPct()"></td>
+                    <td><input id="spiro-fvc-pred" oninput="calcSpiroPct()"></td>
                     <td><input id="spiro-fvc-pct"></td>
-                    <td class="postbroncho-col" style="display:none"><input id="spiro-fvc-post"></td>
+                    <td class="postbroncho-col" style="display:none"><input id="spiro-fvc-post" oninput="calcSpiroPct()"></td>
                     <td class="postbroncho-col" style="display:none"><input id="spiro-fvc-post-pct"></td>
                     <td class="postbroncho-col" style="display:none"><input id="spiro-fvc-chg"></td></tr>
                   <tr><td><strong>FEV1/FVC</strong> <span style="font-size:10px;color:var(--mid)">ratio</span></td>
-                    <td><input id="spiro-ratio-meas" ></td>
-                    <td><input id="spiro-ratio-pred" placeholder="0.75+"></td>
+                    <td><input id="spiro-ratio-meas" oninput="calcSpiroPct()"></td>
+                    <td><input id="spiro-ratio-pred" placeholder="0.75+" oninput="calcSpiroPct()"></td>
                     <td><input id="spiro-ratio-pct"></td>
                     <td class="postbroncho-col" style="display:none"><input id="spiro-ratio-post"></td>
                     <td class="postbroncho-col" style="display:none"><input></td>
                     <td class="postbroncho-col" style="display:none"><input></td></tr>
                   <tr><td><strong>PEFR</strong> <span style="font-size:10px;color:var(--mid)">L/min</span></td>
-                    <td><input id="spiro-pefr-meas" ></td>
-                    <td><input id="spiro-pefr-pred"></td>
+                    <td><input id="spiro-pefr-meas" oninput="calcSpiroPct()"></td>
+                    <td><input id="spiro-pefr-pred" oninput="calcSpiroPct()"></td>
                     <td><input id="spiro-pefr-pct"></td>
-                    <td class="postbroncho-col" style="display:none"><input id="spiro-pefr-post"></td>
+                    <td class="postbroncho-col" style="display:none"><input id="spiro-pefr-post" oninput="calcSpiroPct()"></td>
                     <td class="postbroncho-col" style="display:none"><input id="spiro-pefr-post-pct"></td>
                     <td class="postbroncho-col" style="display:none"><input id="spiro-pefr-chg"></td></tr>
                 </tbody>
@@ -4055,7 +4053,7 @@ function checkHRBreach(inputEl) {
     return;
   }
 
-  var sentence = 'Peak HR ' + val + ' bpm exceeded 85% maximum HR (' + max85 + ' bpm) during this task.';
+  var sentence = 'Peak HR ' + val + ' bpm — 85% maximum HR (' + max85 + ' bpm) exceeded during this task.';
   var ta = findHRLinkedTextarea(inputEl);
 
   if (ta) {
@@ -4098,14 +4096,37 @@ function selectExertion(chip, text) {
   var container = exertionDiv.closest('.clin-card, .clinician-section');
   var ta = container ? container.querySelector('.smart-textarea') : null;
   if (ta) {
-    var prev = exertionDiv.dataset.prevExertion;
-    if (prev) {
-      var idx = ta.value.lastIndexOf('\n' + prev);
-      if (idx !== -1) ta.value = ta.value.slice(0, idx) + ta.value.slice(idx + prev.length + 1);
-      else if (ta.value === prev) ta.value = '';
+    var max85 = window._maxHR85 || 0;
+    var card = exertionDiv.closest('.clin-card, .clinician-section, .postural-test-card');
+    var peakInput = card ? card.querySelector('input[data-hr-field="peak"]') : null;
+    var peakVal = peakInput ? parseFloat(peakInput.value) : NaN;
+
+    var breachLine = '';
+    if (max85 > 0 && !isNaN(peakVal) && peakVal > max85) {
+      breachLine = 'Peak HR ' + peakVal + ' bpm — 85% maximum HR (' + max85 + ' bpm) exceeded during this task.';
     }
-    ta.value = (ta.value.trim() ? ta.value.trim() + '\n' : '') + text;
-    exertionDiv.dataset.prevExertion = text;
+
+    var current = ta.value;
+    var prevBreach = exertionDiv.dataset.prevBreach || ta.dataset.hrAutoText || '';
+    var prevExertion = exertionDiv.dataset.prevExertion || '';
+    if (prevBreach) {
+      current = current.split('\n').filter(function(l) { return l.trim() !== prevBreach.trim(); }).join('\n');
+    }
+    if (prevExertion) {
+      current = current.split('\n').filter(function(l) { return l.trim() !== prevExertion.trim(); }).join('\n');
+    }
+    current = current.trim();
+
+    var exertionLine = 'Signs of exertion observed: ' + text + '.';
+    var parts = [];
+    if (breachLine) parts.push(breachLine);
+    if (current) parts.push(current);
+    parts.push(exertionLine);
+    ta.value = parts.join('\n');
+
+    exertionDiv.dataset.prevExertion = exertionLine;
+    exertionDiv.dataset.prevBreach = breachLine;
+    if (breachLine) ta.dataset.hrAutoText = breachLine;
   }
   if (typeof saveClinicianDataToStorage === 'function') saveClinicianDataToStorage();
 }
@@ -4282,6 +4303,9 @@ function toggleUnableReason(detailId, show) {
   if (!show) {
     const timeInput = card.querySelector('input[placeholder="2:00"]');
     if (timeInput && !timeInput.value) timeInput.value = '2:00';
+  } else {
+    const timeInput = card.querySelector('input[placeholder="2:00"]');
+    if (timeInput) timeInput.value = '';
   }
   const painDetail = card.querySelector('.postural-pain-detail');
   if (painDetail) {
@@ -4432,25 +4456,15 @@ function calcSpiroPredicted() {
 
 function calcSpiroPct() {
   const pred = calcSpiroPredicted();
-  if (pred) {
-    const fev1PredEl = document.getElementById('spiro-fev1-pred');
-    const fvcPredEl = document.getElementById('spiro-fvc-pred');
-    const pefrPredEl = document.getElementById('spiro-pefr-pred');
-    const ratioPredEl = document.getElementById('spiro-ratio-pred');
-    if (fev1PredEl) fev1PredEl.value = pred.fev1 + ' L';
-    if (fvcPredEl) fvcPredEl.value = pred.fvc + ' L';
-    if (pefrPredEl) pefrPredEl.value = pred.pefr + ' L/min';
-    if (ratioPredEl) ratioPredEl.value = pred.ratio;
-  }
 
   function calcPct(measId, predId, pctId) {
     const meas = parseFloat(document.getElementById(measId)?.value);
     const predEl = document.getElementById(predId);
-    const predVal = parseFloat(predEl?.value || (pred ? (predId.includes('fev1') ? pred.fev1 : predId.includes('fvc') ? pred.fvc : pred.pefr) : null));
+    const predVal = parseFloat(predEl?.value);
     const pctEl = document.getElementById(pctId);
     if (!isNaN(meas) && !isNaN(predVal) && predVal > 0 && pctEl) {
-      pctEl.value = Math.round(meas / predVal * 100) + '%';
-      return Math.round(meas / predVal * 100);
+      pctEl.value = (meas / predVal * 100).toFixed(1) + '%';
+      return parseFloat((meas / predVal * 100).toFixed(1));
     }
     return null;
   }
@@ -4458,6 +4472,7 @@ function calcSpiroPct() {
   const fev1Pct = calcPct('spiro-fev1-meas','spiro-fev1-pred','spiro-fev1-pct');
   const fvcPct = calcPct('spiro-fvc-meas','spiro-fvc-pred','spiro-fvc-pct');
   calcPct('spiro-pefr-meas','spiro-pefr-pred','spiro-pefr-pct');
+  calcPct('spiro-ratio-meas','spiro-ratio-pred','spiro-ratio-pct');
 
   function calcPostPct(postId, predId, postPctId, chgId, preMeasId) {
     const post = parseFloat(document.getElementById(postId)?.value);
@@ -5054,6 +5069,16 @@ function preFillAudiometry() {
   ta.classList.add('prefilled');
 }
 
+function toggleATSBlows(val) {
+  var yesBtn = document.getElementById('ats-yes');
+  var noBtn  = document.getElementById('ats-no');
+  if (yesBtn) { yesBtn.classList.toggle('selected-yes', val === 'yes'); yesBtn.classList.remove('selected-no'); }
+  if (noBtn)  { noBtn.classList.toggle('selected-no',  val === 'no');  noBtn.classList.remove('selected-yes'); }
+  var hidden = document.getElementById('spiro-blows');
+  if (hidden) hidden.value = val;
+  preFillSpirometry();
+}
+
 function preFillSpirometry() {
   const sec = document.getElementById('clin-spirometry');
   if (!sec) return;
@@ -5087,6 +5112,8 @@ function preFillSpirometry() {
     text = 'Mixed obstructive-restrictive pattern identified' + fev1Pct + '.' + postNote + ' GP referral recommended for further respiratory assessment.';
     window._findingFlags.push({section:'Spirometry', finding:'Mixed pattern', rec:'GP referral recommended for respiratory review.'});
   }
+  const atsNo = document.getElementById('ats-no')?.classList.contains('selected-no');
+  if (atsNo && text) text += ' ATS/ERS acceptability criteria not met — results interpreted with caution.';
   if (text) { ta.value = text; ta.classList.add('prefilled'); }
 }
 
@@ -5300,7 +5327,6 @@ function preFillVision() {
       if (!passed && !failed) return;
       answered++;
       if (i < 9 && passed) plates1to9Correct++;
-      if (i === 9 && failed) tracingFails.push(10);
       if (i === 10 && failed) tracingFails.push(11);
       if (i === 13 && failed) tracingFails.push(14);
     });
@@ -6832,6 +6858,11 @@ function selectROM(btn, type, group, painRowId) {
   if (painRowId) {
     const painRow = document.getElementById(painRowId);
     if (painRow) painRow.style.display = (type === 'pain' || type === 'pain-limited') ? 'block' : 'none';
+  } else {
+    row.querySelectorAll('[id^="pain-row-"]').forEach(function(pr) {
+      pr.style.display = 'none';
+      pr.querySelectorAll('input, select, textarea').forEach(function(f) { f.value = ''; });
+    });
   }
   preFillROM();
 }
@@ -7291,8 +7322,8 @@ const ISHIHARA_PLATES = [
   { id:6,  label:'6',  type:'number',  normal:'7',  note:'Normal: 7. Deficient cannot read.' },
   { id:7,  label:'7',  type:'number',  normal:'45', note:'Normal: 45. Deficient cannot read.' },
   { id:8,  label:'8',  type:'number',  normal:'2',  note:'Normal: 2. Obscure for colour deficient.' },
-  { id:9,  label:'9',  type:'number',  normal:'16', note:'Normal: 16. Key reference plate — if <7 of plates 1–9 correct, record as deficient.' },
-  { id:10, label:'10', type:'tracing', normal:'Trace line', note:'Tracing: normal follows purple/red line. Protanomalia: purple easier. Deuteranomalia: red easier.' },
+  { id:9,  label:'9',  type:'number',  normal:'Hardly readable', note:'Normal: Hardly readable. Red-green deficient may see "2". Key reference plate — if <7 of plates 1–9 correct, record as deficient.' },
+  { id:10, label:'10', type:'number',  normal:'16', note:'Normal: 16. Most red-green deficient can also read this plate — confirms test continuity rather than discriminating deficiency.' },
   { id:11, label:'11', type:'tracing', normal:'Trace line', note:'Tracing: normal traces winding line correctly. Deficient traces different line.' },
   { id:12, label:'12', type:'number',  normal:'35', note:'Normal: 35. Protanopia/strong deuteranopia may see: 96. Mild deficient may see: 5 only.' },
   { id:13, label:'13', type:'number',  normal:'96', note:'Normal: 96. Protanopia reads 6 only. Mild deuteranomalia sees 96.' },
@@ -7370,7 +7401,7 @@ function updateIshiharaScore() {
     if (!touched) return;
     answered++;
     if (i < 9 && passed) plates1to9Correct++;
-    if (i >= 9 && i <= 10 && failed) tracingFails.push(i === 9 ? 10 : 11);
+    if (i === 10 && failed) tracingFails.push(11);
     if (i === 13 && failed) tracingFails.push(14);
   });
 
@@ -7922,10 +7953,13 @@ function drawAudiogram() {
     ctx.fillText(db, ml - 6, y);
   }
 
+  var dataFreqs = [500,1000,1500,2000,3000,4000,6000,8000];
   freqs.forEach(function(f) {
     var x = xForFreq(f);
-    ctx.beginPath(); ctx.moveTo(x, mt); ctx.lineTo(x, H - mb);
-    ctx.strokeStyle = '#e8e8e0'; ctx.lineWidth = 1; ctx.stroke();
+    if (dataFreqs.indexOf(f) !== -1) {
+      ctx.beginPath(); ctx.moveTo(x, mt); ctx.lineTo(x, H - mb);
+      ctx.strokeStyle = '#e8e8e0'; ctx.lineWidth = 1; ctx.stroke();
+    }
     ctx.fillStyle = '#6b6b65'; ctx.font = '9px sans-serif';
     ctx.textAlign = 'center'; ctx.textBaseline = 'top';
     ctx.fillText(String(f), x, H - mb + 6);
@@ -8182,6 +8216,13 @@ function restoreClinicianData(data) {
       }
     });
   }, 150);
+
+  // Restore ATS blows button visual state
+  var atsVal = data['spiro-blows'];
+  if (atsVal === 'yes' || atsVal === 'no') {
+    document.getElementById('ats-yes')?.classList.toggle('selected-yes', atsVal === 'yes');
+    document.getElementById('ats-no')?.classList.toggle('selected-no', atsVal === 'no');
+  }
 }
 
 function clearClinicianSession() {
@@ -8338,15 +8379,22 @@ document.addEventListener('DOMContentLoaded', () => {
   checkAndShowClinicianRecoveryBanner();
   populateApptClientDropdown();
   var _isTokenUrl = !!(window.location.pathname.match(/^\/q\/([A-Z0-9]{8})\/?$/i) || new URLSearchParams(window.location.search).get('token'));
-  if (!_isTokenUrl) { loadUpcomingAppointments(); setInterval(loadUpcomingAppointments, 60000); }
+  if (!_isTokenUrl) { loadUpcomingAppointments(); setInterval(function() { try { loadUpcomingAppointments(); } catch(e) {} }, 60000); }
   initTokenMode();
   checkSupabaseConnection().then(function(ok) { showConnectionBanner(!ok); });
-  document.querySelector('.audio-table')?.addEventListener('input', function() { drawAudiogram(); calcHearingLossAMA(); });
+  var _audiogramInputTimer;
+  document.querySelector('.audio-table')?.addEventListener('input', function() {
+    clearTimeout(_audiogramInputTimer);
+    _audiogramInputTimer = setTimeout(function() {
+      try { drawAudiogram(); } catch(e) {}
+      try { calcHearingLoss(); } catch(e) {}
+    }, 80);
+  });
   document.getElementById('screen-clinician')?.addEventListener('input', function(e) {
     if (e.target.dataset && e.target.dataset.hrField === 'peak') checkHRBreach(e.target);
   });
   var _audioResizeTimer;
-  window.addEventListener('resize', function() { clearTimeout(_audioResizeTimer); _audioResizeTimer = setTimeout(drawAudiogram, 200); });
+  window.addEventListener('resize', function() { clearTimeout(_audioResizeTimer); _audioResizeTimer = setTimeout(function() { try { drawAudiogram(); } catch(e) {} }, 200); });
 });
 </script>
 <script>
