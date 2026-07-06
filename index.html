@@ -1654,7 +1654,7 @@
             <label class="toggle"><input type="checkbox"><span class="toggle-slider"></span></label>
           </div>
           <div class="toggle-row">
-            <div class="toggle-info"><h4>Vision & Colour Vision</h4><p>Snellen acuity + Ishihara 24-plate colour test</p></div>
+            <div class="toggle-info"><h4>Vision & Colour Vision</h4><p>Snellen acuity + Ishihara 14-plate concise edition</p></div>
             <label class="toggle"><input type="checkbox" checked><span class="toggle-slider"></span></label>
           </div>
           <div class="toggle-row">
@@ -2703,7 +2703,7 @@
 
       <div class="clinician-section" id="clin-vision">
         <div class="section-title" style="margin-bottom:4px">Vision & Colour Vision</div>
-        <div class="section-desc">Snellen visual acuity and Ishihara 24-plate colour vision testing.</div>
+        <div class="section-desc">Snellen visual acuity and Ishihara 14-plate concise edition colour vision testing.</div>
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;padding:10px 14px;background:var(--olive-ultra);border-radius:8px;border:1px solid var(--border)">
           <label style="font-size:13px;font-weight:600;color:var(--charcoal)">Does patient wear glasses or contact lenses?</label>
           <button class="yn-btn" id="glasses-yes" onclick="toggleGlasses(true)" style="flex:none;padding:8px 16px">Yes</button>
@@ -2762,9 +2762,12 @@
             <div class="smart-field">
               <textarea class="smart-textarea" id="vision-comments" placeholder="Visual acuity findings and clinical notes..." oninput=""></textarea>
               <div class="prompt-chips">
-                <div class="prompt-chip" onclick="insertPrompt(this,'Visual acuity within normal limits bilaterally — unaided. No visual defects or disease of the eyes identified.')">Normal — unaided</div>
-                <div class="prompt-chip" onclick="insertPrompt(this,'Visual acuity corrected to normal limits with glasses/contact lenses. Adequate visual acuity for role requirements with correction.')">Normal — with correction</div>
-                <div class="prompt-chip" onclick="insertPrompt(this,'Reduced visual acuity identified. Employer to consider visual requirements of the role. Referral to optometrist recommended.')">Reduced — refer</div>
+                <div class="prompt-chip" onclick="insertPrompt(this,'Visual acuity within normal limits bilaterally on unaided testing. No visual defects or eye disease identified.')">Normal — unaided</div>
+                <div class="prompt-chip" onclick="insertPrompt(this,'Unaided acuity reduced. Normal acuity achieved with corrective lenses. Employer to note corrective lens requirement for roles with visual demands.')">Normal — with correction</div>
+                <div class="prompt-chip" onclick="insertPrompt(this,'Mild reduction in unaided visual acuity. Functionally adequate for most roles. Employer to consider visual requirements — driving, machinery, safety-critical tasks. Optometrist review recommended.')">Mild reduction — 6/12</div>
+                <div class="prompt-chip" onclick="insertPrompt(this,'Moderate reduction in visual acuity. Optometrist referral recommended. Employer to assess driving, machinery operation, and safety-critical role requirements.')">Moderate reduction — 6/18</div>
+                <div class="prompt-chip" onclick="insertPrompt(this,'Significant reduction in visual acuity. Specialist referral recommended. Employer to assess role suitability for driving, height work, and machinery operation.')">Significant reduction — 6/24+</div>
+                <div class="prompt-chip" onclick="insertPrompt(this,'Known visual condition disclosed. Employer to consider clinical relevance to role demands.')">Visual defect disclosed</div>
               </div>
             </div>
           </div>
@@ -2778,9 +2781,11 @@
             <div class="smart-field">
               <textarea class="smart-textarea" placeholder="Colour vision interpretation..."></textarea>
               <div class="prompt-chips">
-                <div class="prompt-chip" onclick="insertPrompt(this,'Colour vision within normal limits. No colour discrimination deficiency identified.')">Normal</div>
-                <div class="prompt-chip" onclick="insertPrompt(this,'Red-green colour vision deficiency identified. Employer to be advised regarding colour-coded safety signage requirements.')">Red-green deficiency</div>
-                <div class="prompt-chip" onclick="insertPrompt(this,'Mild colour discrimination difficulty noted. Not likely to impact role requirements. Employer informed.')">Mild difficulty</div>
+                <div class="prompt-chip" onclick="insertPrompt(this,'Colour vision within normal limits. No colour discrimination deficiency identified on Ishihara 14-plate screening.')">Normal — no deficiency</div>
+                <div class="prompt-chip" onclick="insertPrompt(this,'Borderline colour vision result. Mild colour discrimination difficulty possible. Employer to note for colour-coded safety requirements in this role.')">Borderline — mild difficulty</div>
+                <div class="prompt-chip" onclick="insertPrompt(this,'Red-green colour vision deficiency identified. Employer to be advised regarding colour-coded safety signage, equipment, and colour-critical task requirements.')">Red-green deficiency</div>
+                <div class="prompt-chip" onclick="insertPrompt(this,'Tracing plate findings consistent with protanomalia (red channel affected). Pattern noted — employer to consider implications for role.')">Tracing — protanomalia pattern</div>
+                <div class="prompt-chip" onclick="insertPrompt(this,'Tracing plate findings consistent with deuteranomalia (green channel affected). Pattern noted — employer to consider implications for role.')">Tracing — deuteranomalia pattern</div>
               </div>
             </div>
           </div>
@@ -5126,142 +5131,187 @@ function preFillUrinalysis() {
   ta.classList.add('prefilled');
 }
 
+
+// ─── SNELLEN ACUITY HELPERS ───────────────────────────────────────────────────
+
+function parseSnellen(val) {
+  if (!val || !val.trim()) return null;
+  var match = val.trim().match(/6\s*\/\s*(\d+)/);
+  if (match) return parseInt(match[1]);
+  return null;
+}
+
+function acuityGrade(denominator) {
+  if (!denominator) return null;
+  if (denominator <= 9)  return 'normal';
+  if (denominator <= 12) return 'mild';
+  if (denominator <= 18) return 'moderate';
+  if (denominator <= 24) return 'significant';
+  return 'marked';
+}
+
+function acuityGradeLabel(grade) {
+  var map = { normal: 'Normal', mild: 'Mild reduction', moderate: 'Moderate reduction', significant: 'Significant reduction', marked: 'Marked reduction' };
+  return map[grade] || '—';
+}
+
+function acuityGradeColor(grade) {
+  var map = { normal: 'var(--success)', mild: 'var(--warning)', moderate: '#c07020', significant: 'var(--error)', marked: 'var(--error)' };
+  return map[grade] || 'var(--mid)';
+}
+
+function worstGrade(grades) {
+  var order = ['marked','significant','moderate','mild','normal'];
+  for (var i = 0; i < order.length; i++) { if (grades.includes(order[i])) return order[i]; }
+  return null;
+}
+
+function updateAcuityBadge(grade, distStr, hasGlasses, aidedGrade) {
+  var badge = document.getElementById('acuity-live-badge');
+  if (!badge) {
+    var smartField = document.getElementById('vision-comments') ? document.getElementById('vision-comments').closest('.smart-field') : null;
+    if (!smartField) return;
+    badge = document.createElement('div');
+    badge.id = 'acuity-live-badge';
+    badge.style.cssText = 'margin-bottom:10px;padding:8px 14px;border-radius:6px;font-size:13px;font-weight:600;display:flex;align-items:center;gap:10px;border:1px solid var(--border)';
+    smartField.parentElement.insertBefore(badge, smartField);
+  }
+  if (!grade) { badge.style.display = 'none'; return; }
+  badge.style.display = 'flex';
+  var color = acuityGradeColor(grade);
+  badge.style.borderColor = color;
+  badge.style.background = 'white';
+  var label = 'Distance acuity: <span style="color:' + color + ';font-weight:700">' + acuityGradeLabel(grade) + '</span>';
+  if (hasGlasses && aidedGrade) {
+    var ac = acuityGradeColor(aidedGrade);
+    label += ' &nbsp;|&nbsp; Aided: <span style="color:' + ac + ';font-weight:700">' + acuityGradeLabel(aidedGrade) + '</span>';
+  }
+  badge.innerHTML = label;
+}
+
+
 function preFillVision() {
-  const sec = document.getElementById('clin-vision');
+  var sec = document.getElementById('clin-vision');
   if (!sec) return;
 
-  const acuityTA = document.getElementById('vision-comments');
-  if (acuityTA) {
-    const distR = document.getElementById('vis-dist-ua-r')?.value?.trim() || '';
-    const distL = document.getElementById('vis-dist-ua-l')?.value?.trim() || '';
-    const distB = document.getElementById('vis-dist-ua-b')?.value?.trim() || '';
-    const nearR = document.getElementById('vis-near-ua-r')?.value?.trim() || '';
-    const nearL = document.getElementById('vis-near-ua-l')?.value?.trim() || '';
-    const hasGlasses = document.getElementById('glasses-yes')?.classList.contains('selected-yes');
-    const distAR = document.getElementById('vis-dist-a-r')?.value?.trim() || '';
-    const distAL = document.getElementById('vis-dist-a-l')?.value?.trim() || '';
-    const hasDefect = document.getElementById('vis-defect-yes')?.classList.contains('selected-yes');
-    const defectText = document.getElementById('vis-defect-text')?.value?.trim() || '';
+  // ── Snellen acuity interpretation ──────────────────────────────────────
+  var distR = document.getElementById('vis-dist-ua-r') ? document.getElementById('vis-dist-ua-r').value.trim() : '';
+  var distL = document.getElementById('vis-dist-ua-l') ? document.getElementById('vis-dist-ua-l').value.trim() : '';
+  var distB = document.getElementById('vis-dist-ua-b') ? document.getElementById('vis-dist-ua-b').value.trim() : '';
+  var nearR = document.getElementById('vis-near-ua-r') ? document.getElementById('vis-near-ua-r').value.trim() : '';
+  var nearL = document.getElementById('vis-near-ua-l') ? document.getElementById('vis-near-ua-l').value.trim() : '';
+  var hasGlasses = document.getElementById('glasses-yes') ? document.getElementById('glasses-yes').classList.contains('selected-yes') : false;
+  var distAR = document.getElementById('vis-dist-a-r') ? document.getElementById('vis-dist-a-r').value.trim() : '';
+  var distAL = document.getElementById('vis-dist-a-l') ? document.getElementById('vis-dist-a-l').value.trim() : '';
+  var distAB = document.getElementById('vis-dist-a-b') ? document.getElementById('vis-dist-a-b').value.trim() : '';
+  var hasDefect = document.getElementById('vis-defect-yes') ? document.getElementById('vis-defect-yes').classList.contains('selected-yes') : false;
+  var defectText = document.getElementById('vis-defect-text') ? document.getElementById('vis-defect-text').value.trim() : '';
 
-    if (distR || distL || distB) {
-      function isImpaired(val) {
-        if (!val) return false;
-        const match = val.match(/6\/(\d+)/);
-        return match && parseInt(match[1]) > 12;
-      }
-      function isBorderline(val) {
-        if (!val) return false;
-        const match = val.match(/6\/(\d+)/);
-        return match && parseInt(match[1]) === 12;
-      }
-      const impaired = isImpaired(distR) || isImpaired(distL) || isImpaired(distB);
-      const borderline = isBorderline(distR) || isBorderline(distL) || isBorderline(distB);
+  var acuityTA = document.getElementById('vision-comments');
 
-      let text = '';
-      if (!impaired && !borderline && !hasDefect) {
-        text = 'Visual acuity within normal limits bilaterally — unaided distance ' + (distB || distR + '/' + distL) + '. Near vision ' + (nearR || nearL || 'N6') + '.';
-        if (hasGlasses) text += ' Adequate visual acuity achieved with corrective lenses.';
-        text += ' No visual defects or eye disease identified.';
-      } else if (borderline) {
-        text = 'Borderline visual acuity noted — unaided distance ' + (distB || distR + '/' + distL) + '. Employer to consider visual requirements of the role.';
-        if (hasGlasses && (distAR || distAL)) text += ' Corrected acuity: ' + (distAR || distAL) + '.';
-        window._findingFlags = window._findingFlags || [];
-        window._findingFlags.push({section:'Vision', finding:'Borderline unaided visual acuity', rec:'Employer to consider visual requirements of the role. Optometrist referral recommended.'});
-      } else if (impaired) {
-        text = 'Reduced visual acuity identified — unaided ' + (distB || distR + '/' + distL) + '.';
-        if (hasGlasses && (distAR || distAL)) text += ' Corrected acuity: ' + (distAR || distAL) + '.';
-        text += ' Optometrist referral recommended. Employer to assess implications for driving and machinery operation roles.';
-        window._findingFlags = window._findingFlags || [];
-        window._findingFlags.push({section:'Vision', finding:'Reduced unaided visual acuity', rec:'Optometrist referral recommended. Employer to assess driving and machinery requirements.'});
-      }
-      if (hasDefect && defectText) text += ' Visual defect noted: ' + defectText + '.';
-      if (text) acuityTA.value = text;
+  if ((distR || distL || distB) && acuityTA && !acuityTA.classList.contains('user-edited')) {
+    var gradeR = acuityGrade(parseSnellen(distR));
+    var gradeL = acuityGrade(parseSnellen(distL));
+    var gradeB = acuityGrade(parseSnellen(distB));
+    var overallGrade = worstGrade([gradeR, gradeL, gradeB].filter(Boolean));
+
+    var gradeAR = acuityGrade(parseSnellen(distAR));
+    var gradeAL = acuityGrade(parseSnellen(distAL));
+    var overallAided = worstGrade([gradeAR, gradeAL].filter(Boolean));
+
+    var distStr = distB ? distB + ' binocular' : [distR ? distR + ' right' : '', distL ? distL + ' left' : ''].filter(Boolean).join(', ');
+    var aidedStr = distAB ? distAB + ' binocular' : [distAR ? distAR + ' right' : '', distAL ? distAL + ' left' : ''].filter(Boolean).join(', ');
+    var nearStr = [nearR ? nearR + ' right' : '', nearL ? nearL + ' left' : ''].filter(Boolean).join(', ');
+
+    var text = '';
+
+    if (overallGrade === 'normal') {
+      text = 'Visual acuity within normal limits' + (hasGlasses ? ' with corrective lenses' : ' bilaterally') + ' — unaided distance ' + distStr + '.';
+      if (nearStr) text += ' Near vision ' + nearStr + '.';
+      if (!hasDefect) text += ' No visual defects or eye disease reported.';
+    } else if (hasGlasses && overallAided === 'normal') {
+      text = 'Unaided visual acuity reduced — ' + distStr + '. Corrected acuity within normal limits — ' + aidedStr + '. Corrective lenses required for adequate distance vision. Employer to note lens requirement for roles with visual demands.';
+      if (nearStr) text += ' Near vision ' + nearStr + '.';
+    } else if (overallGrade === 'mild') {
+      text = 'Mild reduction in unaided visual acuity noted — ' + distStr + '.';
+      if (hasGlasses && aidedStr) text += ' Corrected acuity: ' + aidedStr + '.';
+      if (nearStr) text += ' Near vision ' + nearStr + '.';
+      text += ' Functionally adequate for most roles. Employer to consider visual requirements for driving, machinery operation, and safety-critical tasks. Optometrist review recommended.';
+      window._findingFlags = window._findingFlags || [];
+      window._findingFlags.push({ section:'Vision', finding:'Mild reduction in unaided visual acuity', rec:'Employer to consider visual requirements for role. Optometrist review recommended.' });
+    } else if (overallGrade === 'moderate') {
+      text = 'Moderate reduction in visual acuity identified — unaided ' + distStr + '.';
+      if (hasGlasses && aidedStr) text += ' Corrected acuity: ' + aidedStr + '.';
+      if (nearStr) text += ' Near vision ' + nearStr + '.';
+      text += ' Employer to assess implications for roles requiring adequate distance vision, driving, and machinery operation. Optometrist referral recommended.';
+      window._findingFlags = window._findingFlags || [];
+      window._findingFlags.push({ section:'Vision', finding:'Moderate reduction in visual acuity', rec:'Optometrist referral recommended. Employer to assess driving and machinery requirements.' });
+    } else if (overallGrade === 'significant' || overallGrade === 'marked') {
+      text = 'Marked reduction in visual acuity identified — unaided ' + distStr + '.';
+      if (hasGlasses && aidedStr) text += ' Corrected acuity: ' + aidedStr + '.';
+      if (nearStr) text += ' Near vision ' + nearStr + '.';
+      text += ' Optometrist/ophthalmologist referral recommended prior to placement in roles with visual demands. Employer to assess suitability for driving, height work, and machinery operation.';
+      window._findingFlags = window._findingFlags || [];
+      window._findingFlags.push({ section:'Vision', finding:'Significant reduction in visual acuity', rec:'Specialist referral recommended. Employer to assess role suitability.' });
     }
+
+    if (hasDefect && defectText) {
+      text += ' Known visual condition disclosed: ' + defectText + '. Clinical relevance to role demands to be considered by employer.';
+      window._findingFlags = window._findingFlags || [];
+      window._findingFlags.push({ section:'Vision', finding:'Visual condition disclosed — ' + defectText, rec:'Employer to consider clinical relevance to role demands.' });
+    }
+
+    if (text && canOverwrite(acuityTA)) { acuityTA.value = text; acuityTA.classList.add('prefilled'); }
+
+    updateAcuityBadge(overallGrade, distStr, hasGlasses, overallAided);
   }
 
-  const colourTA = sec.querySelectorAll('.smart-textarea')[sec.querySelectorAll('.smart-textarea').length - 1];
-  if (colourTA) {
-    const totalPlates = sec.querySelectorAll('.ish-plate').length;
-    const passedPlates = sec.querySelectorAll('.ish-plate.selected-normal').length;
-    const failedPlates = sec.querySelectorAll('.ish-plate:not(.selected-normal)').length;
-    const anyAnswered = passedPlates > 0 || sec.querySelectorAll('.ish-plate.selected-pain').length > 0;
+  // ── Colour vision interpretation ───────────────────────────────────────
+  var colourTA = sec.querySelectorAll('.smart-textarea')[sec.querySelectorAll('.smart-textarea').length - 1];
+  if (colourTA && !colourTA.classList.contains('user-edited')) {
+    var plates = document.querySelectorAll('.ish-plate');
+    var plates1to9Correct = 0;
+    var tracingFails = [];
+    var answered = 0;
 
-    if (totalPlates > 0 && anyAnswered) {
-      let text = '';
-      if (passedPlates >= totalPlates) {
-        text = 'Colour vision within normal limits — ' + passedPlates + '/' + totalPlates + ' Ishihara plates correctly identified. No colour discrimination deficiency identified.';
-      } else if (passedPlates >= totalPlates - 1) {
-        text = 'Borderline colour discrimination — ' + passedPlates + '/' + totalPlates + ' plates correct. Minor colour discrimination difficulty possible. Employer to note for colour-critical tasks.';
-        window._findingFlags = window._findingFlags || [];
-        window._findingFlags.push({section:'Colour Vision', finding:'Borderline colour vision — ' + passedPlates + '/' + totalPlates + ' plates', rec:'Employer to consider implications for colour-coded safety signage and equipment.'});
-      } else {
-        text = 'Colour vision deficiency identified — ' + passedPlates + '/' + totalPlates + ' Ishihara plates correctly identified. Employer to be advised regarding colour-coded safety signage and any colour-critical task requirements in this role.';
-        window._findingFlags = window._findingFlags || [];
-        window._findingFlags.push({section:'Colour Vision', finding:'Colour vision deficiency — ' + passedPlates + '/' + totalPlates + ' plates', rec:'Employer to assess impact on colour-critical tasks and safety signage requirements.'});
-      }
-      colourTA.value = text;
-    }
-  }
-}
-
-function preFillROM() {
-  const sec = document.getElementById('clin-rom');
-  if (!sec) return;
-  const allTA = sec.querySelectorAll('.smart-textarea');
-  const commentTA = allTA[allTA.length - 1];
-  if (!commentTA) return;
-
-  const joints = sec.querySelectorAll('.rom-row');
-  const abnormal = [];
-  joints.forEach(function(row) {
-    const jointEl = row.querySelector('.rom-joint');
-    const joint = jointEl ? jointEl.textContent.replace('(L & R)','').trim() : '';
-    const painChip = row.querySelector('.option-chip.selected-pain');
-    const limitedChip = row.querySelector('.option-chip.selected-limited');
-    const detailInput = row.querySelectorAll('input')[0];
-    const painInput = row.querySelectorAll('input')[1]; // pain rating field
-    const detail = detailInput?.value?.trim() || '';
-    const painRating = painInput?.value?.trim() || '';
-
-    if (painChip && limitedChip) {
-      const desc = joint + ' — pain' + (painRating ? ' ' + painRating + '/10' : '') + ' and limited ROM' + (detail ? ' (' + detail + ')' : '');
-      abnormal.push(desc);
-    } else if (painChip) {
-      const desc = joint + ' — pain' + (painRating ? ' ' + painRating + '/10' : '') + (detail ? ' (' + detail + ')' : '');
-      abnormal.push(desc);
-    } else if (limitedChip) {
-      const desc = joint + ' — limited ROM' + (detail ? ' (' + detail + ')' : '');
-      abnormal.push(desc);
-    }
-  });
-
-  if (!canOverwrite(commentTA)) return;
-  if (abnormal.length === 0) {
-    commentTA.value = 'Full range of motion maintained throughout all assessed joints. No pain, restriction or asymmetry noted.';
-  } else {
-    commentTA.value = 'ROM within functional limits for most joints assessed. The following findings were noted: ' + abnormal.join('; ') + '. All other joints assessed as full range, pain free.';
-    window._findingFlags = window._findingFlags || [];
-    abnormal.forEach(function(a) {
-      window._findingFlags.push({section:'Range of Motion', finding:a, rec:null});
+    plates.forEach(function(p, i) {
+      var passed = p.classList.contains('selected-normal');
+      var failed = p.classList.contains('selected-fail');
+      if (!passed && !failed) return;
+      answered++;
+      if (i < 9 && passed) plates1to9Correct++;
+      if (i === 9 && failed) tracingFails.push(10);
+      if (i === 10 && failed) tracingFails.push(11);
+      if (i === 13 && failed) tracingFails.push(14);
     });
+
+    if (answered > 0) {
+      var isNormal     = plates1to9Correct >= 7;
+      var isBorderline = plates1to9Correct >= 5 && plates1to9Correct < 7;
+
+      var cvText = '';
+
+      if (isNormal) {
+        cvText = 'Colour vision within normal limits — ' + plates1to9Correct + '/9 primary screening plates (plates 1–9) correctly identified on Ishihara 14-plate concise edition. No colour discrimination deficiency identified.';
+      } else if (isBorderline) {
+        cvText = 'Borderline colour vision result — ' + plates1to9Correct + '/9 primary screening plates correctly identified. Mild colour discrimination difficulty possible. Employer to consider implications for colour-coded safety requirements in this role.';
+        window._findingFlags = window._findingFlags || [];
+        window._findingFlags.push({ section:'Colour Vision', finding:'Borderline colour vision — ' + plates1to9Correct + '/9 plates correct', rec:'Employer to consider colour-coded safety signage and equipment requirements.' });
+      } else {
+        cvText = 'Colour vision deficiency identified — ' + plates1to9Correct + '/9 primary screening plates correctly identified. Red-green colour vision deficiency indicated. Employer to be advised regarding colour-coded safety signage, equipment, and any colour-critical task requirements in this role.';
+        window._findingFlags = window._findingFlags || [];
+        window._findingFlags.push({ section:'Colour Vision', finding:'Colour vision deficiency — ' + plates1to9Correct + '/9 plates correct', rec:'Employer to assess impact on colour-critical tasks and safety signage requirements.' });
+      }
+
+      if (tracingFails.length) {
+        cvText += ' Tracing plate findings noted (plates ' + tracingFails.join(', ') + ') — pattern consistent with colour deficiency. Refer to clinical notes for protanomalia/deuteranomalia differentiation.';
+      }
+
+      if (canOverwrite(colourTA)) { colourTA.value = cvText; colourTA.classList.add('prefilled'); }
+    }
   }
-  // commentTA already set above, mark prefilled only if not user-edited
-  if (!commentTA.classList.contains('user-edited')) commentTA.classList.add('prefilled');
 }
 
-function preFillPostural() {
-  const sec = document.getElementById('clin-postural');
-  if (!sec) return;
-  const rows = sec.querySelectorAll('.rom-row');
-  const abnormal = [];
-  rows.forEach(row => {
-    const region = row.querySelector('.rom-joint')?.textContent?.trim();
-    const abnorm = row.querySelector('.option-chip.selected-pain');
-    const detail = row.querySelector('input')?.value?.trim();
-    if (abnorm) abnormal.push(`${region}${detail ? ` — ${detail}` : ''}`);
-  });
-  window._posturalAbnormal = abnormal;
-}
 
 function preFillMSK() {
   const cards = document.querySelectorAll('#msk-cards .clin-card');
@@ -7041,24 +7091,119 @@ function selectCond(btn, val, group) {
   if (detail) detail.style.display = val === 'y' ? 'block' : 'none';
 }
 
+const ISHIHARA_PLATES = [
+  { id:1,  label:'1',  type:'number',  normal:'12', note:'Demonstration — all should read 12. Not scored for deficiency.' },
+  { id:2,  label:'2',  type:'number',  normal:'8',  note:'Normal: 8. Deficient may read: 3' },
+  { id:3,  label:'3',  type:'number',  normal:'5',  note:'Normal: 5. Deficient may read: 2' },
+  { id:4,  label:'4',  type:'number',  normal:'29', note:'Normal: 29. Deficient may read: 70' },
+  { id:5,  label:'5',  type:'number',  normal:'74', note:'Normal: 74. Deficient may read: 21' },
+  { id:6,  label:'6',  type:'number',  normal:'7',  note:'Normal: 7. Deficient cannot read.' },
+  { id:7,  label:'7',  type:'number',  normal:'45', note:'Normal: 45. Deficient cannot read.' },
+  { id:8,  label:'8',  type:'number',  normal:'2',  note:'Normal: 2. Obscure for colour deficient.' },
+  { id:9,  label:'9',  type:'number',  normal:'16', note:'Normal: 16. Key reference plate — if <7 of plates 1–9 correct, record as deficient.' },
+  { id:10, label:'10', type:'tracing', normal:'Trace line', note:'Tracing: normal follows purple/red line. Protanomalia: purple easier. Deuteranomalia: red easier.' },
+  { id:11, label:'11', type:'tracing', normal:'Trace line', note:'Tracing: normal traces winding line correctly. Deficient traces different line.' },
+  { id:12, label:'12', type:'number',  normal:'35', note:'Normal: 35. Protanopia/strong deuteranopia may see: 96. Mild deficient may see: 5 only.' },
+  { id:13, label:'13', type:'number',  normal:'96', note:'Normal: 96. Protanopia reads 6 only. Mild deuteranomalia sees 96.' },
+  { id:14, label:'14', type:'tracing', normal:'Trace line', note:'Tracing: normal traces purple and red lines. Protanomalia: purple easier. Deuteranomalia: red easier.' },
+];
+
 function renderIshihara() {
   const cont = document.getElementById('ishihara-plates');
   if (!cont) return;
-  const plates = ['NIA','2','3','4','5','6','7','8','9','10','11','12','13','14'];
-  cont.innerHTML = plates.map((p,i) => `
-    <div style="display:flex;flex-direction:column;align-items:center;gap:4px">
-      <div style="width:36px;height:36px;border:2px solid var(--border);border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-weight:700;font-size:13px;transition:all 0.15s;background:white" onclick="toggleIsh(this)" class="ish-plate">${p}</div>
-      <div style="font-size:10px;color:var(--mid)">Plate ${i+1}</div>
+
+  cont.innerHTML = ISHIHARA_PLATES.map((p, i) => `
+    <div style="display:flex;flex-direction:column;align-items:center;gap:4px;position:relative" id="ish-wrap-${p.id}">
+      <div
+        class="ish-plate"
+        data-plate-id="${p.id}"
+        data-plate-type="${p.type}"
+        data-plate-index="${i}"
+        onclick="cycleIsh(this)"
+        style="width:44px;height:44px;border:2px solid var(--border);border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-weight:700;font-size:13px;transition:all 0.15s;background:white;color:var(--black);user-select:none"
+        title="${p.note}"
+      >${p.type === 'tracing' ? '~' + p.id : p.id}</div>
+      <div style="font-size:9px;color:var(--mid);text-align:center;max-width:48px;line-height:1.2">${p.normal}</div>
+      <div style="font-size:9px;color:var(--mid);font-weight:700">${p.type === 'tracing' ? 'Trace' : ''}</div>
     </div>
   `).join('');
+
+  let scoreEl = document.getElementById('ish-score-display');
+  if (!scoreEl) {
+    scoreEl = document.createElement('div');
+    scoreEl.id = 'ish-score-display';
+    scoreEl.style.cssText = 'margin-top:14px;padding:10px 16px;border-radius:8px;border:1px solid var(--border);font-size:13px;font-weight:600;background:white';
+    cont.parentElement.insertBefore(scoreEl, cont.nextSibling);
+  }
+  updateIshiharaScore();
 }
-function toggleIsh(el) {
-  el.classList.toggle('selected-normal');
-  el.style.background = el.classList.contains('selected-normal') ? 'var(--success)' : 'white';
-  el.style.color = el.classList.contains('selected-normal') ? 'white' : 'var(--black)';
-  el.style.borderColor = el.classList.contains('selected-normal') ? 'var(--success)' : 'var(--border)';
+
+function cycleIsh(el) {
+  if (!el.classList.contains('selected-normal') && !el.classList.contains('selected-fail')) {
+    el.classList.add('selected-normal');
+    el.classList.remove('selected-fail');
+    el.style.background = 'var(--success)';
+    el.style.color = 'white';
+    el.style.borderColor = 'var(--success)';
+  } else if (el.classList.contains('selected-normal')) {
+    el.classList.remove('selected-normal');
+    el.classList.add('selected-fail');
+    el.style.background = 'var(--error)';
+    el.style.color = 'white';
+    el.style.borderColor = 'var(--error)';
+  } else {
+    el.classList.remove('selected-normal', 'selected-fail');
+    el.style.background = 'white';
+    el.style.color = 'var(--black)';
+    el.style.borderColor = 'var(--border)';
+  }
+  updateIshiharaScore();
   preFillVision();
 }
+
+function updateIshiharaScore() {
+  const scoreEl = document.getElementById('ish-score-display');
+  if (!scoreEl) return;
+
+  const plates = document.querySelectorAll('.ish-plate');
+  if (!plates.length) return;
+
+  let plates1to9Correct = 0;
+  let tracingFails = [];
+  let answered = 0;
+
+  plates.forEach((p, i) => {
+    const passed = p.classList.contains('selected-normal');
+    const failed = p.classList.contains('selected-fail');
+    const touched = passed || failed;
+    if (!touched) return;
+    answered++;
+    if (i < 9 && passed) plates1to9Correct++;
+    if (i >= 9 && i <= 10 && failed) tracingFails.push(i === 9 ? 10 : 11);
+    if (i === 13 && failed) tracingFails.push(14);
+  });
+
+  if (answered === 0) {
+    scoreEl.innerHTML = '<span style="color:var(--mid);font-weight:400">Tap plates to record results — green = correct, red = incorrect</span>';
+    scoreEl.style.borderColor = 'var(--border)';
+    return;
+  }
+
+  const isNormal     = plates1to9Correct >= 7;
+  const isBorderline = plates1to9Correct >= 5 && plates1to9Correct < 7;
+
+  const color = isNormal ? 'var(--success)' : isBorderline ? 'var(--warning)' : 'var(--error)';
+  const label = isNormal ? 'Normal colour vision' : isBorderline ? 'Borderline — possible deficiency' : 'Colour vision deficiency identified';
+
+  let html = `Plates 1–9: <strong>${plates1to9Correct} / 9</strong> correct &nbsp;|&nbsp; Result: <span style="color:${color};font-weight:700">${label}</span>`;
+  if (tracingFails.length) {
+    html += `<br><span style="font-size:12px;color:var(--mid);font-weight:400">Tracing plate(s) ${tracingFails.join(', ')} failed — note pattern (protanomalia vs deuteranomalia) in clinical notes</span>`;
+  }
+  scoreEl.innerHTML = html;
+  scoreEl.style.borderColor = color;
+}
+
+
 
 
 // ─── TOKEN / APPOINTMENT HELPERS ────────────────────────────────────────────
@@ -7812,7 +7957,9 @@ function restoreClinicianData(data) {
   if (typeof calcAUDITScore     === 'function') calcAUDITScore();
   if (typeof buildFlaggedItemsFromPatientData === 'function') buildFlaggedItemsFromPatientData({});
   if (typeof drawAudiogram      === 'function') setTimeout(drawAudiogram, 100);
-  if (typeof calcHearingLossAMA === 'function') setTimeout(calcHearingLossAMA, 150);
+  if (typeof calcHearingLossAMA  === 'function') setTimeout(calcHearingLossAMA, 150);
+  if (typeof updateIshiharaScore === 'function') setTimeout(updateIshiharaScore, 200);
+  if (typeof preFillVision       === 'function') setTimeout(preFillVision, 200);
   if (typeof updatePatientSummary === 'function') updatePatientSummary();
   // 7. Manual flags
   if (Array.isArray(data['_manualFlags']) && data['_manualFlags'].length) {
