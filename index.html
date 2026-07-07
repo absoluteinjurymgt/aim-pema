@@ -2515,22 +2515,20 @@
             <div style="margin:14px 0 4px 0;background:#fafaf7;border:1px solid #e8e8e0;border-radius:6px;padding:10px 8px 8px 8px">
               <canvas id="audiogram-canvas" style="width:100%;height:380px;display:block"></canvas>
             </div>
-            <div class="form-row" style="margin-top:16px">
-              <div class="form-group">
-                <label>% Hearing Loss — Left</label>
-                <input class="form-control" id="audio-pct-left" placeholder="e.g. 3.2%" oninput="preFillAudiometry()">
+            <div style="margin-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:12px">
+              <div>
+                <label style="font-size:10px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.04em;display:block;margin-bottom:4px">Left Ear — Screening Classification</label>
+                <div id="audio-class-left" style="font-size:14px;font-weight:600;color:var(--charcoal);min-height:22px">—</div>
+                <div id="audio-class-left-detail" style="font-size:11px;color:var(--mid);margin-top:2px"></div>
               </div>
-              <div class="form-group">
-                <label>% Hearing Loss — Right</label>
-                <input class="form-control" id="audio-pct-right" placeholder="e.g. 6.8%" oninput="preFillAudiometry()">
-              </div>
-              <div class="form-group">
-                <label>Binaural Loss</label>
-                <input class="form-control" id="audio-pct-binaural" placeholder="e.g. 4.4%" oninput="preFillAudiometry()">
+              <div>
+                <label style="font-size:10px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.04em;display:block;margin-bottom:4px">Right Ear — Screening Classification</label>
+                <div id="audio-class-right" style="font-size:14px;font-weight:600;color:var(--charcoal);min-height:22px">—</div>
+                <div id="audio-class-right-detail" style="font-size:11px;color:var(--mid);margin-top:2px"></div>
               </div>
             </div>
-            <div style="font-size:11px;color:var(--mid);margin-top:4px;font-style:italic">
-              Calculated using AMA (1979) method — PTA at 500, 1000, 2000, 3000 Hz. Low fence 25 dB. 1.5% per dB. Binaural: (better &times; 5 + worse) &divide; 6.
+            <div style="font-size:11px;color:var(--mid);margin-top:6px;font-style:italic">
+              AS/NZS 1269.4 screening classification — PTA at 500, 1000, 2000, 4000 Hz. Normal ≤25 dB | Mild 26–40 dB | Moderate 41–60 dB | Marked &gt;60 dB. Formal % loss assessment (NAL Report 118) requires audiologist evaluation.
             </div>
             <div class="form-row" style="margin-top:12px;margin-bottom:4px">
               <div class="form-group">
@@ -2611,7 +2609,7 @@
                     <td class="postbroncho-col" style="display:none"><input id="spiro-fvc-chg"></td></tr>
                   <tr><td><strong>FEV1/FVC</strong> <span style="font-size:10px;color:var(--mid)">ratio</span></td>
                     <td><input id="spiro-ratio-meas" oninput="calcSpiroPct()"></td>
-                    <td><input id="spiro-ratio-pred" placeholder="0.75+" oninput="calcSpiroPct()"></td>
+                    <td><input id="spiro-ratio-pred" oninput="calcSpiroPct()"></td>
                     <td><input id="spiro-ratio-pct"></td>
                     <td class="postbroncho-col" style="display:none"><input id="spiro-ratio-post"></td>
                     <td class="postbroncho-col" style="display:none"><input></td>
@@ -3914,7 +3912,7 @@ function buildFlaggedItemsFromPatientData(data) {
     const medBody = flag.medFlag ? (
       '<div style="font-size:12.5px;color:var(--charcoal);margin-bottom:10px;padding:10px;background:white;border-radius:6px;border-left:3px solid '+col+';line-height:1.7">' + flag.catInfo.body + '</div>' +
       '<div style="font-size:11px;color:var(--mid);font-style:italic;margin-bottom:10px;padding:8px;background:var(--olive-ultra);border-radius:6px">' + flag.catInfo.note + '</div>'
-    ) : (flag.detail ? '<div style="font-size:13px;color:var(--charcoal);margin-bottom:10px;font-style:italic">\u201c' + flag.detail + '\u201d</div>' : '');
+    ) : (flag.detail ? '<div style="font-size:12px;color:var(--mid);font-style:italic;margin-top:4px;margin-bottom:10px">Patient detail: \u201c' + flag.detail + '\u201d</div>' : '');
 
     const prompts = flag.medFlag ?
       '<div class="prompt-chip" onclick="insertPrompt(this,\'Medication risk flag reviewed with patient. Patient confirmed current medication and dosing. GP clearance recommended prior to placement in identified risk roles. Employer to be advised.\')">GP clearance recommended</div>' +
@@ -4366,34 +4364,32 @@ function insertPrompt(chipEl, text) {
 function calcHearingLossAMA() {
   var rows = document.querySelectorAll('.audio-table tbody tr');
   if (rows.length < 2) return;
+  var allFreqs = [500, 1000, 1500, 2000, 3000, 4000, 6000, 8000];
 
-  function getMonauralLoss(row) {
+  function classifyEar(row, elClass, elDetail) {
     var inputs = row.querySelectorAll('input');
-    var hz500  = parseFloat(inputs[0] ? inputs[0].value : '');
-    var hz1000 = parseFloat(inputs[1] ? inputs[1].value : '');
-    var hz2000 = parseFloat(inputs[3] ? inputs[3].value : '');
-    var hz3000 = parseFloat(inputs[4] ? inputs[4].value : '');
-    if ([hz500, hz1000, hz2000, hz3000].some(isNaN)) return null;
-    var pta = (hz500 + hz1000 + hz2000 + hz3000) / 4;
-    var impairment = Math.max(0, Math.min(100, (pta - 25) * 1.5));
-    return Math.round(impairment * 10) / 10;
+    var ptaCols = [0, 1, 3, 5]; // 500, 1000, 2000, 4000 Hz
+    var ptaVals = ptaCols.map(function(ci) { return parseFloat(inputs[ci] ? inputs[ci].value : ''); });
+    if (ptaVals.some(isNaN)) {
+      if (elClass) { elClass.textContent = '—'; elClass.style.color = ''; }
+      if (elDetail) elDetail.textContent = '';
+      return null;
+    }
+    var pta = ptaVals.reduce(function(s, v) { return s + v; }, 0) / 4;
+    var cls = pta <= 25 ? 'Normal' : pta <= 40 ? 'Mild' : pta <= 60 ? 'Moderate' : 'Marked';
+    var color = pta <= 25 ? 'var(--success)' : pta <= 40 ? '#b07d2e' : '#8b3a2f';
+    var elevated = [];
+    allFreqs.forEach(function(f, i) {
+      var v = parseFloat(inputs[i] ? inputs[i].value : '');
+      if (!isNaN(v) && v > 25) elevated.push(f + ' Hz: ' + v + ' dB');
+    });
+    if (elClass) { elClass.textContent = cls + ' (PTA ' + Math.round(pta) + ' dB)'; elClass.style.color = color; }
+    if (elDetail) elDetail.textContent = elevated.length ? 'Elevated: ' + elevated.join(', ') : '';
+    return { cls: cls, pta: Math.round(pta), elevated: elevated };
   }
 
-  var leftLoss  = getMonauralLoss(rows[0]);
-  var rightLoss = getMonauralLoss(rows[1]);
-
-  var leftEl  = document.getElementById('audio-pct-left');
-  var rightEl = document.getElementById('audio-pct-right');
-  if (leftEl  && leftLoss  !== null) leftEl.value  = leftLoss  + '%';
-  if (rightEl && rightLoss !== null) rightEl.value = rightLoss + '%';
-
-  if (leftLoss !== null && rightLoss !== null) {
-    var better   = Math.min(leftLoss, rightLoss);
-    var worse    = Math.max(leftLoss, rightLoss);
-    var binaural = Math.round(((better * 5 + worse) / 6) * 10) / 10;
-    var binEl = document.getElementById('audio-pct-binaural');
-    if (binEl) binEl.value = binaural + '%';
-  }
+  window._audioClassLeft  = classifyEar(rows[0], document.getElementById('audio-class-left'),  document.getElementById('audio-class-left-detail'));
+  window._audioClassRight = classifyEar(rows[1], document.getElementById('audio-class-right'), document.getElementById('audio-class-right-detail'));
 }
 
 function calcHearingLoss() {
@@ -4514,7 +4510,7 @@ function calcSpiroPct() {
 }
 
 function calcMaxHR() {
-  const dob = document.getElementById('pt-dob')?.value;
+  const dob = getPatientDOB();
   let age = 35;
   if (dob) { const d = new Date(dob); age = Math.floor((Date.now()-d)/(1000*60*60*24*365.25)); }
   const max100 = 220 - age;
@@ -4615,10 +4611,32 @@ function getGripNorm(side, age, gender) {
   return norms[norms.length - 1][2]; // fallback to oldest age group
 }
 
+function getPatientDOB() {
+  var dom = document.getElementById('pt-dob')?.value;
+  if (dom) return dom;
+  if (window._patientDOB) return window._patientDOB;
+  try {
+    var stored = localStorage.getItem('aim_patient_data');
+    if (stored) { var d = JSON.parse(stored); return d['pt-dob'] || d['dob'] || ''; }
+  } catch(e) {}
+  return '';
+}
+
+function getPatientGender() {
+  var dom = document.getElementById('pt-gender')?.value;
+  if (dom) return dom;
+  if (window._patientGender) return window._patientGender;
+  try {
+    var stored = localStorage.getItem('aim_patient_data');
+    if (stored) { var d = JSON.parse(stored); return d['pt-gender'] || d['gender'] || ''; }
+  } catch(e) {}
+  return '';
+}
+
 function calcGrip(side) {
-  const t1 = parseFloat(document.getElementById('grip-'+side+'1').value)||0;
-  const t2 = parseFloat(document.getElementById('grip-'+side+'2').value)||0;
-  const t3 = parseFloat(document.getElementById('grip-'+side+'3').value)||0;
+  const t1 = parseFloat(document.getElementById('grip-'+side+'1')?.value)||0;
+  const t2 = parseFloat(document.getElementById('grip-'+side+'2')?.value)||0;
+  const t3 = parseFloat(document.getElementById('grip-'+side+'3')?.value)||0;
   const count = [t1,t2,t3].filter(v=>v>0).length;
   if (count > 0) {
     const avg = ((t1+t2+t3)/count).toFixed(1);
@@ -4635,8 +4653,8 @@ function calcGrip(side) {
         cvEl.title = cv > 15 ? 'CV >15% — possible submaximal effort or inconsistent technique' : 'CV ≤15% — consistent effort';
       }
     }
-    const dob = document.getElementById('pt-dob')?.value || window._patientDOB || '';
-    const gender = document.getElementById('pt-gender')?.value || window._patientGender || '';
+    const dob = getPatientDOB();
+    const gender = getPatientGender();
     const normEl = document.getElementById('grip-'+side+'-norm');
     if (!dob) {
       if (normEl && !normEl.value) normEl.placeholder = 'Enter DOB/gender for normative %';
@@ -4657,7 +4675,7 @@ function showClinSection(id, navItem) {
   if (typeof saveClinicianDataToStorage === 'function') saveClinicianDataToStorage();
   const currentSection = document.querySelector('.clinician-section.active');
   if (currentSection && currentSection.id !== id) {
-    preFillSection(currentSection.id);
+    try { preFillSection(currentSection.id); } catch(e) { console.warn('[PEMA] preFillSection:', e.message); }
   }
   document.querySelectorAll('.clinician-section').forEach(s => s.classList.remove('active'));
   document.querySelectorAll('.clinician-nav-item').forEach(n => n.classList.remove('active'));
@@ -5000,6 +5018,42 @@ function getClassificationLabel() {
   return classEl ? classEl.textContent.trim() : 'Medium';
 }
 
+function preFillROM() {
+  var ta = document.querySelector('#clin-rom .smart-textarea');
+  if (!ta || !canOverwrite(ta)) return;
+  var rows = document.querySelectorAll('#rom-body .rom-row');
+  if (!rows.length) return;
+  window._findingFlags = window._findingFlags || [];
+  var abnormal = [];
+  rows.forEach(function(row) {
+    var joint = (row.querySelector('.rom-joint')?.textContent || '').replace(/\s*\(L\s*&\s*R\)/,'').trim();
+    if (!joint) return;
+    var chip = row.querySelector('.option-chip.selected-pain, .option-chip.selected-limited');
+    if (!chip) return;
+    var chipText = chip.textContent.trim().toLowerCase();
+    var detail = (row.querySelector('div[style*="flex:1"] input:not([type="number"])')?.value || '').trim();
+    var painInput = row.querySelector('input[type="number"]');
+    var painScore = (painInput && painInput.value) ? ' (pain ' + painInput.value + '/10)' : '';
+    abnormal.push(joint + ' — ' + chipText + painScore + (detail ? '; ' + detail : ''));
+    window._findingFlags.push({section:'Range of Motion', finding: joint + ': ' + chipText + painScore, rec:null});
+  });
+  if (!abnormal.length) return;
+  ta.value = 'Restricted or painful ROM identified: ' + abnormal.join('. ') + '.';
+  ta.classList.add('prefilled');
+}
+
+function preFillPostural() {
+  var rows = document.querySelectorAll('#postural-body .rom-row');
+  if (!rows.length) return;
+  window._findingFlags = window._findingFlags || [];
+  rows.forEach(function(row) {
+    var region = (row.querySelector('.rom-joint')?.textContent || '').trim();
+    if (!region || !row.querySelector('.option-chip.selected-pain')) return;
+    var detail = (row.querySelector('input')?.value || '').trim();
+    window._findingFlags.push({section:'Postural Analysis', finding: region + ' — abnormal posture noted' + (detail ? ' (' + detail + ')' : ''), rec:null});
+  });
+}
+
 function preFillSection(sectionId) {
   switch(sectionId) {
     case 'clin-vitals':       preFillVitals(); break;
@@ -5031,42 +5085,45 @@ function preFillVitals() {
 }
 
 function preFillAudiometry() {
-  const sec = document.getElementById('clin-audiometry');
+  var sec = document.getElementById('clin-audiometry');
   if (!sec) return;
-  const ta = sec.querySelector('.smart-textarea');
+  var ta = sec.querySelector('.smart-textarea');
   if (!ta || !canOverwrite(ta)) return;
 
-  // Use manually entered % values (from audiometry software output)
-  const leftPct = parseFloat(document.getElementById('audio-pct-left')?.value) || 0;
-  const rightPct = parseFloat(document.getElementById('audio-pct-right')?.value) || 0;
-  const binPct = parseFloat(document.getElementById('audio-pct-binaural')?.value) || 0;
+  var L = window._audioClassLeft;
+  var R = window._audioClassRight;
+  if (!L && !R) return;
 
-  if (!leftPct && !rightPct) return; // no data entered yet
-
-  let text = '';
   window._findingFlags = window._findingFlags || [];
+  var text = '';
+  var ppeNote = 'Pre-existing hearing change noted and baseline recorded. Hearing PPE required in all noise-exposed environments. Audiometric surveillance at 12 months recommended. Screening classification only — formal % loss assessment (NAL Report 118) requires audiologist evaluation.';
 
-  if (leftPct < 5 && rightPct < 5) {
-    text = 'Audiometry within normal limits bilaterally. No significant hearing loss identified' +
-      (binPct ? ' — binaural loss ' + binPct + '%' : '') + '. Baseline recorded.';
-  } else if (rightPct >= 5 && leftPct < 5) {
-    text = 'Hearing loss identified in the right ear (' + rightPct + '%), left ear within normal limits (' + leftPct + '%)' +
-      (binPct ? '. Binaural loss: ' + binPct + '%' : '') +
-      '. Pre-existing hearing change noted and baseline recorded. Appropriate hearing PPE required in all noise-exposed environments. Audiometric surveillance at 12 months recommended.';
-    window._findingFlags.push({section:'Audiometry', finding:'Hearing loss — right ear (' + rightPct + '%)', rec:'Appropriate hearing PPE to be provided. Audiometric surveillance at 12 months recommended.'});
-  } else if (leftPct >= 5 && rightPct < 5) {
-    text = 'Hearing loss identified in the left ear (' + leftPct + '%), right ear within normal limits (' + rightPct + '%)' +
-      (binPct ? '. Binaural loss: ' + binPct + '%' : '') +
-      '. Pre-existing hearing change noted and baseline recorded. Audiometric surveillance at 12 months recommended.';
-    window._findingFlags.push({section:'Audiometry', finding:'Hearing loss — left ear (' + leftPct + '%)', rec:'Appropriate hearing PPE to be provided. Audiometric surveillance at 12 months recommended.'});
+  if (L && R) {
+    if (L.cls === 'Normal' && R.cls === 'Normal') {
+      text = 'Pure tone audiometry within normal limits bilaterally (L: ' + L.pta + ' dB PTA, R: ' + R.pta + ' dB PTA). No significant hearing loss identified at screening. Baseline recorded.';
+    } else {
+      var parts = [];
+      if (L.cls !== 'Normal') {
+        parts.push(L.cls + ' hearing loss — left ear (PTA ' + L.pta + ' dB)' + (L.elevated.length ? '; elevated at ' + L.elevated.join(', ') : ''));
+        window._findingFlags.push({section:'Audiometry', finding:'Left ear: ' + L.cls + ' hearing loss (PTA ' + L.pta + ' dB)', rec:'Hearing PPE required. Audiometric surveillance at 12 months recommended.'});
+      }
+      if (R.cls !== 'Normal') {
+        parts.push(R.cls + ' hearing loss — right ear (PTA ' + R.pta + ' dB)' + (R.elevated.length ? '; elevated at ' + R.elevated.join(', ') : ''));
+        window._findingFlags.push({section:'Audiometry', finding:'Right ear: ' + R.cls + ' hearing loss (PTA ' + R.pta + ' dB)', rec:'Hearing PPE required. Audiometric surveillance at 12 months recommended.'});
+      }
+      text = parts.join('. ') + '. ' + ppeNote;
+    }
   } else {
-    text = 'Bilateral hearing loss identified — left ' + leftPct + '%, right ' + rightPct + '%' +
-      (binPct ? ', binaural loss ' + binPct + '%' : '') +
-      '. Pre-existing hearing change noted and baseline recorded. Hearing PPE required in all noise-exposed environments. Audiometric surveillance at 12 months recommended.';
-    window._findingFlags.push({section:'Audiometry', finding:'Bilateral hearing loss (L:' + leftPct + '% R:' + rightPct + '%)', rec:'Hearing PPE required. Audiometric surveillance at 12 months recommended.'});
+    var lr = L || R;
+    var side = L ? 'left' : 'right';
+    if (lr.cls === 'Normal') {
+      text = 'Pure tone audiometry within normal limits — ' + side + ' ear (PTA ' + lr.pta + ' dB). Baseline recorded.';
+    } else {
+      text = lr.cls + ' hearing loss — ' + side + ' ear (PTA ' + lr.pta + ' dB)' + (lr.elevated.length ? '; elevated at ' + lr.elevated.join(', ') : '') + '. ' + ppeNote;
+      window._findingFlags.push({section:'Audiometry', finding:side.charAt(0).toUpperCase()+side.slice(1)+' ear: '+lr.cls+' hearing loss (PTA '+lr.pta+' dB)', rec:'Hearing PPE required. Audiometric surveillance recommended.'});
+    }
   }
-  ta.value = text;
-  ta.classList.add('prefilled');
+  if (text) { ta.value = text; ta.classList.add('prefilled'); }
 }
 
 function toggleATSBlows(val) {
@@ -5648,7 +5705,7 @@ function generateAbnormalFindings() {
   ['clin-audiometry','clin-spirometry','clin-vision','clin-urinalysis',
    'clin-rom','clin-msk','clin-grip','clin-postural-tol','clin-steptest',
    'clin-mh','clin-carrying','clin-climbing'].forEach(function(id) {
-    preFillSection(id);
+    try { preFillSection(id); } catch(e) { console.warn('[PEMA] preFillSection skip:', id, e.message); }
   });
 
   // VITALS
@@ -5665,17 +5722,16 @@ function generateAbnormalFindings() {
   var hrRest = parseInt(document.getElementById('v-hr')?.value || '');
   if (!isNaN(hrRest) && hrRest > 100) add('VITALS', 'Resting HR ' + hrRest + ' bpm — tachycardia (>100 bpm)', 'medium');
 
-  // AUDIOMETRY — AMA percentage fields + raw threshold checks
-  var audioPctL = parseFloat(document.getElementById('audio-pct-left')?.value || '');
-  var audioPctR = parseFloat(document.getElementById('audio-pct-right')?.value || '');
-  if (!isNaN(audioPctL) && audioPctL > 0) add('AUDIOMETRY', 'Left ear hearing loss ' + audioPctL + '% (AMA 1979)', audioPctL > 10 ? 'high' : 'medium');
-  if (!isNaN(audioPctR) && audioPctR > 0) add('AUDIOMETRY', 'Right ear hearing loss ' + audioPctR + '% (AMA 1979)', audioPctR > 10 ? 'high' : 'medium');
+  // AUDIOMETRY — AS/NZS screening classification
+  var clsL = window._audioClassLeft, clsR = window._audioClassRight;
+  if (clsL && clsL.cls !== 'Normal') add('AUDIOMETRY', 'Left ear: ' + clsL.cls + ' hearing loss (PTA ' + clsL.pta + ' dB)', clsL.cls === 'Normal' ? 'low' : clsL.cls === 'Mild' ? 'medium' : 'high');
+  if (clsR && clsR.cls !== 'Normal') add('AUDIOMETRY', 'Right ear: ' + clsR.cls + ' hearing loss (PTA ' + clsR.pta + ' dB)', clsR.cls === 'Normal' ? 'low' : clsR.cls === 'Mild' ? 'medium' : 'high');
   var audioFreqLabels = ['500Hz','1000Hz','1500Hz','2000Hz','3000Hz','4000Hz','6000Hz','8000Hz'];
   document.querySelectorAll('.audio-table tbody tr').forEach(function(tr, ri) {
-    var side = ri === 0 ? 'Right' : 'Left';
+    var side = ri === 0 ? 'Left' : 'Right';
     tr.querySelectorAll('input').forEach(function(inp, ci) {
       var v = parseFloat(inp.value);
-      if (!isNaN(v) && v > 25) add('AUDIOMETRY', side + ' ear — ' + (audioFreqLabels[ci] || '') + ' threshold ' + v + ' dB (>25 dB)', v > 40 ? 'high' : 'low');
+      if (!isNaN(v) && v > 40) add('AUDIOMETRY', side + ' ear — ' + (audioFreqLabels[ci] || '') + ' threshold ' + v + ' dB', v > 60 ? 'high' : 'medium');
     });
   });
 
@@ -7934,9 +7990,11 @@ function drawAudiogram() {
   var pw = W - ml - mr;
   var ph = H - mt - mb;
   var freqs = [125, 250, 500, 750, 1000, 1500, 2000, 3000, 4000, 6000, 8000];
-  var logMin = Math.log10(125), logMax = Math.log10(8000);
 
-  function xForFreq(f) { return ml + (freqs.indexOf(f) / (freqs.length - 1)) * pw; }
+  function xForFreq(f) {
+    var i = freqs.indexOf(f);
+    return i === -1 ? ml : ml + (i / (freqs.length - 1)) * pw;
+  }
   function yForDb(db) { return mt + (db - (-10)) / (120 - (-10)) * ph; }
 
   ctx.fillStyle = '#ffffff';
@@ -7953,10 +8011,10 @@ function drawAudiogram() {
     ctx.fillText(db, ml - 6, y);
   }
 
-  var dataFreqs = [500,1000,1500,2000,3000,4000,6000,8000];
+  var colFreqs = [500, 1000, 1500, 2000, 3000, 4000, 6000, 8000];
   freqs.forEach(function(f) {
     var x = xForFreq(f);
-    if (dataFreqs.indexOf(f) !== -1) {
+    if (colFreqs.indexOf(f) !== -1) {
       ctx.beginPath(); ctx.moveTo(x, mt); ctx.lineTo(x, H - mb);
       ctx.strokeStyle = '#e8e8e0'; ctx.lineWidth = 1; ctx.stroke();
     }
@@ -8184,7 +8242,7 @@ function restoreClinicianData(data) {
   if (typeof calcBMI            === 'function') calcBMI();
   if (typeof calcSpiroPct       === 'function') calcSpiroPct();
   if (typeof calcMaxHR          === 'function') calcMaxHR();
-  if (typeof calcGrip           === 'function') { calcGrip('left'); calcGrip('right'); }
+  if (typeof calcGrip           === 'function') { calcGrip('r'); calcGrip('l'); }
   if (typeof calcEpworthScore   === 'function') calcEpworthScore();
   if (typeof calcK10Score       === 'function') calcK10Score();
   if (typeof calcAUDITScore     === 'function') calcAUDITScore();
