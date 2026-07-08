@@ -1135,11 +1135,6 @@
     border-color: var(--olive);
     background: var(--olive-pale);
   }
-  .outcome-option.suggested .outcome-title::before {
-    content: '✦ Suggested: ';
-    color: var(--olive);
-    font-size: 11px;
-  }
   .outcome-option.selected {
     border-color: var(--olive);
     background: var(--olive-pale);
@@ -3780,7 +3775,30 @@ function buildFlaggedItemsFromPatientData(data) {
   const container = document.getElementById('flagged-items');
   if (!container) return;
 
-  const flags = [];
+  // Preserve clinical notes already entered — keyed by card title, not index
+  const savedNotes = {};
+  container.querySelectorAll('.clin-card:not(.manual-flag)').forEach(function(card) {
+    const t = (card.querySelector('.clin-card-header h3')?.textContent || '').replace('⚑ ', '').trim();
+    const n = card.querySelector('.smart-textarea')?.value || '';
+    if (t && n.trim()) savedNotes[t] = n;
+  });
+  // Preserve manual flag cards — innerHTML rebuild would destroy them
+  const manualCards = Array.from(container.querySelectorAll('.manual-flag'));
+
+  // Keyed map: the same question can never produce two cards
+  const flagMap = {};
+  const flags = { push: function(flag) {
+    const key = (flag.title || '').trim().toLowerCase();
+    if (!key) return;
+    const existing = flagMap[key];
+    if (existing) {
+      if (!existing.detail && flag.detail) existing.detail = flag.detail;
+      const rank = { high: 0, medium: 1, low: 2 };
+      if ((rank[flag.severity] !== undefined ? rank[flag.severity] : 1) < (rank[existing.severity] !== undefined ? rank[existing.severity] : 1)) existing.severity = flag.severity;
+      return;
+    }
+    flagMap[key] = flag;
+  }};
 
   const whSection = document.getElementById('ps-2');
   if (whSection) {
@@ -3810,6 +3828,7 @@ function buildFlaggedItemsFromPatientData(data) {
   const ps3 = document.getElementById('ps-3');
   if (ps3) {
     ps3.querySelectorAll('.q-card').forEach(function(card) {
+      if (card.closest('#injury-questions')) return; // already scanned above — prevents duplicate cards
       if (!card.querySelector('.yn-btn.selected-yes')) return;
       const label = card.querySelector('.q-label')?.textContent?.replace(/^\d+\s*/,'').trim()||'';
       const detail = card.querySelector('.detail-field.visible textarea, .detail-field.visible input')?.value?.trim()||'';
@@ -3862,6 +3881,47 @@ function buildFlaggedItemsFromPatientData(data) {
     flags.push({title: label, detail, severity:'medium'});
   });
 
+  // Respiratory diagnoses checkbox grid (ps-4 Q22 — asthma, COPD, TB etc.)
+  document.querySelectorAll('#ps-4 .checkbox-item.checked').forEach(function(item) {
+    const cond = item.querySelector('.checkbox-label')?.textContent?.trim() || '';
+    if (!cond) return;
+    const detail = item.closest('.q-card')?.querySelector('.detail-field textarea')?.value?.trim() || '';
+    const sev = ['Asthma','COPD','Tuberculosis','Other chest trouble'].includes(cond) ? 'high' : 'medium';
+    flags.push({title: 'Respiratory condition: ' + cond, detail, severity: sev});
+  });
+
+  // Smoking status chip (ps-4 Q14)
+  const smokingChip = Array.from(document.querySelectorAll('#ps-4 .option-chip.selected-normal'))
+    .find(function(c) { return (c.getAttribute('onclick') || '').includes("'smoking'"); });
+  if (smokingChip) {
+    const smokeVal = smokingChip.textContent.trim();
+    if (smokeVal === 'Current smoker' || smokeVal === 'Ex-smoker') {
+      const detail = smokingChip.closest('.q-card')?.querySelector('.detail-field textarea')?.value?.trim() || '';
+      flags.push({title: 'Smoking history: ' + smokeVal.toLowerCase(), detail, severity: smokeVal === 'Current smoker' ? 'medium' : 'low'});
+    }
+  }
+
+  // Self-rated health chip (ps-3 Q7 — Fair or Poor)
+  const healthChip = Array.from(document.querySelectorAll('#ps-3 .option-chip.selected-normal'))
+    .find(function(c) { return (c.getAttribute('onclick') || '').includes("'health-rating'"); });
+  if (healthChip) {
+    const rating = healthChip.textContent.trim();
+    if (rating === 'Fair' || rating === 'Poor') {
+      const detail = document.getElementById('health-rating-detail')?.value?.trim() || '';
+      flags.push({title: 'Self-rated health: ' + rating, detail, severity: rating === 'Poor' ? 'high' : 'medium'});
+    }
+  }
+
+  // Health Conditions section Y/N questions (ps-6 — e.g. other illnesses/injuries/operations)
+  document.querySelectorAll('#ps-6 .q-card').forEach(function(card) {
+    if (card.querySelector('#medication-detail')) return; // medications handled by med screening below
+    if (card.querySelector('#conditions-list')) return;   // condition rows handled by cy-btn scan below
+    if (!card.querySelector('.yn-btn.selected-yes')) return;
+    const label = card.querySelector('.q-label')?.textContent?.replace(/^\d+\s*/,'').trim()||'';
+    const detail = card.querySelector('.detail-field textarea')?.value?.trim()||'';
+    flags.push({title: label, detail, severity:'medium'});
+  });
+
   document.querySelectorAll('.cy-btn.yes-sel').forEach(function(btn) {
     const row = btn.closest('.condition-row');
     const text = row?.querySelector('.condition-text')?.textContent?.trim()||'';
@@ -3900,12 +3960,14 @@ function buildFlaggedItemsFromPatientData(data) {
     }
   }
 
-  if (flags.length === 0) {
+  const flagList = Object.values(flagMap);
+  if (flagList.length === 0) {
     container.innerHTML = '<div class="clin-card"><div class="clin-card-header" style="background:var(--success)"><h3>✓ No flagged items — all questionnaire responses were negative</h3></div><div class="clin-card-body" style="color:var(--mid);font-size:13px">The patient reported no positive findings in the questionnaire. Proceed with the assessment.</div></div>';
+    manualCards.forEach(function(c) { container.appendChild(c); });
     return;
   }
 
-  container.innerHTML = flags.map(function(flag, i) {
+  container.innerHTML = flagList.map(function(flag, i) {
     const col = sevColour[flag.severity]||'#6b6b65';
     const bg = sevBg[flag.severity]||'var(--olive-ultra)';
 
@@ -3939,6 +4001,16 @@ function buildFlaggedItemsFromPatientData(data) {
       '</div>' +
     '</div>';
   }).join('');
+
+  // Restore preserved clinical notes (keyed by title) and re-append manual flags
+  container.querySelectorAll('.clin-card:not(.manual-flag)').forEach(function(card) {
+    const t = (card.querySelector('.clin-card-header h3')?.textContent || '').replace('⚑ ', '').trim();
+    if (savedNotes[t]) {
+      const ta = card.querySelector('.smart-textarea');
+      if (ta) { ta.value = savedNotes[t]; ta.classList.add('user-edited'); }
+    }
+  });
+  manualCards.forEach(function(c) { container.appendChild(c); });
 }
 
 function createManualFlagCard(saved) {
@@ -5708,40 +5780,38 @@ function generateAbnormalFindings() {
     try { preFillSection(id); } catch(e) { console.warn('[PEMA] preFillSection skip:', id, e.message); }
   });
 
-  // VITALS
+  // VITALS — the value IS the finding for BP/BMI, so keep the numbers
   var bpSys = parseInt(document.getElementById('v-bp-sys')?.value || '');
   var bpDia = parseInt(document.getElementById('v-bp-dia')?.value || '');
   if (!isNaN(bpSys) && (bpSys > 160 || (!isNaN(bpDia) && bpDia > 100))) {
-    add('VITALS', 'Elevated blood pressure — ' + bpSys + '/' + bpDia + ' mmHg', 'high');
+    add('VITALS', 'Elevated BP recorded (' + bpSys + '/' + bpDia + ') — medical review advised before physical testing', 'high');
   }
   var bmiText = (document.getElementById('v-bmi')?.textContent || '').trim();
   var bmiVal  = parseFloat(bmiText);
   var bmiCat  = (document.getElementById('bmi-cat')?.textContent || '').trim();
-  if (!isNaN(bmiVal) && bmiVal >= 35) add('VITALS', 'BMI ' + bmiVal + ' kg/m² — ' + (bmiCat || 'morbidly obese'), 'medium');
-  else if (!isNaN(bmiVal) && bmiVal >= 30) add('VITALS', 'BMI ' + bmiVal + ' kg/m² — ' + (bmiCat || 'obese'), 'low');
+  if (!isNaN(bmiVal) && bmiVal >= 35) add('VITALS', 'Elevated BMI recorded (' + bmiVal + ') — ' + (bmiCat || 'obese').toLowerCase(), 'medium');
+  else if (!isNaN(bmiVal) && bmiVal >= 30) add('VITALS', 'Elevated BMI recorded (' + bmiVal + ') — ' + (bmiCat || 'obese').toLowerCase(), 'low');
   var hrRest = parseInt(document.getElementById('v-hr')?.value || '');
-  if (!isNaN(hrRest) && hrRest > 100) add('VITALS', 'Resting HR ' + hrRest + ' bpm — tachycardia (>100 bpm)', 'medium');
+  if (!isNaN(hrRest) && hrRest > 100) add('VITALS', 'Resting tachycardia recorded (' + hrRest + ' bpm)', 'medium');
 
-  // AUDIOMETRY — AS/NZS screening classification
+  // AUDIOMETRY — one summary line per abnormal ear, detail stays in section/PDF
   var clsL = window._audioClassLeft, clsR = window._audioClassRight;
-  if (clsL && clsL.cls !== 'Normal') add('AUDIOMETRY', 'Left ear: ' + clsL.cls + ' hearing loss (PTA ' + clsL.pta + ' dB)', clsL.cls === 'Normal' ? 'low' : clsL.cls === 'Mild' ? 'medium' : 'high');
-  if (clsR && clsR.cls !== 'Normal') add('AUDIOMETRY', 'Right ear: ' + clsR.cls + ' hearing loss (PTA ' + clsR.pta + ' dB)', clsR.cls === 'Normal' ? 'low' : clsR.cls === 'Mild' ? 'medium' : 'high');
-  var audioFreqLabels = ['500Hz','1000Hz','1500Hz','2000Hz','3000Hz','4000Hz','6000Hz','8000Hz'];
-  document.querySelectorAll('.audio-table tbody tr').forEach(function(tr, ri) {
-    var side = ri === 0 ? 'Left' : 'Right';
-    tr.querySelectorAll('input').forEach(function(inp, ci) {
-      var v = parseFloat(inp.value);
-      if (!isNaN(v) && v > 40) add('AUDIOMETRY', side + ' ear — ' + (audioFreqLabels[ci] || '') + ' threshold ' + v + ' dB', v > 60 ? 'high' : 'medium');
-    });
-  });
-
-  // SPIROMETRY — pattern chip + FEV1%
-  var spiroPattern = (document.querySelector('#spiro-pattern-chips .option-chip.selected-normal')?.textContent || '').trim();
-  if (spiroPattern && spiroPattern !== 'Normal') {
-    add('SPIROMETRY', 'Spirometry pattern: ' + spiroPattern, spiroPattern.toLowerCase().includes('obstruct') ? 'high' : 'medium');
+  if (clsL && clsL.cls !== 'Normal' && clsR && clsR.cls !== 'Normal') {
+    var worst = ['Marked','Moderate','Mild'].find(function(c) { return clsL.cls === c || clsR.cls === c; });
+    add('AUDIOMETRY', worst + ' bilateral hearing loss identified — baseline documented', worst === 'Mild' ? 'medium' : 'high');
+  } else {
+    if (clsL && clsL.cls !== 'Normal') add('AUDIOMETRY', clsL.cls + ' left ear hearing loss identified — baseline documented', clsL.cls === 'Mild' ? 'medium' : 'high');
+    if (clsR && clsR.cls !== 'Normal') add('AUDIOMETRY', clsR.cls + ' right ear hearing loss identified — baseline documented', clsR.cls === 'Mild' ? 'medium' : 'high');
   }
+
+  // SPIROMETRY — one summary line
+  var spiroPattern = (document.querySelector('#spiro-pattern-chips .option-chip.selected-normal')?.textContent || '').trim();
   var fev1Pct = parseFloat(document.getElementById('spiro-fev1-pct')?.value || '');
-  if (!isNaN(fev1Pct) && fev1Pct < 80) add('SPIROMETRY', 'FEV1 ' + fev1Pct + '% predicted — below 80%', 'medium');
+  if (spiroPattern && spiroPattern !== 'Normal') {
+    add('SPIROMETRY', 'Spirometry below predicted values — ' + spiroPattern.toLowerCase() + ' pattern, GP review recommended', spiroPattern.toLowerCase().includes('obstruct') ? 'high' : 'medium');
+  } else if (!isNaN(fev1Pct) && fev1Pct < 80) {
+    add('SPIROMETRY', 'Spirometry below predicted values — GP review recommended', 'medium');
+  }
 
   // URINALYSIS — from _findingFlags
   (window._findingFlags || []).filter(function(f) { return f.section === 'Urinalysis'; })
@@ -5754,25 +5824,38 @@ function generateAbnormalFindings() {
       add('VISION', f.finding, sev);
     });
 
-  // ROM / MSK — from _findingFlags
+  // ROM — group all affected joints into one summary line
+  var romFlags = (window._findingFlags || []).filter(function(f) { return f.section === 'Range of Motion'; });
+  if (romFlags.length) {
+    var romJointNames = romFlags.map(function(f) { return f.finding.split(':')[0].trim(); });
+    add('MSK', 'Pain/restriction reproduced on ROM testing — ' + romJointNames.join(', '), 'medium');
+  }
+  // Postural analysis — one summary line
+  var postFlags = (window._findingFlags || []).filter(function(f) { return f.section === 'Postural Analysis'; });
+  if (postFlags.length) {
+    var postRegions = postFlags.map(function(f) { return f.finding.split(' — ')[0].trim(); });
+    add('MSK', 'Postural abnormalities noted — ' + postRegions.join(', '), 'medium');
+  }
+  // MSK special tests — already summary-level, pass through
   (window._findingFlags || []).filter(function(f) {
-    return ['Range of Motion','Postural Analysis','Single Leg Balance','Shoulder Impingement',
-            'Knee Stability','Ankle Stability','Hip Testing'].some(function(s) { return (f.section || '').includes(s); });
+    return ['Single Leg Balance','Shoulder Impingement','Knee Stability','Ankle Stability','Hip Testing'].some(function(s) { return (f.section || '').includes(s); });
   }).forEach(function(f) { add('MSK', f.finding, 'medium'); });
 
-  // GRIP STRENGTH — direct numeric checks
-  var rNormStr = document.getElementById('grip-r-norm')?.value || '';
-  var lNormStr = document.getElementById('grip-l-norm')?.value || '';
-  var rPct = parseInt(rNormStr);
-  var lPct = parseInt(lNormStr);
-  if (!isNaN(rPct) && rPct < 80) add('GRIP STRENGTH', 'Right hand ' + rPct + '% of age-matched normative values — below 80% threshold', rPct < 60 ? 'high' : 'medium');
-  if (!isNaN(lPct) && lPct < 80) add('GRIP STRENGTH', 'Left hand ' + lPct + '% of age-matched normative values — below 80% threshold', lPct < 60 ? 'high' : 'medium');
+  // GRIP STRENGTH — summary lines, raw kg values stay in the section/PDF
+  var rPct = parseInt(document.getElementById('grip-r-norm')?.value || '');
+  var lPct = parseInt(document.getElementById('grip-l-norm')?.value || '');
+  var rLow = !isNaN(rPct) && rPct < 80, lLow = !isNaN(lPct) && lPct < 80;
+  if (rLow && lLow) add('GRIP STRENGTH', 'Reduced grip strength bilaterally — below 80% of age-matched norms', (rPct < 60 || lPct < 60) ? 'high' : 'medium');
+  else if (rLow) add('GRIP STRENGTH', 'Reduced right grip strength — below 80% of age-matched norms', rPct < 60 ? 'high' : 'medium');
+  else if (lLow) add('GRIP STRENGTH', 'Reduced left grip strength — below 80% of age-matched norms', lPct < 60 ? 'high' : 'medium');
   var rCv = parseInt(document.getElementById('grip-r-cv')?.value || '');
   var lCv = parseInt(document.getElementById('grip-l-cv')?.value || '');
-  if (!isNaN(rCv) && rCv > 15) add('GRIP STRENGTH', 'Right hand CV ' + rCv + '% — inconsistent effort (>15%)', 'medium');
-  if (!isNaN(lCv) && lCv > 15) add('GRIP STRENGTH', 'Left hand CV ' + lCv + '% — inconsistent effort (>15%)', 'medium');
+  var cvSides = [];
+  if (!isNaN(rCv) && rCv > 15) cvSides.push('right');
+  if (!isNaN(lCv) && lCv > 15) cvSides.push('left');
+  if (cvSides.length) add('GRIP STRENGTH', 'Inconsistent grip effort — ' + cvSides.join(' and ') + ' hand (possible submaximal effort)', 'medium');
 
-  // POSTURAL TOLERANCE — direct card scan
+  // POSTURAL TOLERANCE — one summary line per task, raw times/HR stay in section/PDF
   document.querySelectorAll('#postural-tol-grid .postural-test-card').forEach(function(card) {
     var name = (card.querySelector('.postural-test-name')?.textContent || '').trim();
     var selectedChip = card.querySelector('.option-chip.selected-normal');
@@ -5782,19 +5865,28 @@ function generateAbnormalFindings() {
     var time = (inputs[0]?.value || '').trim();
     var pain = parseFloat(inputs[1]?.value || '');
     var hr   = parseFloat(inputs[3]?.value || '');
+    var painLoc = (card.querySelector('.postural-pain-detail input')?.value || '').trim();
+    var problems = [];
+    var sev = 'medium';
     if (result !== 'Able') {
-      add('POSTURAL TOLERANCE', name + ' — unable to complete', 'high');
+      problems.push('unable to sustain');
+      sev = 'high';
     } else {
       if (time && time !== '2:00') {
         var tp = time.split(':');
         var totalS = (parseInt(tp[0]) || 0) * 60 + (parseInt(tp[1]) || 0);
-        if (totalS < 120) add('POSTURAL TOLERANCE', name + ' — ceased at ' + time + ' (< 2:00)', 'medium');
+        if (totalS < 120) problems.push('not sustained for full duration');
       }
-      if (!isNaN(pain) && pain > 0) add('POSTURAL TOLERANCE', name + ' — pain ' + pain + '/10 reported', pain >= 3 ? 'high' : 'medium');
+    }
+    if (!isNaN(pain) && pain > 0) {
+      problems.push(painLoc ? painLoc.toLowerCase() + ' pain' : 'pain reported');
+      if (pain >= 3) sev = 'high';
     }
     if (window._maxHR85 && !isNaN(hr) && hr >= window._maxHR85) {
-      add('POSTURAL TOLERANCE', name + ' — peak HR ' + hr + ' bpm (≥85% max HR)', 'high');
+      problems.push('85% max HR exceeded');
+      sev = 'high';
     }
+    if (problems.length) add('POSTURAL TOLERANCE', name + ' — ' + problems.join(', '), sev);
   });
 
   // STEP TEST
@@ -5811,22 +5903,30 @@ function generateAbnormalFindings() {
   (window._findingFlags || []).filter(function(f) { return f.section === 'Climbing'; })
     .forEach(function(f) { add('CLIMBING', f.finding, 'medium'); });
 
-  // QUESTIONNAIRE FLAGS — unresolved only
+  // QUESTIONNAIRE FLAGS — unresolved only, as "Disclosed: X (brief context)"
   document.querySelectorAll('#flagged-items .clin-card:not(.manual-flag)').forEach(function(card) {
     var header = (card.querySelector('.clin-card-header h3')?.textContent || '').trim();
-    if (!header) return;
+    if (!header || header.indexOf('No flagged items') !== -1 || header.indexOf('No patient questionnaire') !== -1) return;
     var notes = (card.querySelector('.smart-textarea')?.value || '').trim().toLowerCase();
     var isResolved = notes.includes('reviewed — no concern') || notes.includes('reviewed - no concern');
-    if (!isResolved) add('QUESTIONNAIRE FLAG', header.replace('⚑ ', ''), 'medium');
+    if (isResolved) return;
+    var detailText = (card.querySelector('.clin-card-body div[style*="font-style:italic"]')?.textContent || '')
+      .replace(/^Patient detail:\s*/, '').replace(/[“”"]/g, '').trim();
+    var brief = (detailText && detailText.length <= 60) ? ' (' + detailText + ')' : '';
+    add('QUESTIONNAIRE FLAG', 'Disclosed: ' + header.replace('⚑ ', '') + brief, 'medium');
   });
   document.querySelectorAll('#flagged-items .manual-flag').forEach(function(card) {
     var title = (card.querySelector('.clin-card-header input')?.value || '').trim();
-    if (title) add('QUESTIONNAIRE FLAG', title + ' (manual flag)', 'medium');
+    if (title) add('QUESTIONNAIRE FLAG', 'Disclosed: ' + title + ' (manual flag)', 'medium');
   });
 
   // Sort: high → medium → low
   var sOrder = { high: 0, medium: 1, low: 2 };
-  findings.sort(function(a, b) { return (sOrder[a.severity] || 2) - (sOrder[b.severity] || 2); });
+  findings.sort(function(a, b) {
+    var ra = sOrder[a.severity] !== undefined ? sOrder[a.severity] : 1;
+    var rb = sOrder[b.severity] !== undefined ? sOrder[b.severity] : 1;
+    return ra - rb;
+  });
   return findings;
 }
 

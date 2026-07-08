@@ -1,4 +1,4 @@
-const CACHE_NAME = 'aim-pema-v2';
+const CACHE_NAME = 'aim-pema-v3';
 
 const PRE_CACHE = [
   '/',
@@ -39,6 +39,8 @@ self.addEventListener('fetch', event => {
   // Do not cache chrome-extension or non-http requests
   if (!url.protocol.startsWith('http')) return;
 
+  const isNavigation = event.request.mode === 'navigate' || url.pathname === '/' || url.pathname.endsWith('/index.html');
+
   event.respondWith(
     caches.match(event.request).then(cached => {
       const networkFetch = fetch(event.request).then(response => {
@@ -49,6 +51,9 @@ self.addEventListener('fetch', event => {
         return response;
       }).catch(() => null);
 
+      // Network-first for the app shell so deployed fixes appear on next load;
+      // cache-first for static assets (fonts, CDN libs)
+      if (isNavigation) return networkFetch.then(r => r || cached);
       return cached || networkFetch;
     })
   );
