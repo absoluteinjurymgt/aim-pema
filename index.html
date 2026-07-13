@@ -1463,7 +1463,23 @@
 <body>
 
 
+<div id="screen-login" class="screen">
+  <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px">
+    <div style="width:100%;max-width:380px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:14px;padding:34px 30px">
+      <div style="font-family:'DM Serif Display',serif;color:white;font-size:26px;margin-bottom:6px;text-align:center">Clinician Sign In</div>
+      <div style="color:var(--mid);font-size:13px;text-align:center;margin-bottom:26px">Absolute Injury Management — PEMA Portal</div>
+      <label style="display:block;font-size:11px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">Email</label>
+      <input id="login-email" type="email" autocomplete="username" style="width:100%;padding:12px 14px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15);border-radius:8px;color:white;font-size:15px;font-family:'DM Sans',sans-serif;outline:none;margin-bottom:16px" placeholder="you@absoluteim.com.au">
+      <label style="display:block;font-size:11px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">Password</label>
+      <input id="login-password" type="password" autocomplete="current-password" style="width:100%;padding:12px 14px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15);border-radius:8px;color:white;font-size:15px;font-family:'DM Sans',sans-serif;outline:none" placeholder="••••••••" onkeydown="if(event.key==='Enter')doPortalLogin()">
+      <div id="login-error" style="display:none;color:#e08585;font-size:13px;margin-top:12px;line-height:1.5"></div>
+      <button id="login-btn" onclick="doPortalLogin()" style="width:100%;margin-top:20px;background:var(--olive);border:none;color:white;padding:13px;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">Sign In</button>
+    </div>
+  </div>
+</div>
+
 <div id="screen-portal" class="screen active">
+  <button onclick="authLogout()" title="Sign out of the PEMA portal" style="position:fixed;top:14px;right:14px;z-index:50;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);color:var(--light);padding:8px 14px;border-radius:8px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif">Log out</button>
   <div class="portal-logo" style="background:none;width:auto;height:auto;border-radius:0">
     <img id="portal-aim-logo" src="" style="height:80px;width:auto;object-fit:contain;display:block">
   </div>
@@ -1786,6 +1802,7 @@
         <button class="yn-btn" onclick="selectDominant(this,'Left')" id="dom-left">Left</button>
         <button class="yn-btn" onclick="selectDominant(this,'Right')" id="dom-right">Right</button>
       </div>
+      <input type="hidden" id="pt-dominant">
     </div>
 
   </div>
@@ -2278,7 +2295,7 @@
     </div>
     <div class="nav-actions">
       <button class="nav-btn" onclick="showScreen('screen-portal')">← Portal</button>
-      <button class="nav-btn primary" onclick="generatePDF()">Export PDF</button>
+      <button class="nav-btn primary" onclick="finaliseAssessment()">Finalise Assessment</button>
     </div>
   </nav>
 
@@ -3147,9 +3164,13 @@
               </div>
             </div>
             <div style="margin-top:20px">
-              <button class="btn btn-primary" style="width:100%;padding:16px;font-size:15px" onclick="generatePDF()">
-                Generate & Export Report PDF
+              <button class="btn btn-primary" style="width:100%;padding:16px;font-size:15px" onclick="finaliseAssessment()">
+                Finalise Assessment
               </button>
+              <div style="font-size:12px;color:var(--mid);margin-top:8px;text-align:center;line-height:1.6">
+                Generates the report PDF and stores it securely. Export it from the portal dashboard.
+                Stored reports are deleted when marked exported, or automatically after 30 days.
+              </div>
             </div>
           </div>
         </div>
@@ -3180,17 +3201,42 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 // ─── SUPABASE REST HELPERS ──────────────────────────────────────────────────
 async function sbQuery(table, qs, method, body) {
   var url = SUPABASE_URL + '/rest/v1/' + table + (qs ? '?' + qs : '');
-  var opts = {
-    method: method || 'GET',
-    headers: {
+  var patientMode = isPatientTokenUrl();
+
+  async function doFetch(bearer) {
+    var headers = {
       'apikey': SUPABASE_ANON_KEY,
-      'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+      'Authorization': 'Bearer ' + bearer,
       'Content-Type': 'application/json',
       'Prefer': (method === 'POST') ? 'return=representation' : ''
+    };
+    if (patientMode) {
+      var pt = getPatientUrlToken();
+      if (pt) headers['x-pema-token'] = pt; // RLS policies scope anon access to this row
     }
-  };
-  if (body !== undefined) opts.body = JSON.stringify(body);
-  var res = await fetch(url, opts);
+    var opts = { method: method || 'GET', headers: headers };
+    if (body !== undefined) opts.body = JSON.stringify(body);
+    return fetch(url, opts);
+  }
+
+  var bearer = SUPABASE_ANON_KEY;
+  if (!patientMode) {
+    var jwt = await getAccessToken();
+    if (jwt) bearer = jwt;
+  }
+  var res = await doFetch(bearer);
+
+  // Portal session expired mid-flight: refresh once, then redirect to login
+  if (res.status === 401 && !patientMode) {
+    var fresh = await authRefresh();
+    if (fresh) {
+      res = await doFetch(fresh);
+    } else {
+      showLoginScreen();
+      throw new Error('Session expired — please sign in again.');
+    }
+  }
+
   if (!res.ok) { var t = await res.text(); throw new Error('Supabase ' + res.status + ': ' + t); }
   if (res.status === 204 || res.headers.get('content-length') === '0') return null;
   return res.json();
@@ -3199,6 +3245,131 @@ function sbSelect(table, qs)       { return sbQuery(table, qs, 'GET'); }
 function sbInsert(table, data)     { return sbQuery(table, '', 'POST', data); }
 function sbUpdate(table, qs, data) { return sbQuery(table, qs, 'PATCH', data); }
 function sbDelete(table, qs)       { return sbQuery(table, qs, 'DELETE'); }
+
+// ─── SUPABASE AUTH (REST — no SDK) ──────────────────────────────────────────
+// Patients on ?token=/q/ URLs never log in; the portal requires a clinician session.
+function isPatientTokenUrl() {
+  return !!(window.location.pathname.match(/^\/q\/([A-Z0-9]{8})\/?$/i) || new URLSearchParams(window.location.search).get('token'));
+}
+function getPatientUrlToken() {
+  var m = window.location.pathname.match(/^\/q\/([A-Z0-9]{8})\/?$/i);
+  return (m && m[1]) || new URLSearchParams(window.location.search).get('token') || window._currentToken || null;
+}
+function getAuthSession() {
+  try { return JSON.parse(localStorage.getItem('aim_auth') || 'null'); } catch(e) { return null; }
+}
+function setAuthSession(s) {
+  if (s) localStorage.setItem('aim_auth', JSON.stringify(s));
+  else localStorage.removeItem('aim_auth');
+}
+async function authLogin(email, password) {
+  var res = await fetch(SUPABASE_URL + '/auth/v1/token?grant_type=password', {
+    method: 'POST',
+    headers: { 'apikey': SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: email, password: password })
+  });
+  var j = await res.json();
+  if (!res.ok) throw new Error(j.error_description || j.msg || 'Sign-in failed — check email and password.');
+  setAuthSession({
+    access_token: j.access_token,
+    refresh_token: j.refresh_token,
+    expires_at: Date.now() + Math.max(60, (j.expires_in || 3600) - 60) * 1000,
+    email: (j.user && j.user.email) || email
+  });
+  return j;
+}
+async function authRefresh() {
+  var s = getAuthSession();
+  if (!s || !s.refresh_token) return null;
+  try {
+    var res = await fetch(SUPABASE_URL + '/auth/v1/token?grant_type=refresh_token', {
+      method: 'POST',
+      headers: { 'apikey': SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: s.refresh_token })
+    });
+    var j = await res.json();
+    if (!res.ok) throw new Error(j.error_description || 'refresh failed');
+    setAuthSession({
+      access_token: j.access_token,
+      refresh_token: j.refresh_token,
+      expires_at: Date.now() + Math.max(60, (j.expires_in || 3600) - 60) * 1000,
+      email: s.email
+    });
+    return j.access_token;
+  } catch(e) {
+    setAuthSession(null);
+    return null;
+  }
+}
+async function getAccessToken() {
+  var s = getAuthSession();
+  if (!s) return null;
+  if (Date.now() >= (s.expires_at || 0)) return await authRefresh();
+  return s.access_token;
+}
+async function authLogout() {
+  var s = getAuthSession();
+  if (s && s.access_token) {
+    try {
+      await fetch(SUPABASE_URL + '/auth/v1/logout', {
+        method: 'POST',
+        headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + s.access_token }
+      });
+    } catch(e) {}
+  }
+  setAuthSession(null);
+  showLoginScreen();
+}
+function showLoginScreen() {
+  if (isPatientTokenUrl()) return; // patients never see the login gate
+  document.querySelectorAll('.screen').forEach(function(sc) { sc.classList.remove('active'); });
+  document.getElementById('screen-login')?.classList.add('active');
+  window.scrollTo(0, 0);
+}
+async function doPortalLogin() {
+  var email = (document.getElementById('login-email')?.value || '').trim();
+  var pw = document.getElementById('login-password')?.value || '';
+  var err = document.getElementById('login-error');
+  var btn = document.getElementById('login-btn');
+  if (!email || !pw) { if (err) { err.textContent = 'Enter your email and password.'; err.style.display = 'block'; } return; }
+  if (btn) { btn.textContent = 'Signing in…'; btn.disabled = true; }
+  if (err) err.style.display = 'none';
+  try {
+    await authLogin(email, pw);
+    var pwEl = document.getElementById('login-password');
+    if (pwEl) pwEl.value = '';
+    showScreen('screen-portal');
+    loadUpcomingAppointments();
+  } catch(e) {
+    if (err) { err.textContent = e.message; err.style.display = 'block'; }
+  }
+  if (btn) { btn.textContent = 'Sign In'; btn.disabled = false; }
+}
+
+// ─── SUPABASE STORAGE (pema-reports bucket — authenticated only) ────────────
+async function sbStorageAuthHeader() {
+  var t = await getAccessToken();
+  if (!t) { showLoginScreen(); throw new Error('Session expired — please sign in again.'); }
+  return { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + t };
+}
+async function sbStorageUpload(path, blob) {
+  var headers = await sbStorageAuthHeader();
+  headers['Content-Type'] = 'application/pdf';
+  headers['x-upsert'] = 'true';
+  var res = await fetch(SUPABASE_URL + '/storage/v1/object/pema-reports/' + path, { method: 'POST', headers: headers, body: blob });
+  if (!res.ok) { var t = await res.text(); throw new Error('Storage upload ' + res.status + ': ' + t); }
+}
+async function sbStorageDownload(path) {
+  var headers = await sbStorageAuthHeader();
+  var res = await fetch(SUPABASE_URL + '/storage/v1/object/pema-reports/' + path, { headers: headers });
+  if (!res.ok) throw new Error('Storage download failed (' + res.status + ') — the PDF may have been deleted.');
+  return res.blob();
+}
+async function sbStorageDelete(path) {
+  var headers = await sbStorageAuthHeader();
+  var res = await fetch(SUPABASE_URL + '/storage/v1/object/pema-reports/' + path, { method: 'DELETE', headers: headers });
+  if (!res.ok && res.status !== 404) { var t = await res.text(); throw new Error('Storage delete ' + res.status + ': ' + t); }
+}
 
 // ─── GLOBAL getSig (canvas → base64, safe to call at any time) ──────────────
 function getSigGlobal(id) {
@@ -3414,6 +3585,10 @@ function savePatientDataToStorage() {
   document.querySelectorAll('#screen-patient .checkbox-item.checked .checkbox-label').forEach(el => {
     data['checked_' + el.textContent.trim()] = true;
   });
+  document.querySelectorAll('#screen-patient .option-chip.selected-normal').forEach(el => {
+    const m = (el.getAttribute('onclick') || '').match(/selectChip\(this,'([^']+)'/);
+    if (m) data['pchip_' + m[1]] = el.textContent.trim();
+  });
   ['sig-consent'].forEach(id => {
     const sig = getSigGlobal(id);
     if (sig) data['sig_' + id] = sig;
@@ -3448,6 +3623,18 @@ function restorePatientSession(data) {
     if (key.startsWith('yn_') || key.startsWith('checked_') || key.startsWith('sig_') || key.startsWith('cond_yes_')) return;
     var el = document.getElementById(key);
     if (el && data[key] !== undefined) el.value = data[key];
+  });
+  if (data['pt-dominant']) {
+    var domBtn = document.getElementById(data['pt-dominant'] === 'Left' ? 'dom-left' : 'dom-right');
+    if (domBtn) domBtn.classList.add(data['pt-dominant'] === 'Left' ? 'selected-yes' : 'selected-no');
+  }
+  Object.keys(data).forEach(function(key) {
+    if (!key.startsWith('pchip_')) return;
+    var group = key.slice(6), val = data[key];
+    document.querySelectorAll('#screen-patient .option-chip').forEach(function(chip) {
+      if ((chip.getAttribute('onclick') || '').indexOf("selectChip(this,'" + group + "'") === -1) return;
+      chip.classList.toggle('selected-normal', chip.textContent.trim() === val);
+    });
   });
   Object.keys(data).forEach(function(key) {
     if (!key.startsWith('yn_')) return;
@@ -4123,7 +4310,7 @@ function checkHRBreach(inputEl) {
     return;
   }
 
-  var sentence = 'Peak HR ' + val + ' bpm — 85% maximum HR (' + max85 + ' bpm) exceeded during this task.';
+  var sentence = '85% max HR exceeded — peak HR ' + val + ' bpm (85% max: ' + max85 + ' bpm).';
   var ta = findHRLinkedTextarea(inputEl);
 
   if (ta) {
@@ -4163,39 +4350,37 @@ function selectExertion(chip, text) {
   if (!exertionDiv) return;
   exertionDiv.querySelectorAll('.prompt-chip').forEach(function(c) { c.classList.remove('selected'); });
   chip.classList.add('selected');
-  var container = exertionDiv.closest('.clin-card, .clinician-section');
-  var ta = container ? container.querySelector('.smart-textarea') : null;
+
+  // The HR input that spawned these chips: checkHRBreach sets input.dataset.hrBreachId = chips div id
+  var peakInput = exertionDiv.id ? document.querySelector('[data-hr-breach-id="' + exertionDiv.id + '"]') : null;
+  var ta = peakInput ? findHRLinkedTextarea(peakInput) : null;
+  if (!ta) {
+    var container = exertionDiv.closest('.clin-card, .clinician-section');
+    ta = container ? container.querySelector('.smart-textarea') : null;
+  }
+
   if (ta) {
     var max85 = window._maxHR85 || 0;
-    var card = exertionDiv.closest('.clin-card, .clinician-section, .postural-test-card');
-    var peakInput = card ? card.querySelector('input[data-hr-field="peak"]') : null;
     var peakVal = peakInput ? parseFloat(peakInput.value) : NaN;
-
     var breachLine = '';
     if (max85 > 0 && !isNaN(peakVal) && peakVal > max85) {
-      breachLine = 'Peak HR ' + peakVal + ' bpm — 85% maximum HR (' + max85 + ' bpm) exceeded during this task.';
+      breachLine = '85% max HR exceeded — peak HR ' + peakVal + ' bpm (85% max: ' + max85 + ' bpm).';
     }
 
-    var current = ta.value;
-    var prevBreach = exertionDiv.dataset.prevBreach || ta.dataset.hrAutoText || '';
-    var prevExertion = exertionDiv.dataset.prevExertion || '';
-    if (prevBreach) {
-      current = current.split('\n').filter(function(l) { return l.trim() !== prevBreach.trim(); }).join('\n');
-    }
-    if (prevExertion) {
-      current = current.split('\n').filter(function(l) { return l.trim() !== prevExertion.trim(); }).join('\n');
-    }
-    current = current.trim();
+    // Strip any previous breach/exertion lines (old or new format) so nothing duplicates
+    var kept = ta.value.split('\n').filter(function(l) {
+      var t = l.trim();
+      if (/^85% max HR exceeded/.test(t)) return false;
+      if (/^Peak HR .+ exceeded during this task\.$/.test(t)) return false;
+      if (/^Signs of exertion observed:/.test(t)) return false;
+      return true;
+    }).join('\n').trim();
 
-    var exertionLine = 'Signs of exertion observed: ' + text + '.';
     var parts = [];
     if (breachLine) parts.push(breachLine);
-    if (current) parts.push(current);
-    parts.push(exertionLine);
+    if (kept) parts.push(kept);
+    parts.push('Signs of exertion observed: ' + text + '.');
     ta.value = parts.join('\n');
-
-    exertionDiv.dataset.prevExertion = exertionLine;
-    exertionDiv.dataset.prevBreach = breachLine;
     if (breachLine) ta.dataset.hrAutoText = breachLine;
   }
   if (typeof saveClinicianDataToStorage === 'function') saveClinicianDataToStorage();
@@ -4263,6 +4448,16 @@ function loadPatientDataIntoClinician() {
       document.querySelectorAll('.checkbox-item').forEach(function(item) {
         const lbl = item.querySelector('.checkbox-label');
         if (lbl && lbl.textContent.trim() === label) item.classList.add('checked');
+      });
+    });
+
+    // 4.5 Restore patient option-chip selections (smoking, health rating etc.)
+    Object.keys(data).forEach(function(key) {
+      if (!key.startsWith('pchip_')) return;
+      const group = key.slice(6), val = data[key];
+      document.querySelectorAll('#screen-patient .option-chip').forEach(function(chip) {
+        if ((chip.getAttribute('onclick') || '').indexOf("selectChip(this,'" + group + "'") === -1) return;
+        chip.classList.toggle('selected-normal', chip.textContent.trim() === val);
       });
     });
 
@@ -4388,6 +4583,19 @@ function selectDominant(btn, val) {
   document.getElementById('dom-left').className = 'yn-btn';
   document.getElementById('dom-right').className = 'yn-btn';
   btn.classList.add(val === 'Left' ? 'selected-yes' : 'selected-no');
+  var hidden = document.getElementById('pt-dominant');
+  if (hidden) hidden.value = val;
+  if (typeof savePatientDataDebounced === 'function') savePatientDataDebounced();
+}
+
+function getPatientDominantHand() {
+  var dom = document.getElementById('pt-dominant')?.value;
+  if (dom) return dom;
+  try {
+    var stored = localStorage.getItem('aim_patient_data');
+    if (stored) { var d = JSON.parse(stored); return d['pt-dominant'] || ''; }
+  } catch(e) {}
+  return '';
 }
 
 function initSig(canvasId, phId) {
@@ -4674,13 +4882,18 @@ function getGripNorm(side, age, gender) {
   const norms = isMale ? GRIP_NORMS.male : GRIP_NORMS.female;
   const ageNum = parseInt(age);
   if (isNaN(ageNum) || ageNum < 15) return null;
+  // Table assumes right-dominant: row[2] = dominant-hand norm, row[3] = non-dominant.
+  // Left-handed applicant: their LEFT hand compares against the dominant column.
+  const isLeftHanded = (getPatientDominantHand() || 'Right').toLowerCase().startsWith('l');
+  const useDominantColumn = isLeftHanded ? (side === 'l') : (side === 'r');
   for (let i = 0; i < norms.length; i++) {
     const row = norms[i];
     if (ageNum >= row[0] && ageNum <= row[1]) {
-      return side === 'r' ? row[2] : row[3];
+      return useDominantColumn ? row[2] : row[3];
     }
   }
-  return norms[norms.length - 1][2]; // fallback to oldest age group
+  const last = norms[norms.length - 1];
+  return useDominantColumn ? last[2] : last[3]; // fallback to oldest age group
 }
 
 function getPatientDOB() {
@@ -5537,7 +5750,8 @@ function preFillMSK() {
     }
 
     const isNormal = finding.toLowerCase().includes('normal') ||
-                     finding.toLowerCase().includes('within');
+                     finding.toLowerCase().includes('within') ||
+                     finding.toLowerCase().includes('full range');
     if (isNormal) {
       ta.value = `${testName.split('(')[0].trim()} — within normal limits. No pain, weakness or restriction identified.`;
     } else {
@@ -6211,15 +6425,16 @@ prefilledStyle.textContent = `
 `;
 document.head.appendChild(prefilledStyle);
 
-function generatePDF() {
-  const btn = event?.target || document.querySelector('[onclick="generatePDF()"]');
+function finaliseAssessment() {
+  const btn = event?.target || document.querySelector('[onclick="finaliseAssessment()"]');
   const origText = btn ? btn.textContent : '';
   function restoreBtn() { if (btn) { btn.textContent = origText; btn.disabled = false; } }
-  if (btn) { btn.textContent = 'Preparing...'; btn.disabled = true; }
+  if (btn) { btn.textContent = 'Finalising…'; btn.disabled = true; }
 
   function tryBuild() {
-    try { buildPDF(); clearClinicianSession(); clearPatientSession(); restoreBtn(); }
-    catch(e) { restoreBtn(); console.error('PDF error:', e); alert('PDF export error: ' + e.message); }
+    finaliseAssessmentAsync().then(restoreBtn).catch(function(e) {
+      restoreBtn(); console.error('Finalise error:', e); alert('Finalise error: ' + e.message);
+    });
   }
 
   if (window.jspdf && window.jspdf.jsPDF) {
@@ -6230,6 +6445,69 @@ function generatePDF() {
     s.onload = function() { setTimeout(tryBuild, 100); };
     s.onerror = function() { restoreBtn(); alert('Could not load PDF library. Check internet connection.'); };
     document.head.appendChild(s);
+  }
+}
+
+async function finaliseAssessmentAsync() {
+  var out = buildPDF();
+  if (!out || !out.doc) throw new Error('PDF could not be generated.');
+  var blob = out.doc.output('blob');
+  var token = window._currentToken;
+  var path = (token || 'manual-' + new Date().toISOString().split('T')[0] + '-' + Math.random().toString(36).slice(2, 8)) + '/' + out.filename;
+
+  try {
+    await sbStorageUpload(path, blob);
+  } catch(e) {
+    // Never lose a finished report — fall back to a local download
+    out.doc.save(out.filename);
+    throw new Error('Upload to the report store failed, so the PDF was downloaded locally instead.\n\n' + e.message);
+  }
+
+  if (token) {
+    try { await sbUpdate('appointments', 'token=eq.' + token, { status: 'finalised', pdf_path: path, finalised_at: new Date().toISOString() }); } catch(e) { console.warn('[PEMA] finalise status update failed:', e); }
+    try { await sbDelete('questionnaire_responses', 'token=eq.' + token); } catch(e) { console.warn('[PEMA] questionnaire cleanup failed:', e); }
+    try { await sbDelete('clinician_progress', 'token=eq.' + token); } catch(e) { console.warn('[PEMA] progress cleanup failed:', e); }
+  }
+
+  clearPatientSession();
+  localStorage.removeItem('aim_clinician_data');
+  localStorage.removeItem('aim_clinician_timestamp');
+  window._currentToken = null;
+
+  showToast('Assessment finalised — export the PDF from the dashboard.');
+  showScreen('screen-portal');
+  loadUpcomingAppointments();
+}
+
+async function exportReportPDF(btnEl, token) {
+  var orig = btnEl ? btnEl.textContent : '';
+  if (btnEl) { btnEl.textContent = 'Downloading…'; btnEl.disabled = true; }
+  try {
+    var rows = await sbSelect('appointments', 'token=eq.' + token + '&select=pdf_path');
+    var path = rows && rows[0] && rows[0].pdf_path;
+    if (!path) throw new Error('No PDF is stored for this appointment.');
+    var blob = await sbStorageDownload(path);
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = path.split('/').pop();
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function() { URL.revokeObjectURL(a.href); }, 10000);
+  } catch(e) { alert('Export failed: ' + e.message); }
+  if (btnEl) { btnEl.textContent = orig; btnEl.disabled = false; }
+}
+
+async function markReportExported(btnEl, token) {
+  if (!confirm('Mark as exported?\n\nThe stored PDF will be permanently deleted from the server and this appointment will leave the active list.')) return;
+  if (btnEl) { btnEl.textContent = 'Removing…'; btnEl.disabled = true; }
+  try {
+    var rows = await sbSelect('appointments', 'token=eq.' + token + '&select=pdf_path');
+    var path = rows && rows[0] && rows[0].pdf_path;
+    if (path) { try { await sbStorageDelete(path); } catch(e) { console.warn('[PEMA] PDF delete failed:', e); } }
+    await sbUpdate('appointments', 'token=eq.' + token, { status: 'exported', pdf_path: null });
+    loadUpcomingAppointments();
+  } catch(e) {
+    alert('Failed: ' + e.message);
+    if (btnEl) { btnEl.textContent = 'Mark Exported'; btnEl.disabled = false; }
   }
 }
 
@@ -6941,38 +7219,9 @@ function buildPDF() {
   doc.text('CONFIDENTIAL MEDICAL DOCUMENT',PW/2,y+10,{align:'center'});
   drawFooter();
 
-  const fname = (ptName.replace(/\s+/g, '_')) || 'Applicant';
   const dateStr = new Date().toISOString().split('T')[0];
   const filename = 'AIM_PEMA_' + (ptLast.replace(/\s+/g, '_') || 'Applicant') + '_' + dateStr + '.pdf';
-
-  function doDownloadFallback() {
-    doc.save(filename);
-    clearPatientSession();
-    handleExportSupabaseCleanup();
-  }
-
-  if (navigator.canShare) {
-    var _blob = doc.output('blob');
-    var _pdfFile = new File([_blob], filename, { type: 'application/pdf' });
-    if (navigator.canShare({ files: [_pdfFile] })) {
-      var _clientEmail = window._activeClient ? window._activeClient.email : '';
-      var _shareTitle = _clientEmail ? 'AIM PEMA Report — send to ' + _clientEmail : 'AIM PEMA Report';
-      navigator.share({
-        files: [_pdfFile],
-        title: _shareTitle,
-        text: 'Pre-Employment Medical Assessment — ' + (ptLast || 'Applicant')
-      }).then(function() {
-        clearPatientSession();
-        handleExportSupabaseCleanup();
-      }).catch(function(err) {
-        if (err.name !== 'AbortError') doDownloadFallback();
-      });
-    } else {
-      doDownloadFallback();
-    }
-  } else {
-    doDownloadFallback();
-  }
+  return { doc: doc, filename: filename };
 }
 
 
@@ -7049,7 +7298,7 @@ const mskTests = [
   { name: 'Ankle Stability', method: '(Anterior Draw / Inversion / Eversion)', opts: ['Normal','Pain','Laxity'] },
   { name: 'Hip Testing', method: "(FABER's / Quadrant / Squeeze)", opts: ['Normal','Pain','Weakness'] },
   { name: 'Thomas Test', method: '(Hip flexor length — assess L & R)', opts: ['Normal bilaterally','Mild tightness — Left','Mild tightness — Right','Mild tightness — Bilateral','Significant restriction — Left','Significant restriction — Right','Significant restriction — Bilateral'] },
-  { name: 'Straight Leg Raise', method: '(Lumbar neural tension — record L & R separately)', opts: ['Full range bilaterally (90°+)','Limited — Left (<60°)','Limited — Left (60–90°)','Limited — Right (<60°)','Limited — Right (60–90°)','Limited bilateral','Positive neural tension — Left','Positive neural tension — Right','Positive bilateral'] },
+  { name: 'Straight Leg Raise', method: '(Lumbar neural tension — record L & R separately)', opts: ['Full range bilaterally (90°+)','Left 60–90° (normal range)','Right 60–90° (normal range)','Limited — Left (<60°)','Limited — Right (<60°)','Limited bilateral (<60°)','Positive neural tension — Left','Positive neural tension — Right','Positive bilateral'] },
   { name: 'Slump Test', method: '(Neural mechanosensitivity)', opts: ['Normal','Pain — L','Pain — R','Pain — Bilateral','Restricted'] },
   { name: 'Resisted Wrist Extension', method: '(Lateral epicondyle loading)', opts: ['Normal bilaterally','Pain — Right','Pain — Left','Pain — Bilateral'] },
   { name: 'Prone Plank Hold', method: '(Core stability — 90 sec threshold)', opts: ['Threshold achieved (≥90 sec)','Threshold not reached — time recorded','Not completed'] },
@@ -7801,6 +8050,10 @@ function collectPatientFormData() {
   document.querySelectorAll('#screen-patient .checkbox-item.checked .checkbox-label').forEach(function(el) {
     data['checked_' + el.textContent.trim()] = true;
   });
+  document.querySelectorAll('#screen-patient .option-chip.selected-normal').forEach(function(el) {
+    var m = (el.getAttribute('onclick') || '').match(/selectChip\(this,'([^']+)'/);
+    if (m) data['pchip_' + m[1]] = el.textContent.trim();
+  });
   var sig = getSigGlobal('sig-consent');
   if (sig) data['sig_sig-consent'] = sig;
   document.querySelectorAll('.cy-btn.yes-sel').forEach(function(btn) {
@@ -7872,8 +8125,17 @@ async function loadUpcomingAppointments() {
   container.innerHTML = '<div style="color:var(--mid);font-size:13px;padding:4px 0">Loading…</div>';
   try {
     var rows = await sbSelect('appointments',
-      'status=neq.exported&order=appointment_date.asc,appointment_time.asc');
-    renderApptQueue(rows || []);
+      'status=not.in.(exported,expired)&order=appointment_date.asc,appointment_time.asc');
+    // Strict 30-day retention: purge any finalised report older than 30 days
+    var cutoff = Date.now() - 30 * 24 * 3600 * 1000;
+    (rows || []).forEach(function(a) {
+      if (a.status === 'finalised' && a.finalised_at && new Date(a.finalised_at).getTime() < cutoff) {
+        if (a.pdf_path) sbStorageDelete(a.pdf_path).catch(function(e) { console.warn('[PEMA] expiry delete failed:', e); });
+        sbUpdate('appointments', 'token=eq.' + a.token, { status: 'expired', pdf_path: null }).catch(function() {});
+        a.status = 'expired';
+      }
+    });
+    renderApptQueue((rows || []).filter(function(a) { return a.status !== 'expired'; }));
   } catch(e) {
     console.error('[PEMA] loadUpcomingAppointments error:', e);
     container.innerHTML = '<div style="color:var(--mid);font-size:13px;padding:4px 0">Unable to load — check connection.</div>';
@@ -7895,7 +8157,11 @@ function renderApptQueue(appts) {
     var dateStr = d ? d.toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' }) : '—';
     var timeStr = a.appointment_time ? formatApptTime(a.appointment_time) : '—';
 
-    var badge = isComplete
+    var isFinalised = a.status === 'finalised';
+
+    var badge = isFinalised
+      ? '<span style="display:inline-block;background:#6d6f57;color:white;padding:3px 9px;border-radius:4px;font-size:11px;font-weight:600">📄 Finalised — report ready</span>'
+      : isComplete
       ? '<span style="display:inline-block;background:#4a7c59;color:white;padding:3px 9px;border-radius:4px;font-size:11px;font-weight:600">✓ Questionnaire Complete</span>'
       : '<span style="display:inline-block;background:rgba(255,255,255,0.08);color:var(--light);padding:3px 9px;border-radius:4px;font-size:11px">Questionnaire Pending</span>';
 
@@ -7905,6 +8171,12 @@ function renderApptQueue(appts) {
     var startOnclick = isComplete ? 'onclick="startPEMA(this,\'' + a.token + '\')" ' : '';
     var startDisabled = isComplete ? '' : 'disabled ';
     var startBtn = '<button ' + startOnclick + startDisabled + 'style="' + startStyle + '">Start PEMA →</button>';
+
+    if (isFinalised) {
+      startBtn =
+        '<button onclick="exportReportPDF(this,\'' + a.token + '\')" style="background:var(--olive);border:none;color:white;padding:10px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:\'DM Sans\',sans-serif;min-height:44px;white-space:nowrap">Export PDF ⬇</button>' +
+        '<button onclick="markReportExported(this,\'' + a.token + '\')" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);color:var(--light);padding:8px 14px;border-radius:8px;font-size:12px;cursor:pointer;font-family:\'DM Sans\',sans-serif;white-space:nowrap">Mark Exported</button>';
+    }
 
     var detailsBtn = '<button onclick="(function(el){el.style.display=el.style.display===\'block\'?\'none\':\'block\';})(document.getElementById(\'' + cardId + '\'))" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:var(--light);padding:5px 10px;border-radius:6px;font-size:11px;cursor:pointer;font-family:\'DM Sans\',sans-serif;white-space:nowrap">Details ▾</button>';
 
@@ -8064,16 +8336,8 @@ function showToast(msg) {
   }, 3000);
 }
 
-// ─── SUPABASE CLEANUP ON PDF EXPORT ─────────────────────────────────────────
-function handleExportSupabaseCleanup() {
-  var token = window._currentToken;
-  if (!token) return;
-  sbDelete('questionnaire_responses', 'token=eq.' + token)
-    .catch(function(e) { console.warn('SB delete failed:', e); });
-  sbUpdate('appointments', 'token=eq.' + token, { status: 'exported' })
-    .catch(function(e) { console.warn('SB update failed:', e); });
-  window._currentToken = null;
-}
+// (Export cleanup now lives in finaliseAssessmentAsync — reports upload to Supabase
+//  Storage and are deleted on "Mark Exported" or after 30 days.)
 
 
 function drawAudiogram() {
@@ -8089,7 +8353,8 @@ function drawAudiogram() {
   var ml = 55, mr = 20, mt = 20, mb = 45;
   var pw = W - ml - mr;
   var ph = H - mt - mb;
-  var freqs = [125, 250, 500, 750, 1000, 1500, 2000, 3000, 4000, 6000, 8000];
+  // Only the 8 tested frequencies — 1:1 with the data table columns, equally spaced
+  var freqs = [500, 1000, 1500, 2000, 3000, 4000, 6000, 8000];
 
   function xForFreq(f) {
     var i = freqs.indexOf(f);
@@ -8111,13 +8376,10 @@ function drawAudiogram() {
     ctx.fillText(db, ml - 6, y);
   }
 
-  var colFreqs = [500, 1000, 1500, 2000, 3000, 4000, 6000, 8000];
   freqs.forEach(function(f) {
     var x = xForFreq(f);
-    if (colFreqs.indexOf(f) !== -1) {
-      ctx.beginPath(); ctx.moveTo(x, mt); ctx.lineTo(x, H - mb);
-      ctx.strokeStyle = '#e8e8e0'; ctx.lineWidth = 1; ctx.stroke();
-    }
+    ctx.beginPath(); ctx.moveTo(x, mt); ctx.lineTo(x, H - mb);
+    ctx.strokeStyle = '#e8e8e0'; ctx.lineWidth = 1; ctx.stroke();
     ctx.fillStyle = '#6b6b65'; ctx.font = '9px sans-serif';
     ctx.textAlign = 'center'; ctx.textBaseline = 'top';
     ctx.fillText(String(f), x, H - mb + 6);
@@ -8276,11 +8538,12 @@ function syncClinicianDataToSupabase(token, data) {
   clearTimeout(_clinSyncTimer);
   _clinSyncTimer = setTimeout(async function() {
     try {
+      var jwt = await getAccessToken();
       await fetch(SUPABASE_URL + '/rest/v1/clinician_progress', {
         method: 'POST',
         headers: {
           'apikey': SUPABASE_ANON_KEY,
-          'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+          'Authorization': 'Bearer ' + (jwt || SUPABASE_ANON_KEY),
           'Content-Type': 'application/json',
           'Prefer': 'resolution=merge-duplicates'
         },
@@ -8387,10 +8650,8 @@ function clearClinicianSession() {
   localStorage.removeItem('aim_clinician_data');
   localStorage.removeItem('aim_clinician_timestamp');
   if (window._currentToken) {
-    fetch(SUPABASE_URL + '/rest/v1/clinician_progress?token=eq.' + encodeURIComponent(window._currentToken), {
-      method: 'DELETE',
-      headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY }
-    }).catch(function(e) { console.warn('[PEMA] Could not delete clinician progress:', e); });
+    sbDelete('clinician_progress', 'token=eq.' + encodeURIComponent(window._currentToken))
+      .catch(function(e) { console.warn('[PEMA] Could not delete clinician progress:', e); });
   }
 }
 
@@ -8536,8 +8797,14 @@ document.addEventListener('DOMContentLoaded', () => {
   wireClinicianAutoSave();
   checkAndShowClinicianRecoveryBanner();
   populateApptClientDropdown();
-  var _isTokenUrl = !!(window.location.pathname.match(/^\/q\/([A-Z0-9]{8})\/?$/i) || new URLSearchParams(window.location.search).get('token'));
-  if (!_isTokenUrl) { loadUpcomingAppointments(); setInterval(function() { try { loadUpcomingAppointments(); } catch(e) {} }, 60000); }
+  var _isTokenUrl = isPatientTokenUrl();
+  var _isPatientMode = new URLSearchParams(window.location.search).get('mode') === 'patient';
+  if (!_isTokenUrl && !_isPatientMode) {
+    if (!getAuthSession()) {
+      showLoginScreen(); // portal is gated behind Supabase Auth — patients on token URLs skip this
+    }
+    loadUpcomingAppointments(); setInterval(function() { try { loadUpcomingAppointments(); } catch(e) {} }, 60000);
+  }
   initTokenMode();
   checkSupabaseConnection().then(function(ok) { showConnectionBanner(!ok); });
   var _audiogramInputTimer;
