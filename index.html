@@ -1465,14 +1465,14 @@
 
 <div id="screen-login" class="screen">
   <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px">
-    <div style="width:100%;max-width:380px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:14px;padding:34px 30px">
-      <div style="font-family:'DM Serif Display',serif;color:white;font-size:26px;margin-bottom:6px;text-align:center">Clinician Sign In</div>
+    <div style="width:100%;max-width:380px;background:white;border:1px solid var(--border);border-radius:14px;padding:34px 30px;box-shadow:0 4px 24px rgba(0,0,0,0.08)">
+      <div style="font-family:'DM Serif Display',serif;color:var(--black);font-size:26px;margin-bottom:6px;text-align:center">Clinician Sign In</div>
       <div style="color:var(--mid);font-size:13px;text-align:center;margin-bottom:26px">Absolute Injury Management — PEMA Portal</div>
       <label style="display:block;font-size:11px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">Email</label>
-      <input id="login-email" type="email" autocomplete="username" style="width:100%;padding:12px 14px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15);border-radius:8px;color:white;font-size:15px;font-family:'DM Sans',sans-serif;outline:none;margin-bottom:16px" placeholder="you@absoluteim.com.au">
+      <input id="login-email" type="email" autocomplete="username" style="width:100%;padding:12px 14px;background:white;border:1px solid var(--border);border-radius:8px;color:var(--black);font-size:15px;font-family:'DM Sans',sans-serif;outline:none;margin-bottom:16px" placeholder="you@absoluteim.com.au">
       <label style="display:block;font-size:11px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">Password</label>
-      <input id="login-password" type="password" autocomplete="current-password" style="width:100%;padding:12px 14px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15);border-radius:8px;color:white;font-size:15px;font-family:'DM Sans',sans-serif;outline:none" placeholder="••••••••" onkeydown="if(event.key==='Enter')doPortalLogin()">
-      <div id="login-error" style="display:none;color:#e08585;font-size:13px;margin-top:12px;line-height:1.5"></div>
+      <input id="login-password" type="password" autocomplete="current-password" style="width:100%;padding:12px 14px;background:white;border:1px solid var(--border);border-radius:8px;color:var(--black);font-size:15px;font-family:'DM Sans',sans-serif;outline:none" placeholder="••••••••" onkeydown="if(event.key==='Enter')doPortalLogin()">
+      <div id="login-error" style="display:none;color:var(--error,#8b3a2f);font-size:13px;margin-top:12px;line-height:1.5"></div>
       <button id="login-btn" onclick="doPortalLogin()" style="width:100%;margin-top:20px;background:var(--olive);border:none;color:white;padding:13px;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">Sign In</button>
     </div>
   </div>
@@ -3125,7 +3125,7 @@
             </div>
             <div class="form-row">
               <div class="form-group">
-                <label>AHPRA / Registration Number</label>
+                <label>Provider Number</label>
                 <input class="form-control" id="assessor-ahpra" placeholder="PHY0012345">
               </div>
               <div class="form-group">
@@ -5749,6 +5749,25 @@ function preFillMSK() {
       return;
     }
 
+    if (testName.includes('Straight Leg Raise')) {
+      // SLR allows one selection per side — read ALL selected chips
+      const sel = Array.from(card.querySelectorAll('.option-chip.selected-normal')).map(function(c) { return c.textContent.trim(); });
+      if (!sel.length) return;
+      const abnormals = sel.filter(function(s) { return !/normal range|full range/i.test(s); });
+      if (!canOverwrite(ta)) return;
+      if (!abnormals.length) {
+        ta.value = 'Straight leg raise within normal limits bilaterally. No pain, restriction or neural tension identified.';
+      } else {
+        ta.value = 'Straight leg raise — ' + sel.map(function(s) { return s.toLowerCase(); }).join('; ') + '. Finding documented for employer awareness.';
+        window._findingFlags = window._findingFlags || [];
+        abnormals.forEach(function(a) {
+          window._findingFlags.push({ section: 'Straight Leg Raise', finding: 'SLR: ' + a, rec: null });
+        });
+      }
+      ta.classList.add('prefilled');
+      return;
+    }
+
     const isNormal = finding.toLowerCase().includes('normal') ||
                      finding.toLowerCase().includes('within') ||
                      finding.toLowerCase().includes('full range');
@@ -6464,7 +6483,13 @@ async function finaliseAssessmentAsync() {
   }
 
   if (token) {
-    try { await sbUpdate('appointments', 'token=eq.' + token, { status: 'finalised', pdf_path: path, finalised_at: new Date().toISOString() }); } catch(e) { console.warn('[PEMA] finalise status update failed:', e); }
+    try {
+      await sbUpdate('appointments', 'token=eq.' + token, { status: 'finalised', pdf_path: path, finalised_at: new Date().toISOString() });
+    } catch(e) {
+      console.warn('[PEMA] finalise status update failed:', e);
+      out.doc.save(out.filename); // status update failed — report would be stranded invisible in storage, so also download locally
+      alert('The PDF was uploaded, but the appointment record could not be updated (' + e.message + ').\n\nA local copy has been downloaded so the report is not lost. If this mentions a missing column, the database migration has not been run.');
+    }
     try { await sbDelete('questionnaire_responses', 'token=eq.' + token); } catch(e) { console.warn('[PEMA] questionnaire cleanup failed:', e); }
     try { await sbDelete('clinician_progress', 'token=eq.' + token); } catch(e) { console.warn('[PEMA] progress cleanup failed:', e); }
   }
@@ -7050,7 +7075,11 @@ function buildPDF() {
     checkY(18);
     const card=document.querySelectorAll('#msk-cards .clin-card')[i];
     let finding='—',notes='—';
-    if(card){ finding=card.querySelector('.option-chip.selected-normal')?.textContent?.trim()||'—'; notes=card.querySelector('.smart-textarea')?.value?.trim()||'—'; }
+    if(card){
+      const selChips=Array.from(card.querySelectorAll('.option-chip.selected-normal')).map(c=>c.textContent.trim());
+      finding=selChips.length?selChips.join('; '):'—';
+      notes=card.querySelector('.smart-textarea')?.value?.trim()||'—';
+    }
     subHdr(test.name+' '+test.method);
     twoCol('Finding',finding,'Notes',notes);
   });
@@ -7189,7 +7218,7 @@ function buildPDF() {
   const assessorEmail=document.getElementById('assessor-email')?.value||'';
   const aQual=assessorSec?.querySelectorAll('input')[1]?.value||'—';
   const aReg=assessorSec?.querySelectorAll('input')[2]?.value||'—';
-  threeCol('Assessor Name',aName,'Qualification',assessorQual,'Registration No.',assessorAHPRA);
+  threeCol('Assessor Name',aName,'Qualification',assessorQual,'Provider No.',assessorAHPRA);
   if(assessorClinic||assessorAddress) twoCol('Clinic',assessorClinic,'Address',assessorAddress||'—');
   if(assessorPhone||assessorEmail) twoCol('Phone',assessorPhone||'—','Email',assessorEmail||'—');
 
@@ -7298,11 +7327,47 @@ const mskTests = [
   { name: 'Ankle Stability', method: '(Anterior Draw / Inversion / Eversion)', opts: ['Normal','Pain','Laxity'] },
   { name: 'Hip Testing', method: "(FABER's / Quadrant / Squeeze)", opts: ['Normal','Pain','Weakness'] },
   { name: 'Thomas Test', method: '(Hip flexor length — assess L & R)', opts: ['Normal bilaterally','Mild tightness — Left','Mild tightness — Right','Mild tightness — Bilateral','Significant restriction — Left','Significant restriction — Right','Significant restriction — Bilateral'] },
-  { name: 'Straight Leg Raise', method: '(Lumbar neural tension — record L & R separately)', opts: ['Full range bilaterally (90°+)','Left 60–90° (normal range)','Right 60–90° (normal range)','Limited — Left (<60°)','Limited — Right (<60°)','Limited bilateral (<60°)','Positive neural tension — Left','Positive neural tension — Right','Positive bilateral'] },
+  { name: 'Straight Leg Raise', method: '(Lumbar neural tension — record L & R separately)', opts: ['Full range bilaterally (90°+)','Bilateral 60–90° (normal range)','Left 60–90° (normal range)','Right 60–90° (normal range)','Limited — Left (<60°)','Limited — Right (<60°)','Limited bilateral (<60°)','Positive neural tension — Left','Positive neural tension — Right','Positive bilateral'] },
   { name: 'Slump Test', method: '(Neural mechanosensitivity)', opts: ['Normal','Pain — L','Pain — R','Pain — Bilateral','Restricted'] },
   { name: 'Resisted Wrist Extension', method: '(Lateral epicondyle loading)', opts: ['Normal bilaterally','Pain — Right','Pain — Left','Pain — Bilateral'] },
   { name: 'Prone Plank Hold', method: '(Core stability — 90 sec threshold)', opts: ['Threshold achieved (≥90 sec)','Threshold not reached — time recorded','Not completed'] },
 ];
+function selectSLR(btn, oi) {
+  var card = btn.closest('.clin-card');
+  if (!card) return;
+  var chips = Array.from(card.querySelectorAll('.option-chip'));
+  var label = btn.textContent.trim();
+  function isBilat(t) { return /bilateral/i.test(t); }
+  function isLeft(t)  { return /Left/.test(t) && !isBilat(t); }
+  function isRight(t) { return /Right/.test(t) && !isBilat(t); }
+
+  if (label === 'Bilateral 60–90° (normal range)') {
+    // Quick-select: activates BOTH side selections — identical end state to
+    // tapping Left 60–90° and Right 60–90° individually
+    chips.forEach(function(c) { c.classList.remove('selected-normal'); });
+    chips.forEach(function(c) {
+      var t = c.textContent.trim();
+      if (t === 'Left 60–90° (normal range)' || t === 'Right 60–90° (normal range)') c.classList.add('selected-normal');
+    });
+  } else if (isBilat(label)) {
+    // A bilateral result describes both legs — exclusive selection
+    chips.forEach(function(c) { c.classList.remove('selected-normal'); });
+    btn.classList.add('selected-normal');
+  } else {
+    // Side result: replace same-side + bilateral selections, keep the other side
+    chips.forEach(function(c) {
+      var t = c.textContent.trim();
+      if (isBilat(t) || (isLeft(label) && isLeft(t)) || (isRight(label) && isRight(t))) c.classList.remove('selected-normal');
+    });
+    btn.classList.add('selected-normal');
+  }
+
+  var ta = card.querySelector('.smart-textarea');
+  if (ta && ta.classList.contains('prefilled')) { ta.value = ''; ta.classList.remove('prefilled'); }
+  preFillMSK();
+  if (typeof saveClinicianDataToStorage === 'function') saveClinicianDataToStorage();
+}
+
 function renderMSK() {
   const container = document.getElementById('msk-cards');
   if (!container) return;
@@ -7313,8 +7378,13 @@ function renderMSK() {
     card.className = 'clin-card';
     card.style.marginBottom = '12px';
 
-    const optsHtml = t.opts.map(function(o) {
-      return '<button class="option-chip" onclick="selectChip(this,\'msk-' + i + '\')">' + o + '</button>';
+    const isSLR = t.name === 'Straight Leg Raise';
+    const optsHtml = t.opts.map(function(o, oi) {
+      // Third arg is unused by selectChip but makes each onclick string unique,
+      // so autosave chip keys no longer collide within a test group
+      return isSLR
+        ? '<button class="option-chip" onclick="selectSLR(this,' + oi + ')">' + o + '</button>'
+        : '<button class="option-chip" onclick="selectChip(this,\'msk-' + i + '\',' + oi + ')">' + o + '</button>';
     }).join('');
 
     const slbHtml = isSlb ? (
