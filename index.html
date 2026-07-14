@@ -1512,6 +1512,13 @@
   <div id="new-appt-section" style="width:100%;max-width:600px;margin:32px auto 0;padding:0 16px">
     <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:24px">
       <h3 style="color:white;font-family:'DM Serif Display',serif;font-size:20px;margin:0 0 20px">New Appointment</h3>
+      <div style="margin-bottom:12px">
+        <label style="color:var(--olive-light);font-size:12px;display:block;margin-bottom:4px">Assessment Type *</label>
+        <select id="appt-type" onchange="onApptTypeChange()" style="width:100%;padding:10px 12px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:8px;color:white;font-size:16px;font-family:'DM Sans',sans-serif;box-sizing:border-box;-webkit-appearance:none;appearance:none">
+          <option value="pema">PEMA — Pre-Employment Medical</option>
+          <option value="fce">FCE — Functional Capacity Evaluation</option>
+        </select>
+      </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
         <div>
           <label style="color:var(--olive-light);font-size:12px;display:block;margin-bottom:4px">First Name *</label>
@@ -1546,6 +1553,10 @@
         <label style="color:var(--olive-light);font-size:12px;display:block;margin-bottom:4px">Site / Location</label>
         <input id="appt-site" type="text" placeholder="e.g. Traralgon" style="width:100%;padding:10px 12px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:8px;color:white;font-size:16px;font-family:'DM Sans',sans-serif;box-sizing:border-box">
       </div>
+      <div id="appt-fce-config" style="display:none;margin-bottom:16px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:14px 16px">
+        <div style="color:var(--olive-light);font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:10px">FCE Sections &amp; Tasks for this Referral</div>
+        <div id="appt-fce-config-body" style="color:var(--light);font-size:13px"></div>
+      </div>
       <button id="generate-appt-btn" onclick="createAppointment()" style="width:100%;padding:14px;background:var(--olive);border:none;color:white;border-radius:8px;font-size:16px;font-family:'DM Sans',sans-serif;font-weight:600;cursor:pointer;min-height:44px">Generate Questionnaire Link</button>
       <div id="appt-sms-box" style="display:none;margin-top:16px;background:rgba(74,124,89,0.1);border:1px solid rgba(74,124,89,0.3);border-radius:8px;padding:16px">
         <div style="color:var(--olive-light);font-size:12px;margin-bottom:8px;font-weight:600">TOKEN: <span id="appt-success-token" style="color:white;font-size:14px;letter-spacing:2px;font-family:monospace"></span></div>
@@ -1567,6 +1578,32 @@
 
 </div>
 
+
+<div id="screen-fce" class="screen" style="background:var(--olive-ultra)">
+  <nav class="nav">
+    <div class="nav-brand">
+      <div class="nav-logo"></div>
+      <div>
+        <div class="nav-subtitle" style="color:rgba(255,255,255,0.6);font-size:13px">FCE Assessment</div>
+      </div>
+    </div>
+    <div class="nav-actions">
+      <button class="nav-btn" onclick="showScreen('screen-portal')">← Portal</button>
+    </div>
+  </nav>
+  <div class="page-header">
+    <h1>FCE Assessment — coming in Phase 2</h1>
+    <p>The appointment below has loaded correctly. The FCE recording screens will be built in the next phase.</p>
+  </div>
+  <div style="max-width:760px;margin:24px auto 48px;padding:0 24px">
+    <div class="config-card">
+      <div class="config-card-header"><h3>Loaded Referral</h3><span class="badge badge-olive">FCE</span></div>
+      <div class="config-card-body" id="fce-placeholder-body">
+        <p style="color:var(--mid);font-size:13px">No FCE appointment loaded. Return to the portal and choose "Start FCE" on an appointment.</p>
+      </div>
+    </div>
+  </div>
+</div>
 
 <div id="screen-admin" class="screen">
   <nav class="nav">
@@ -1600,6 +1637,11 @@
       </button>
     </div>
     <div class="admin-content">
+
+      <div id="client-import-banner" style="display:none;background:var(--olive-pale);border:1px solid var(--olive);border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:var(--black)">
+        <div style="margin-bottom:8px"><strong>Client profiles found on this device.</strong> Import them once to the cloud so they sync across all devices.</div>
+        <button onclick="importLocalClientsToCloud(this)" style="background:var(--olive);color:white;border:none;padding:8px 16px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">Import existing clients to cloud</button>
+      </div>
 
       <div class="config-card">
         <div class="config-card-header">
@@ -1646,6 +1688,61 @@
         </div>
       </div>
 
+      <div class="config-card">
+        <div class="config-card-header">
+          <h3>FCE Defaults</h3>
+          <span class="badge badge-olive">Functional Capacity Evaluation</span>
+        </div>
+        <div class="config-card-body">
+          <p style="color:var(--mid);font-size:13px;margin:0 0 14px">Default sections and tasks applied to new FCE referrals for this client. Each referral can still be adjusted when the appointment is created.</p>
+          <div id="fce-defaults-body"><p style="color:var(--mid);font-size:13px;font-style:italic">Loading task library…</p></div>
+          <button onclick="toggleCustomTaskForm()" id="fce-add-task-btn" style="margin-top:14px;background:var(--olive);color:white;border:none;padding:9px 16px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">+ Add Custom Task</button>
+          <div id="fce-custom-task-form" style="display:none;margin-top:14px;border:1px solid var(--border);border-radius:8px;padding:16px;background:var(--olive-ultra,#fafaf7)">
+            <div class="form-row">
+              <div class="form-group">
+                <label>Task Name</label>
+                <input class="form-control" id="fce-ct-name" placeholder="e.g. Machinery + Plant Access/Egress">
+              </div>
+              <div class="form-group">
+                <label>Protocol (shown under task heading)</label>
+                <input class="form-control" id="fce-ct-protocol" placeholder="e.g. 3 repetitions of machine/plant access/egress">
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Heart Rate Recording</label>
+                <select class="form-control" id="fce-ct-hrstyle">
+                  <option value="">None (baseline HR only)</option>
+                  <option value="reps">Per repetition</option>
+                  <option value="intervals">Per time interval</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Number of Rep / Interval HR Fields</label>
+                <input class="form-control" id="fce-ct-hrcount" type="number" min="1" max="8" value="3">
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="fce-ct-mh"> Manual handling rating (stance/posture/control 1–4)</label>
+              </div>
+              <div class="form-group">
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="fce-ct-restriction" checked> Restriction rating (Unrestricted → Unable)</label>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Task-Specific Extra Fields</label>
+              <div id="fce-ct-extra-fields"></div>
+              <button onclick="addCustomTaskExtraField()" style="margin-top:6px;background:none;border:1px dashed var(--border);color:var(--mid);padding:6px 12px;border-radius:6px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif">+ Add extra field</button>
+            </div>
+            <p style="color:var(--mid);font-size:12px;margin:8px 0 12px">Every task automatically includes baseline HR, pain rating 0–10, RPE 0–10 and additional comments.</p>
+            <div style="display:flex;gap:10px">
+              <button onclick="saveCustomTask(this)" style="background:var(--olive);color:white;border:none;padding:9px 18px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">Save Task</button>
+              <button onclick="toggleCustomTaskForm()" style="background:none;border:1px solid var(--border);color:var(--mid);padding:9px 18px;border-radius:6px;font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif">Cancel</button>
+            </div>
+          </div>
+        </div>
+      </div>
 
       <div class="config-card">
         <div class="config-card-header">
@@ -3340,6 +3437,8 @@ async function doPortalLogin() {
     if (pwEl) pwEl.value = '';
     showScreen('screen-portal');
     loadUpcomingAppointments();
+    loadClientsFromCloud();
+    loadFceTasks();
   } catch(e) {
     if (err) { err.textContent = e.message; err.style.display = 'block'; }
   }
@@ -3398,50 +3497,40 @@ async function handleLogoUpload(input, type) {
     reader.readAsDataURL(file);
     return;
   }
-  // Client logo → Supabase Storage
+  // Client logo → base64 data URL stored in clients.logo_base64 (syncs across devices)
   const clientId = getCurrentClientId();
-  const ext = (file.name.split('.').pop() || 'png').toLowerCase();
-  const path = clientId + '/logo.' + ext;
-  try {
-    const res = await fetch(SUPABASE_URL + '/storage/v1/object/client-logos/' + path, {
-      method: 'POST',
-      headers: {
-        'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
-        'apikey': SUPABASE_ANON_KEY,
-        'Content-Type': file.type || 'image/png',
-        'x-upsert': 'true'
-      },
-      body: file
-    });
-    if (!res.ok) throw new Error('Upload failed: ' + res.status);
-    const publicUrl = SUPABASE_URL + '/storage/v1/object/public/client-logos/' + path;
-    saveClientLogo(clientId, publicUrl);
-    window._clientLogoBase64 = null;
-    prefetchClientLogo();
-    const prev = document.getElementById('client-logo-preview');
-    const lbl = document.getElementById('client-logo-label');
-    if (prev) { prev.src = publicUrl; prev.style.display = 'block'; }
-    if (lbl) lbl.style.display = 'none';
-    showSaveConfirmation();
-  } catch(e) {
-    console.error('Logo upload error:', e);
-    showErrorToast('Logo upload failed — check connection and try again');
-  }
+  if (clientId === 'generic') { showErrorToast('Client profiles have not loaded from the cloud yet — check connection.'); return; }
+  const reader = new FileReader();
+  reader.onload = async function(e) {
+    const dataUrl = e.target.result;
+    try {
+      await sbUpdate('clients', 'id=eq.' + clientId, { logo_base64: dataUrl });
+      const clients = getClients();
+      const idx = clients.findIndex(function(c) { return c.id === clientId; });
+      if (idx >= 0) clients[idx].logoUrl = dataUrl;
+      saveClientsCache();
+      window._clientLogoBase64 = dataUrl;
+      const prev = document.getElementById('client-logo-preview');
+      const lbl = document.getElementById('client-logo-label');
+      if (prev) { prev.src = dataUrl; prev.style.display = 'block'; }
+      if (lbl) lbl.style.display = 'none';
+      showSaveConfirmation();
+    } catch(err) {
+      console.error('Logo upload error:', err);
+      showErrorToast('Logo save failed — check connection and try again');
+    }
+  };
+  reader.readAsDataURL(file);
 }
 
 function loadSavedLogos() {
   updateNavLogo(AIM_LOGO_EMBEDDED);
 }
 
-function saveClientLogo(id, logoUrl) {
-  const clients = getClients();
-  const idx = clients.findIndex(function(c){ return c.id === id; });
-  if (idx >= 0) { clients[idx].logoUrl = logoUrl; saveClients(clients); }
-}
-
 async function prefetchClientLogo() {
   const client = window._activeClient;
   if (!client || !client.logoUrl) return;
+  if (client.logoUrl.indexOf('data:') === 0) { window._clientLogoBase64 = client.logoUrl; return; }
   try {
     const res = await fetch(client.logoUrl);
     const blob = await res.blob();
@@ -5077,35 +5166,157 @@ function selectClient(btn) {
   btn.classList.add('active');
 }
 const DEFAULT_CLIENTS = [
-  { id:'generic', name:'Generic / Default', classifications:['Medium (9–23 kg occasional)'], email:'', invoiceEmail:'', logoUrl:null },
+  { id:'generic', name:'Generic / Default', classifications:['Medium (9–23 kg occasional)'], email:'', invoiceEmail:'', logoUrl:null, defaultConfig:{} },
 ];
 
-function getClients() {
-  try {
-    const stored = localStorage.getItem('aim_clients');
-    if (!stored) return [...DEFAULT_CLIENTS];
-    const clients = JSON.parse(stored);
-    // Migrate old single-classification to array
-    clients.forEach(function(c) {
-      if (!c.classifications) {
-        c.classifications = c.classification ? [c.classification] : ['Medium (9–23 kg occasional)'];
-      }
-    });
-    return clients;
-  } catch(e) { return [...DEFAULT_CLIENTS]; }
+// ─── CLOUD CLIENT PROFILES (Supabase clients table) ─────────────────────────
+// getClients() stays synchronous for all existing call sites: it reads an
+// in-memory cache filled by loadClientsFromCloud(), falling back to a
+// localStorage mirror (offline), then to DEFAULT_CLIENTS.
+function mapClientRow(row) {
+  return {
+    id: row.id,
+    name: row.name || '',
+    classifications: (row.classifications && row.classifications.length) ? row.classifications : ['Medium (9–23 kg occasional)'],
+    email: row.email || '',
+    invoiceEmail: row.invoice_email || '',
+    logoUrl: row.logo_base64 || null,
+    determinationTemplate: row.determination_template || 'standard',
+    defaultConfig: row.default_config || {}
+  };
 }
 
-function saveClients(clients) {
-  localStorage.setItem('aim_clients', JSON.stringify(clients));
+async function loadClientsFromCloud() {
+  if (isPatientTokenUrl()) return; // patients have no RLS access to clients
+  try {
+    var rows = await sbSelect('clients', 'select=*&order=name.asc');
+    window._clientsCache = (rows || []).map(mapClientRow);
+    try { localStorage.setItem('aim_clients_cloud_cache', JSON.stringify(window._clientsCache)); } catch(e) {}
+    var clients = getClients();
+    if (clients.length && !clients.find(function(c) { return c.id === getCurrentClientId(); })) {
+      setCurrentClientId(clients[0].id);
+    }
+    renderClientSidebar();
+    loadClientIntoForm(getCurrentClientId());
+    applyClientToAssessment(getCurrentClientId());
+    populateApptClientDropdown();
+    maybeOfferClientImport();
+  } catch(e) {
+    console.error('[AIM] loadClientsFromCloud failed:', e);
+    showErrorToast('Unable to load client profiles — check connection.');
+  }
+}
+
+function getClients() {
+  if (window._clientsCache && window._clientsCache.length) return window._clientsCache;
+  try {
+    var cached = JSON.parse(localStorage.getItem('aim_clients_cloud_cache') || 'null');
+    if (cached && cached.length) return cached;
+  } catch(e) {}
+  return [...DEFAULT_CLIENTS];
+}
+
+function saveClientsCache() {
+  try { localStorage.setItem('aim_clients_cloud_cache', JSON.stringify(getClients())); } catch(e) {}
+}
+
+function queueClientCloudSave(id) {
+  clearTimeout(window._clientSaveTimer);
+  window._clientSaveTimer = setTimeout(function() { pushClientToCloud(id); }, 800);
+}
+
+async function pushClientToCloud(id) {
+  var client = getClients().find(function(c) { return c.id === id; });
+  if (!client || id === 'generic') return; // 'generic' = offline fallback only, not a cloud row
+  try {
+    await sbUpdate('clients', 'id=eq.' + id, {
+      name: client.name,
+      email: client.email || '',
+      invoice_email: client.invoiceEmail || '',
+      classifications: client.classifications || [],
+      default_config: client.defaultConfig || {}
+    });
+    saveClientsCache();
+  } catch(e) {
+    console.error('[AIM] client save failed:', e);
+    showErrorToast('Client save failed — check connection and try again.');
+  }
 }
 
 function getCurrentClientId() {
-  return localStorage.getItem('aim_current_client') || 'generic';
+  return localStorage.getItem('aim_current_client') || (getClients()[0] || {}).id || 'generic';
 }
 
 function setCurrentClientId(id) {
   localStorage.setItem('aim_current_client', id);
   window._currentClientId = id;
+}
+
+// One-time migration of legacy per-device localStorage client profiles
+function maybeOfferClientImport() {
+  var banner = document.getElementById('client-import-banner');
+  if (!banner) return;
+  var show = false;
+  if (!localStorage.getItem('aim_clients_migrated')) {
+    try {
+      var legacy = JSON.parse(localStorage.getItem('aim_clients') || '[]');
+      show = legacy.some(function(c) { return c.id !== 'generic'; });
+    } catch(e) {}
+  }
+  banner.style.display = show ? 'block' : 'none';
+}
+
+async function importLocalClientsToCloud(btn) {
+  var legacy = [];
+  try { legacy = JSON.parse(localStorage.getItem('aim_clients') || '[]'); } catch(e) {}
+  var candidates = legacy.filter(function(c) { return c.id !== 'generic' && c.name; });
+  if (!candidates.length) {
+    localStorage.setItem('aim_clients_migrated', '1');
+    maybeOfferClientImport();
+    return;
+  }
+  if (btn) { btn.disabled = true; btn.textContent = 'Importing…'; }
+  var existing = getClients().map(function(c) { return (c.name || '').toLowerCase(); });
+  var failed = 0;
+  for (var i = 0; i < candidates.length; i++) {
+    var c = candidates[i];
+    if (existing.indexOf(c.name.toLowerCase()) >= 0) continue; // already in cloud
+    var logo64 = c.logo || null; // legacy base64
+    if (!logo64 && c.logoUrl) {
+      // old Storage-hosted logo → convert to base64 so it syncs via the table
+      try {
+        var res = await fetch(c.logoUrl);
+        var blob = await res.blob();
+        logo64 = await new Promise(function(resolve) {
+          var r = new FileReader();
+          r.onload = function() { resolve(r.result); };
+          r.onerror = function() { resolve(null); };
+          r.readAsDataURL(blob);
+        });
+      } catch(e) { logo64 = null; }
+    }
+    try {
+      await sbInsert('clients', {
+        name: c.name,
+        email: c.email || '',
+        invoice_email: c.invoiceEmail || '',
+        classifications: (c.classifications && c.classifications.length) ? c.classifications : (c.classification ? [c.classification] : ['Medium (9–23 kg occasional)']),
+        logo_base64: logo64,
+        default_config: {}
+      });
+    } catch(e) {
+      failed++;
+      console.error('[AIM] import failed for', c.name, e);
+    }
+  }
+  if (failed) {
+    showErrorToast(failed + ' client(s) failed to import — check connection and try again.');
+    if (btn) { btn.disabled = false; btn.textContent = 'Import existing clients to cloud'; }
+  } else {
+    localStorage.setItem('aim_clients_migrated', '1');
+    showSaveConfirmation();
+  }
+  await loadClientsFromCloud();
 }
 
 function renderClientSidebar() {
@@ -5155,6 +5366,7 @@ function loadClientIntoForm(id) {
     if (prev) { prev.src = ''; prev.style.display = 'none'; }
     if (lbl) lbl.style.display = '';
   }
+  renderFceDefaults(client);
 }
 
 function saveCurrentClient() {
@@ -5171,19 +5383,27 @@ function saveCurrentClient() {
     const checked = Array.from(group.querySelectorAll('input[type="checkbox"]:checked')).map(function(cb){ return cb.value; });
     clients[idx].classifications = checked;
   }
-  saveClients(clients);
   renderClientSidebar();
   applyClientToAssessment(id);
+  queueClientCloudSave(id);
 }
 
-function deleteClient(id) {
+async function deleteClient(id) {
   if (id === 'generic') { alert('Cannot delete the default client.'); return; }
+  if (getClients().length <= 1) { alert('Cannot delete the last client profile.'); return; }
   if (!confirm('Delete this client profile? This cannot be undone.')) return;
-  const clients = getClients().filter(function(c){ return c.id !== id; });
-  saveClients(clients);
-  setCurrentClientId(clients[0]?.id || 'generic');
+  try {
+    await sbDelete('clients', 'id=eq.' + id);
+  } catch(e) {
+    alert('Failed to delete client — check connection.\n\n' + e.message);
+    return;
+  }
+  window._clientsCache = getClients().filter(function(c){ return c.id !== id; });
+  saveClientsCache();
+  setCurrentClientId(getClients()[0]?.id || 'generic');
   renderClientSidebar();
   loadClientIntoForm(getCurrentClientId());
+  populateApptClientDropdown();
 }
 
 function applyClientToAssessment(id) {
@@ -5213,16 +5433,24 @@ function updateLadderReps(classification) {
   });
 }
 
-function addClient() {
+async function addClient() {
   const name = prompt('New Client / Company Name:');
   if (!name || !name.trim()) return;
-  const clients = getClients();
-  const id = 'client_' + Date.now();
-  clients.push({ id, name: name.trim(), classifications:['Medium (9–23 kg occasional)'], email:'', invoiceEmail:'', logoUrl:null });
-  saveClients(clients);
-  setCurrentClientId(id);
-  renderClientSidebar();
-  loadClientIntoForm(id);
+  try {
+    const rows = await sbInsert('clients', {
+      name: name.trim(),
+      classifications: ['Medium (9–23 kg occasional)'],
+      default_config: {}
+    });
+    const created = rows && rows[0];
+    if (!created) throw new Error('No row returned from Supabase.');
+    await loadClientsFromCloud();
+    setCurrentClientId(created.id);
+    renderClientSidebar();
+    loadClientIntoForm(created.id);
+  } catch(e) {
+    alert('Failed to create client — check connection.\n\n' + e.message);
+  }
 }
 
 function selectClient(btn) {
@@ -5235,6 +5463,179 @@ function initAdmin() {
   loadClientIntoForm(getCurrentClientId());
   applyClientToAssessment(getCurrentClientId());
   updatePatientClientRefs();
+  maybeOfferClientImport();
+}
+
+// ─── FCE TASK LIBRARY + CLIENT DEFAULT CONFIG ────────────────────────────────
+const FCE_SECTIONS = [
+  { key: 'step_test',              label: '3-Minute Step Test' },
+  { key: 'postural_tolerances',    label: 'Postural Tolerances' },
+  { key: 'workstation_ergonomics', label: 'Workstation Ergonomics' }
+];
+const FCE_CLASSIFICATIONS = ['Sedentary', 'Light', 'Medium', 'Heavy', 'Very Heavy'];
+
+async function loadFceTasks() {
+  if (isPatientTokenUrl()) return;
+  try {
+    var rows = await sbSelect('fce_tasks', 'select=*&active=eq.true&order=sort_order.asc,name.asc');
+    window._fceTasksCache = rows || [];
+    try { localStorage.setItem('aim_fce_tasks_cache', JSON.stringify(window._fceTasksCache)); } catch(e) {}
+    var client = getClients().find(function(c) { return c.id === getCurrentClientId(); });
+    if (client) renderFceDefaults(client);
+    if (getApptAssessmentType() === 'fce') renderApptFceConfig();
+  } catch(e) {
+    console.error('[AIM] loadFceTasks failed:', e);
+    showErrorToast('Unable to load FCE task library — check connection.');
+  }
+}
+
+function getFceTasks() {
+  if (window._fceTasksCache) return window._fceTasksCache;
+  try {
+    var cached = JSON.parse(localStorage.getItem('aim_fce_tasks_cache') || 'null');
+    if (cached) return cached;
+  } catch(e) {}
+  return [];
+}
+
+function getFceTasksForClient(clientId) {
+  return getFceTasks().filter(function(t) { return !t.client_id || t.client_id === clientId; });
+}
+
+// Missing key = enabled; only an explicit false turns something off.
+function fceSectionEnabled(cfg, key)   { return !(cfg && cfg.sections && cfg.sections[key] === false); }
+function fceTaskEnabled(cfg, taskId)   { return !(cfg && cfg.tasks && cfg.tasks[taskId] === false); }
+
+function renderFceDefaults(client) {
+  var body = document.getElementById('fce-defaults-body');
+  if (!body || !client) return;
+  var cfg = client.defaultConfig || {};
+  var html = '<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.6px;color:var(--mid);margin-bottom:4px">Optional Sections</div>';
+  FCE_SECTIONS.forEach(function(s) {
+    html += '<div class="toggle-row">' +
+      '<div class="toggle-info"><h4>' + s.label + '</h4></div>' +
+      '<label class="toggle"><input type="checkbox" ' + (fceSectionEnabled(cfg, s.key) ? 'checked ' : '') +
+        'onchange="toggleFceDefaultSection(\'' + s.key + '\', this.checked)"><span class="toggle-slider"></span></label>' +
+      '</div>';
+  });
+  var tasks = getFceTasksForClient(client.id);
+  html += '<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.6px;color:var(--mid);margin:16px 0 4px">Tasks</div>';
+  if (!tasks.length) {
+    html += '<p style="color:var(--mid);font-size:13px;font-style:italic">Task library not loaded — check connection, or run the FCE schema SQL in Supabase.</p>';
+  }
+  tasks.forEach(function(t) {
+    var custom = !!t.client_id;
+    html += '<div class="toggle-row">' +
+      '<div class="toggle-info"><h4>' + t.name + (custom ? ' <span class="badge badge-olive" style="font-size:10px;vertical-align:middle">Custom</span>' : '') + '</h4>' +
+      (t.protocol ? '<p>' + t.protocol + '</p>' : '') + '</div>' +
+      '<div style="display:flex;align-items:center;gap:10px">' +
+      (custom ? '<button onclick="deleteCustomTask(\'' + t.id + '\')" title="Delete custom task" style="background:none;border:none;color:var(--mid);cursor:pointer;font-size:16px;padding:0 4px">×</button>' : '') +
+      '<label class="toggle"><input type="checkbox" ' + (fceTaskEnabled(cfg, t.id) ? 'checked ' : '') +
+        'onchange="toggleFceDefaultTask(\'' + t.id + '\', this.checked)"><span class="toggle-slider"></span></label>' +
+      '</div></div>';
+  });
+  body.innerHTML = html;
+}
+
+function toggleFceDefaultSection(key, on) {
+  var client = getClients().find(function(c) { return c.id === getCurrentClientId(); });
+  if (!client) return;
+  client.defaultConfig = client.defaultConfig || {};
+  client.defaultConfig.sections = client.defaultConfig.sections || {};
+  client.defaultConfig.sections[key] = on;
+  queueClientCloudSave(client.id);
+}
+
+function toggleFceDefaultTask(taskId, on) {
+  var client = getClients().find(function(c) { return c.id === getCurrentClientId(); });
+  if (!client) return;
+  client.defaultConfig = client.defaultConfig || {};
+  client.defaultConfig.tasks = client.defaultConfig.tasks || {};
+  client.defaultConfig.tasks[taskId] = on;
+  queueClientCloudSave(client.id);
+}
+
+function toggleCustomTaskForm() {
+  var form = document.getElementById('fce-custom-task-form');
+  if (!form) return;
+  var show = form.style.display === 'none';
+  form.style.display = show ? 'block' : 'none';
+  if (show && !document.querySelector('#fce-ct-extra-fields .fce-ct-extra-row')) addCustomTaskExtraField();
+}
+
+function addCustomTaskExtraField() {
+  var wrap = document.getElementById('fce-ct-extra-fields');
+  if (!wrap) return;
+  var row = document.createElement('div');
+  row.className = 'fce-ct-extra-row';
+  row.style.cssText = 'display:flex;gap:8px;margin-bottom:6px;align-items:center';
+  row.innerHTML =
+    '<input class="form-control" data-extra="label" placeholder="Label (e.g. Material Type)" style="flex:2">' +
+    '<select class="form-control" data-extra="type" style="flex:1"><option value="text">Text</option><option value="number">Number</option></select>' +
+    '<button onclick="this.parentNode.remove()" style="background:none;border:none;color:var(--mid);cursor:pointer;font-size:16px;padding:0 4px">×</button>';
+  wrap.appendChild(row);
+}
+
+async function saveCustomTask(btn) {
+  var name = (document.getElementById('fce-ct-name') || {}).value || '';
+  var protocol = (document.getElementById('fce-ct-protocol') || {}).value || '';
+  name = name.trim();
+  if (!name) { alert('Enter a task name.'); return; }
+  var clientId = getCurrentClientId();
+  if (clientId === 'generic') { alert('Client profiles have not loaded from the cloud yet — check connection.'); return; }
+
+  var fields = {};
+  var hrStyle = (document.getElementById('fce-ct-hrstyle') || {}).value || '';
+  if (hrStyle) {
+    fields.hr_style = hrStyle;
+    fields.hr_count = Math.max(1, parseInt((document.getElementById('fce-ct-hrcount') || {}).value, 10) || 3);
+  }
+  if (document.getElementById('fce-ct-mh')?.checked) fields.manual_handling_rating = true;
+  if (document.getElementById('fce-ct-restriction')?.checked) fields.restriction_rating = true;
+  var extras = [];
+  document.querySelectorAll('#fce-ct-extra-fields .fce-ct-extra-row').forEach(function(row) {
+    var label = (row.querySelector('[data-extra="label"]') || {}).value || '';
+    label = label.trim();
+    if (!label) return;
+    var key = label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+    extras.push({ key: key, label: label, type: (row.querySelector('[data-extra="type"]') || {}).value || 'text' });
+  });
+  if (extras.length) fields.extra_fields = extras;
+
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  try {
+    var maxSort = getFceTasks().reduce(function(m, t) { return Math.max(m, t.sort_order || 0); }, 0);
+    await sbInsert('fce_tasks', {
+      client_id: clientId,
+      name: name,
+      protocol: protocol.trim(),
+      sort_order: maxSort + 10,
+      fields: fields,
+      active: true
+    });
+    await loadFceTasks();
+    // reset + hide form
+    ['fce-ct-name', 'fce-ct-protocol'].forEach(function(id) { var el = document.getElementById(id); if (el) el.value = ''; });
+    var wrap = document.getElementById('fce-ct-extra-fields');
+    if (wrap) wrap.innerHTML = '';
+    var form = document.getElementById('fce-custom-task-form');
+    if (form) form.style.display = 'none';
+    showSaveConfirmation();
+  } catch(e) {
+    alert('Failed to save custom task — check connection.\n\n' + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Save Task'; }
+  }
+}
+
+async function deleteCustomTask(taskId) {
+  if (!confirm('Delete this custom task? This cannot be undone.')) return;
+  try {
+    await sbDelete('fce_tasks', 'id=eq.' + taskId);
+    await loadFceTasks();
+  } catch(e) {
+    alert('Failed to delete task — check connection.\n\n' + e.message);
+  }
 }
 
 
@@ -7934,12 +8335,73 @@ function populateApptClassificationDropdown() {
   var clientSel = document.getElementById('appt-client');
   var classSel = document.getElementById('appt-classification');
   if (!classSel || !clientSel) return;
-  var clients = getClients();
-  var client = clients.find(function(c) { return c.id === clientSel.value; });
-  var classes = (client && client.classifications && client.classifications.length) ? client.classifications : (client && client.classification ? [client.classification] : ['Medium (9–23 kg occasional)']);
+  var classes;
+  if (getApptAssessmentType() === 'fce') {
+    classes = FCE_CLASSIFICATIONS;
+  } else {
+    var clients = getClients();
+    var client = clients.find(function(c) { return c.id === clientSel.value; });
+    classes = (client && client.classifications && client.classifications.length) ? client.classifications : (client && client.classification ? [client.classification] : ['Medium (9–23 kg occasional)']);
+  }
   classSel.innerHTML = classes.map(function(cls) {
     return '<option value="' + cls + '">' + cls + '</option>';
   }).join('');
+  if (getApptAssessmentType() === 'fce') renderApptFceConfig();
+}
+
+function getApptAssessmentType() {
+  return (document.getElementById('appt-type') || {}).value || 'pema';
+}
+
+function onApptTypeChange() {
+  var fce = getApptAssessmentType() === 'fce';
+  var panel = document.getElementById('appt-fce-config');
+  if (panel) panel.style.display = fce ? 'block' : 'none';
+  var btn = document.getElementById('generate-appt-btn');
+  if (btn) btn.textContent = fce ? 'Create FCE Appointment' : 'Generate Questionnaire Link';
+  // FCE appointments have no questionnaire link/SMS
+  var smsBox = document.getElementById('appt-sms-box');
+  if (smsBox && fce) smsBox.style.display = 'none';
+  populateApptClassificationDropdown();
+}
+
+// Per-referral FCE config panel — pre-populated from the client's default_config
+function renderApptFceConfig() {
+  var body = document.getElementById('appt-fce-config-body');
+  if (!body) return;
+  var clientId = (document.getElementById('appt-client') || {}).value || '';
+  var client = getClients().find(function(c) { return c.id === clientId; });
+  var cfg = (client && client.defaultConfig) || {};
+  var rowStyle = 'display:flex;align-items:center;gap:10px;padding:6px 0;cursor:pointer';
+  var html = '<div style="color:var(--olive-light);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px">Sections</div>';
+  FCE_SECTIONS.forEach(function(s) {
+    html += '<label style="' + rowStyle + '"><input type="checkbox" data-fce-section="' + s.key + '"' + (fceSectionEnabled(cfg, s.key) ? ' checked' : '') + '> ' + s.label + '</label>';
+  });
+  html += '<div style="color:var(--olive-light);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin:10px 0 2px">Tasks</div>';
+  var tasks = client ? getFceTasksForClient(client.id) : [];
+  if (!tasks.length) {
+    html += '<div style="color:var(--mid);font-style:italic;padding:4px 0">Task library unavailable — check connection and refresh.</div>';
+  }
+  tasks.forEach(function(t) {
+    html += '<label style="' + rowStyle + '"><input type="checkbox" data-fce-task="' + t.id + '" data-fce-task-name="' + t.name.replace(/"/g, '&quot;') + '"' + (fceTaskEnabled(cfg, t.id) ? ' checked' : '') + '> ' + t.name + '</label>';
+  });
+  body.innerHTML = html;
+}
+
+// Resolve the panel into the fce_config saved on the appointment
+function collectApptFceConfig() {
+  var cfg = {
+    classification: (document.getElementById('appt-classification') || {}).value || '',
+    sections: {},
+    tasks: []
+  };
+  document.querySelectorAll('#appt-fce-config-body [data-fce-section]').forEach(function(cb) {
+    cfg.sections[cb.getAttribute('data-fce-section')] = cb.checked;
+  });
+  document.querySelectorAll('#appt-fce-config-body [data-fce-task]').forEach(function(cb) {
+    if (cb.checked) cfg.tasks.push({ id: cb.getAttribute('data-fce-task'), name: cb.getAttribute('data-fce-task-name') || '' });
+  });
+  return cfg;
 }
 
 
@@ -7962,11 +8424,12 @@ async function createAppointment() {
   var clients = getClients();
   var client = clients.find(function(c) { return c.id === clientId; }) || clients[0];
   var token = generateToken8();
+  var assessmentType = getApptAssessmentType();
 
   if (btn) { btn.textContent = 'Creating...'; btn.disabled = true; }
 
   try {
-    await sbInsert('appointments', {
+    var row = {
       token: token,
       patient_first_name: firstName,
       patient_last_name: lastName,
@@ -7976,8 +8439,20 @@ async function createAppointment() {
       client_classification: (document.getElementById('appt-classification') || {}).value || (client ? ((client.classifications && client.classifications[0]) || client.classification || '') : ''),
       position_applied_for: position.trim(),
       site: site.trim(),
-      status: 'pending'
-    });
+      status: 'pending',
+      assessment_type: assessmentType
+    };
+    if (assessmentType === 'fce') row.fce_config = collectApptFceConfig();
+    await sbInsert('appointments', row);
+
+    // FCE: no patient questionnaire — no token SMS, straight to the queue
+    if (assessmentType === 'fce') {
+      var smsBoxF = document.getElementById('appt-sms-box');
+      if (smsBoxF) smsBoxF.style.display = 'none';
+      showToast('FCE appointment created — ready in the queue below.');
+      loadUpcomingAppointments();
+      return;
+    }
 
     // Build SMS
     var d = new Date(apptDate + 'T12:00:00');
@@ -8000,7 +8475,10 @@ async function createAppointment() {
   } catch(e) {
     alert('Failed to create appointment: ' + e.message);
   } finally {
-    if (btn) { btn.textContent = 'Generate Questionnaire Link'; btn.disabled = false; }
+    if (btn) {
+      btn.textContent = (getApptAssessmentType() === 'fce') ? 'Create FCE Appointment' : 'Generate Questionnaire Link';
+      btn.disabled = false;
+    }
   }
 }
 
@@ -8221,6 +8699,7 @@ function renderApptQueue(appts) {
   }
   container.innerHTML = appts.map(function(a, idx) {
     var isComplete = a.status === 'complete';
+    var isFCE = a.assessment_type === 'fce';
     var cardId = 'appt-detail-' + idx;
     var link = 'https://pema.absoluteim.com.au/q/' + a.token;
     var d = a.appointment_date ? new Date(a.appointment_date + 'T12:00:00') : null;
@@ -8229,18 +8708,31 @@ function renderApptQueue(appts) {
 
     var isFinalised = a.status === 'finalised';
 
+    var typeBadge = isFCE
+      ? '<span style="display:inline-block;background:#8a6d3b;color:white;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;letter-spacing:0.5px;vertical-align:middle;margin-left:8px">FCE</span>'
+      : '<span style="display:inline-block;background:rgba(255,255,255,0.12);color:var(--light);padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;letter-spacing:0.5px;vertical-align:middle;margin-left:8px">PEMA</span>';
+
     var badge = isFinalised
       ? '<span style="display:inline-block;background:#6d6f57;color:white;padding:3px 9px;border-radius:4px;font-size:11px;font-weight:600">📄 Finalised — report ready</span>'
+      : isFCE
+      ? '<span style="display:inline-block;background:#4a7c59;color:white;padding:3px 9px;border-radius:4px;font-size:11px;font-weight:600">✓ Ready to Assess</span>'
       : isComplete
       ? '<span style="display:inline-block;background:#4a7c59;color:white;padding:3px 9px;border-radius:4px;font-size:11px;font-weight:600">✓ Questionnaire Complete</span>'
       : '<span style="display:inline-block;background:rgba(255,255,255,0.08);color:var(--light);padding:3px 9px;border-radius:4px;font-size:11px">Questionnaire Pending</span>';
 
-    var startStyle = isComplete
-      ? 'background:var(--olive);border:none;color:white;padding:10px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:\'DM Sans\',sans-serif;min-height:44px;white-space:nowrap'
-      : 'background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:var(--mid);padding:10px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:not-allowed;font-family:\'DM Sans\',sans-serif;min-height:44px;white-space:nowrap';
-    var startOnclick = isComplete ? 'onclick="startPEMA(this,\'' + a.token + '\')" ' : '';
-    var startDisabled = isComplete ? '' : 'disabled ';
-    var startBtn = '<button ' + startOnclick + startDisabled + 'style="' + startStyle + '">Start PEMA →</button>';
+    var activeStyle = 'background:var(--olive);border:none;color:white;padding:10px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:\'DM Sans\',sans-serif;min-height:44px;white-space:nowrap';
+    var startBtn;
+    if (isFCE) {
+      // FCE has no questionnaire gating — startable immediately
+      startBtn = '<button onclick="startFCE(this,\'' + a.token + '\')" style="' + activeStyle + '">Start FCE →</button>';
+    } else {
+      var startStyle = isComplete
+        ? activeStyle
+        : 'background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:var(--mid);padding:10px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:not-allowed;font-family:\'DM Sans\',sans-serif;min-height:44px;white-space:nowrap';
+      var startOnclick = isComplete ? 'onclick="startPEMA(this,\'' + a.token + '\')" ' : '';
+      var startDisabled = isComplete ? '' : 'disabled ';
+      startBtn = '<button ' + startOnclick + startDisabled + 'style="' + startStyle + '">Start PEMA →</button>';
+    }
 
     if (isFinalised) {
       startBtn =
@@ -8250,20 +8742,24 @@ function renderApptQueue(appts) {
 
     var detailsBtn = '<button onclick="(function(el){el.style.display=el.style.display===\'block\'?\'none\':\'block\';})(document.getElementById(\'' + cardId + '\'))" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:var(--light);padding:5px 10px;border-radius:6px;font-size:11px;cursor:pointer;font-family:\'DM Sans\',sans-serif;white-space:nowrap">Details ▾</button>';
 
+    var linkBlock = isFCE
+      ? '' // FCE appointments have no patient questionnaire link
+      : '<div style="color:var(--mid);font-size:10px;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:3px">Questionnaire Link</div>' +
+        '<div style="color:var(--olive-light);font-size:12px;word-break:break-all;margin-bottom:10px">' + link + '</div>' +
+        '<button onclick="copyApptLink(this,\'' + a.token + '\')" style="padding:8px 16px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:white;font-size:13px;font-family:\'DM Sans\',sans-serif;cursor:pointer;min-height:44px">Copy Link</button>';
+
     var detailsPanel =
       '<div id="' + cardId + '" style="display:none;margin-top:10px;background:rgba(255,255,255,0.03);border-radius:8px;padding:12px 14px">' +
         '<div style="color:var(--mid);font-size:10px;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:3px">Token</div>' +
         '<div style="color:white;font-family:monospace;font-size:15px;letter-spacing:2px;margin-bottom:10px">' + a.token + '</div>' +
-        '<div style="color:var(--mid);font-size:10px;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:3px">Questionnaire Link</div>' +
-        '<div style="color:var(--olive-light);font-size:12px;word-break:break-all;margin-bottom:10px">' + link + '</div>' +
-        '<button onclick="copyApptLink(this,\'' + a.token + '\')" style="padding:8px 16px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:white;font-size:13px;font-family:\'DM Sans\',sans-serif;cursor:pointer;min-height:44px">Copy Link</button>' +
+        linkBlock +
       '</div>';
 
     return (
       '<div style="padding:12px 0;border-bottom:1px solid rgba(255,255,255,0.06)">' +
         '<div style="display:flex;align-items:flex-start;gap:10px">' +
           '<div style="flex:1;min-width:0">' +
-            '<div style="color:white;font-size:14px;font-weight:500">' + (a.patient_first_name || '') + ' ' + (a.patient_last_name || '') + '</div>' +
+            '<div style="color:white;font-size:14px;font-weight:500">' + (a.patient_first_name || '') + ' ' + (a.patient_last_name || '') + typeBadge + '</div>' +
             '<div style="color:var(--olive-light);font-size:12px;margin-top:2px">' + dateStr + ' at ' + timeStr + ' · ' + (a.client_name || '—') + '</div>' +
             '<div style="margin-top:7px">' + badge + '</div>' +
           '</div>' +
@@ -8307,6 +8803,61 @@ async function startPEMA(btnEl, token) {
     alert('Failed to load patient: ' + e.message);
     if (btnEl) { btnEl.textContent = 'Start PEMA →'; btnEl.disabled = false; }
   }
+}
+
+// ─── FCE START (Phase 1: placeholder screen) ────────────────────────────────
+async function startFCE(btnEl, token) {
+  if (btnEl) { btnEl.textContent = 'Loading…'; btnEl.disabled = true; }
+  try {
+    var rows = await sbSelect('appointments', 'token=eq.' + token + '&select=*');
+    if (!rows || !rows.length) throw new Error('Appointment not found — it may have been removed.');
+    var appt = rows[0];
+    window._fceAppointment = appt;
+    var match = getClients().find(function(c) { return c.name === appt.client_name; });
+    if (match) applyClientToAssessment(match.id);
+    renderFcePlaceholder(appt);
+    showScreen('screen-fce');
+  } catch(e) {
+    alert('Failed to load FCE appointment: ' + e.message);
+  } finally {
+    if (btnEl) { btnEl.textContent = 'Start FCE →'; btnEl.disabled = false; }
+  }
+}
+
+function renderFcePlaceholder(appt) {
+  var body = document.getElementById('fce-placeholder-body');
+  if (!body) return;
+  var cfg = appt.fce_config || {};
+  var d = appt.appointment_date ? new Date(appt.appointment_date + 'T12:00:00') : null;
+  var dateStr = d ? d.toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : '—';
+  var timeStr = appt.appointment_time ? formatApptTime(appt.appointment_time) : '—';
+
+  function row(label, value) {
+    return '<div style="display:flex;gap:12px;padding:7px 0;border-bottom:1px solid var(--border);font-size:14px">' +
+      '<div style="flex:0 0 160px;color:var(--mid);font-size:12px;text-transform:uppercase;letter-spacing:0.5px;padding-top:2px">' + label + '</div>' +
+      '<div style="flex:1;color:var(--black)">' + value + '</div></div>';
+  }
+
+  var sectionsHtml = FCE_SECTIONS.map(function(s) {
+    var on = !(cfg.sections && cfg.sections[s.key] === false);
+    return '<span style="display:inline-block;margin:2px 6px 2px 0;padding:3px 10px;border-radius:12px;font-size:12px;' +
+      (on ? 'background:var(--olive-pale);color:var(--olive)' : 'background:#eee;color:#999;text-decoration:line-through') + '">' + s.label + '</span>';
+  }).join('');
+
+  var tasksHtml = (cfg.tasks && cfg.tasks.length)
+    ? cfg.tasks.map(function(t) { return '<span style="display:inline-block;margin:2px 6px 2px 0;padding:3px 10px;border-radius:12px;font-size:12px;background:var(--olive-pale);color:var(--olive)">' + (t.name || t.id) + '</span>'; }).join('')
+    : '<em style="color:var(--mid)">No tasks selected for this referral.</em>';
+
+  body.innerHTML =
+    row('Patient', (appt.patient_first_name || '') + ' ' + (appt.patient_last_name || '')) +
+    row('Appointment', dateStr + ' at ' + timeStr) +
+    row('Client', appt.client_name || '—') +
+    row('Classification', (cfg.classification || appt.client_classification || '—')) +
+    row('Position', appt.position_applied_for || '—') +
+    row('Site', appt.site || '—') +
+    row('Sections', sectionsHtml) +
+    row('Tasks', tasksHtml) +
+    '<p style="color:var(--mid);font-size:13px;margin-top:14px">Referral config loaded correctly. FCE recording screens arrive in Phase 2.</p>';
 }
 
 function copyApptLink(btnEl, token) {
@@ -8872,6 +9423,9 @@ document.addEventListener('DOMContentLoaded', () => {
   if (!_isTokenUrl && !_isPatientMode) {
     if (!getAuthSession()) {
       showLoginScreen(); // portal is gated behind Supabase Auth — patients on token URLs skip this
+    } else {
+      loadClientsFromCloud();
+      loadFceTasks();
     }
     loadUpcomingAppointments(); setInterval(function() { try { loadUpcomingAppointments(); } catch(e) {} }, 60000);
   }
