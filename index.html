@@ -1542,7 +1542,7 @@
         </div>
         <div>
           <label style="color:var(--olive-light);font-size:12px;display:block;margin-bottom:4px">Classification for this Assessment *</label>
-          <select id="appt-classification" style="width:100%;padding:10px 12px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:8px;color:white;font-size:16px;font-family:'DM Sans',sans-serif;box-sizing:border-box;-webkit-appearance:none;appearance:none"></select>
+          <select id="appt-classification" onchange="if(getApptAssessmentType()==='fce')renderApptFceConfig()" style="width:100%;padding:10px 12px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:8px;color:white;font-size:16px;font-family:'DM Sans',sans-serif;box-sizing:border-box;-webkit-appearance:none;appearance:none"></select>
         </div>
         <div>
           <label style="color:var(--olive-light);font-size:12px;display:block;margin-bottom:4px">Position Applied For</label>
@@ -1584,23 +1584,25 @@
     <div class="nav-brand">
       <div class="nav-logo"></div>
       <div>
-        <div class="nav-subtitle" style="color:rgba(255,255,255,0.6);font-size:13px">FCE Assessment</div>
+        <div class="nav-subtitle" style="color:rgba(255,255,255,0.6);font-size:13px">Functional Capacity Evaluation</div>
       </div>
     </div>
     <div class="nav-actions">
-      <button class="nav-btn" onclick="showScreen('screen-portal')">← Portal</button>
+      <button class="nav-btn" onclick="saveFceDataToStorage();showScreen('screen-portal');loadUpcomingAppointments()">← Portal</button>
+      <button class="nav-btn primary" onclick="finaliseFCE()">Finalise FCE</button>
     </div>
   </nav>
-  <div class="page-header">
-    <h1>FCE Assessment — coming in Phase 2</h1>
-    <p>The appointment below has loaded correctly. The FCE recording screens will be built in the next phase.</p>
+  <div class="patient-summary-bar" id="fce-summary-bar">
+    <div class="ps-item"><div class="ps-label">Employee</div><div class="ps-value" id="fce-bar-name">—</div></div>
+    <div class="ps-item"><div class="ps-label">Client</div><div class="ps-value" id="fce-bar-client">—</div></div>
+    <div class="ps-item"><div class="ps-label">Classification</div><div class="ps-value" id="fce-bar-class">—</div></div>
+    <div class="ps-item"><div class="ps-label">Max Lift/Carry</div><div class="ps-value" id="fce-bar-maxwt">—</div></div>
+    <div class="ps-item"><div class="ps-label">Date</div><div class="ps-value" id="fce-bar-date">—</div></div>
   </div>
-  <div style="max-width:760px;margin:24px auto 48px;padding:0 24px">
-    <div class="config-card">
-      <div class="config-card-header"><h3>Loaded Referral</h3><span class="badge badge-olive">FCE</span></div>
-      <div class="config-card-body" id="fce-placeholder-body">
-        <p style="color:var(--mid);font-size:13px">No FCE appointment loaded. Return to the portal and choose "Start FCE" on an appointment.</p>
-      </div>
+  <div class="clinician-layout">
+    <div class="clinician-nav" id="fce-nav"></div>
+    <div class="clinician-content" id="fce-content">
+      <p style="color:var(--mid);font-size:13px;padding:24px">No FCE appointment loaded. Return to the portal and choose "Start FCE" on an appointment.</p>
     </div>
   </div>
 </div>
@@ -1741,6 +1743,18 @@
               <button onclick="toggleCustomTaskForm()" style="background:none;border:1px solid var(--border);color:var(--mid);padding:9px 18px;border-radius:6px;font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif">Cancel</button>
             </div>
           </div>
+        </div>
+      </div>
+
+      <div class="config-card">
+        <div class="config-card-header">
+          <h3>FCE Classifications</h3>
+          <span class="badge badge-olive">Protocol Overrides</span>
+        </div>
+        <div class="config-card-body">
+          <p style="color:var(--mid);font-size:13px;margin:0 0 14px">Classifications offered for FCE referrals. Max weight applies to both Lifting and Carrying. Task overrides replace the base protocol text and HR field count for that classification; anything not overridden uses the task's base values.</p>
+          <div id="fce-class-body"><p style="color:var(--mid);font-size:13px;font-style:italic">Loading…</p></div>
+          <button onclick="addFceClassification()" style="margin-top:14px;background:var(--olive);color:white;border:none;padding:9px 16px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">+ Add Classification</button>
         </div>
       </div>
 
@@ -5182,7 +5196,8 @@ function mapClientRow(row) {
     invoiceEmail: row.invoice_email || '',
     logoUrl: row.logo_base64 || null,
     determinationTemplate: row.determination_template || 'standard',
-    defaultConfig: row.default_config || {}
+    defaultConfig: row.default_config || {},
+    classificationConfig: row.classification_config || {}
   };
 }
 
@@ -5234,7 +5249,8 @@ async function pushClientToCloud(id) {
       email: client.email || '',
       invoice_email: client.invoiceEmail || '',
       classifications: client.classifications || [],
-      default_config: client.defaultConfig || {}
+      default_config: client.defaultConfig || {},
+      classification_config: client.classificationConfig || {}
     });
     saveClientsCache();
   } catch(e) {
@@ -5367,6 +5383,7 @@ function loadClientIntoForm(id) {
     if (lbl) lbl.style.display = '';
   }
   renderFceDefaults(client);
+  renderFceClassifications(client);
 }
 
 function saveCurrentClient() {
@@ -5636,6 +5653,134 @@ async function deleteCustomTask(taskId) {
   } catch(e) {
     alert('Failed to delete task — check connection.\n\n' + e.message);
   }
+}
+
+// ─── FCE CLASSIFICATIONS EDITOR (clients.classification_config) ──────────────
+function getAdminClient() {
+  return getClients().find(function(c) { return c.id === getCurrentClientId(); }) || null;
+}
+
+function renderFceClassifications(client) {
+  var body = document.getElementById('fce-class-body');
+  if (!body || !client) return;
+  var cfg = client.classificationConfig || {};
+  var keys = Object.keys(cfg);
+  if (!keys.length) {
+    body.innerHTML = '<p style="color:var(--mid);font-size:13px;font-style:italic">No classifications configured — FCE referrals will fall back to the generic list (Sedentary → Very Heavy) with base task protocols.</p>';
+    return;
+  }
+  var taskNames = getFceTasksForClient(client.id).map(function(t) { return t.name; });
+  body.innerHTML = keys.map(function(key) {
+    var c = cfg[key] || {};
+    var overrides = c.task_overrides || {};
+    var rows = Object.keys(overrides).map(function(taskName, ri) {
+      var o = overrides[taskName] || {};
+      var opts = taskNames.map(function(n) {
+        return '<option value="' + n.replace(/"/g, '&quot;') + '"' + (n === taskName ? ' selected' : '') + '>' + n + '</option>';
+      }).join('');
+      if (taskNames.indexOf(taskName) < 0) opts = '<option value="' + taskName.replace(/"/g, '&quot;') + '" selected>' + taskName + ' (not in library)</option>' + opts;
+      return '<tr>' +
+        '<td style="padding:4px"><select class="form-control" style="font-size:12px;padding:6px 8px" onchange="fceOvrRename(\'' + encodeURIComponent(key) + '\',\'' + encodeURIComponent(taskName) + '\',this.value)">' + opts + '</select></td>' +
+        '<td style="padding:4px"><input class="form-control" style="font-size:12px;padding:6px 8px" value="' + (o.protocol || '').replace(/"/g, '&quot;') + '" placeholder="(base protocol)" onchange="fceOvrSet(\'' + encodeURIComponent(key) + '\',\'' + encodeURIComponent(taskName) + '\',\'protocol\',this.value)"></td>' +
+        '<td style="padding:4px;width:80px"><input class="form-control" type="number" min="0" max="12" style="font-size:12px;padding:6px 8px" value="' + (o.hr_count || '') + '" placeholder="base" onchange="fceOvrSet(\'' + encodeURIComponent(key) + '\',\'' + encodeURIComponent(taskName) + '\',\'hr_count\',this.value)"></td>' +
+        '<td style="padding:4px;width:30px"><button onclick="fceOvrRemove(\'' + encodeURIComponent(key) + '\',\'' + encodeURIComponent(taskName) + '\')" style="background:none;border:none;color:var(--mid);cursor:pointer;font-size:16px">×</button></td>' +
+      '</tr>';
+    }).join('');
+    return '<div style="border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:12px">' +
+      '<div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:10px">' +
+        '<div class="form-group" style="margin:0;flex:1;min-width:140px"><label>Classification Name</label>' +
+          '<input class="form-control" value="' + key.replace(/"/g, '&quot;') + '" onchange="renameFceClassification(\'' + encodeURIComponent(key) + '\',this.value)"></div>' +
+        '<div class="form-group" style="margin:0;width:150px"><label>Max Weight (kg) — Lifting &amp; Carrying</label>' +
+          '<input class="form-control" type="number" min="0" value="' + (c.max_weight_kg || '') + '" onchange="setFceClassMaxWeight(\'' + encodeURIComponent(key) + '\',this.value)"></div>' +
+        '<button onclick="removeFceClassification(\'' + encodeURIComponent(key) + '\')" style="background:var(--error,#b94040);color:white;border:none;padding:8px 14px;border-radius:6px;font-size:12px;cursor:pointer;height:36px">Remove</button>' +
+      '</div>' +
+      '<table style="width:100%;border-collapse:collapse;font-size:12px">' +
+        '<thead><tr style="color:var(--mid);text-transform:uppercase;font-size:10px;letter-spacing:0.5px;text-align:left">' +
+          '<th style="padding:4px">Task</th><th style="padding:4px">Protocol Override</th><th style="padding:4px">HR Fields</th><th></th></tr></thead>' +
+        '<tbody>' + rows + '</tbody>' +
+      '</table>' +
+      '<button onclick="fceOvrAdd(\'' + encodeURIComponent(key) + '\')" style="margin-top:8px;background:none;border:1px dashed var(--border);color:var(--mid);padding:6px 12px;border-radius:6px;font-size:12px;cursor:pointer;font-family:\'DM Sans\',sans-serif">+ Add task override</button>' +
+    '</div>';
+  }).join('');
+}
+
+function _fceClassMutate(fn) {
+  var client = getAdminClient();
+  if (!client) return;
+  client.classificationConfig = client.classificationConfig || {};
+  fn(client.classificationConfig, client);
+  queueClientCloudSave(client.id);
+  renderFceClassifications(client);
+}
+
+function addFceClassification() {
+  var name = prompt('New classification name (e.g. Very Heavy):');
+  if (!name || !name.trim()) return;
+  name = name.trim();
+  _fceClassMutate(function(cfg) {
+    if (cfg[name]) { alert('That classification already exists.'); return; }
+    cfg[name] = { max_weight_kg: null, task_overrides: {} };
+  });
+}
+
+function renameFceClassification(encKey, newName) {
+  var key = decodeURIComponent(encKey);
+  newName = (newName || '').trim();
+  if (!newName || newName === key) { renderFceClassifications(getAdminClient()); return; }
+  _fceClassMutate(function(cfg) {
+    if (cfg[newName]) { alert('A classification with that name already exists.'); return; }
+    cfg[newName] = cfg[key];
+    delete cfg[key];
+  });
+}
+
+function removeFceClassification(encKey) {
+  var key = decodeURIComponent(encKey);
+  if (!confirm('Remove the "' + key + '" classification and its overrides?')) return;
+  _fceClassMutate(function(cfg) { delete cfg[key]; });
+}
+
+function setFceClassMaxWeight(encKey, val) {
+  var key = decodeURIComponent(encKey);
+  _fceClassMutate(function(cfg) {
+    if (cfg[key]) cfg[key].max_weight_kg = val === '' ? null : parseInt(val, 10) || null;
+  });
+}
+
+function fceOvrAdd(encKey) {
+  var key = decodeURIComponent(encKey);
+  var client = getAdminClient();
+  var taskNames = client ? getFceTasksForClient(client.id).map(function(t) { return t.name; }) : [];
+  _fceClassMutate(function(cfg) {
+    var ovr = (cfg[key].task_overrides = cfg[key].task_overrides || {});
+    var free = taskNames.find(function(n) { return !ovr[n]; });
+    if (!free) { alert('Every task in the library already has an override for this classification.'); return; }
+    ovr[free] = {};
+  });
+}
+
+function fceOvrRename(encKey, encTask, newTask) {
+  var key = decodeURIComponent(encKey), task = decodeURIComponent(encTask);
+  _fceClassMutate(function(cfg) {
+    var ovr = cfg[key].task_overrides || {};
+    if (newTask === task) return;
+    if (ovr[newTask]) { alert('That task already has an override in this classification.'); return; }
+    ovr[newTask] = ovr[task];
+    delete ovr[task];
+  });
+}
+
+function fceOvrSet(encKey, encTask, field, val) {
+  var key = decodeURIComponent(encKey), task = decodeURIComponent(encTask);
+  _fceClassMutate(function(cfg) {
+    var o = ((cfg[key].task_overrides = cfg[key].task_overrides || {})[task] = cfg[key].task_overrides[task] || {});
+    if (field === 'hr_count') {
+      var n = parseInt(val, 10);
+      if (isNaN(n) || n <= 0) delete o.hr_count; else o.hr_count = n;
+    } else {
+      if (!val.trim()) delete o[field]; else o[field] = val.trim();
+    }
+  });
 }
 
 
@@ -8337,7 +8482,10 @@ function populateApptClassificationDropdown() {
   if (!classSel || !clientSel) return;
   var classes;
   if (getApptAssessmentType() === 'fce') {
-    classes = FCE_CLASSIFICATIONS;
+    // Client-defined classifications drive FCE; generic list is the fallback
+    var fceClient = getClients().find(function(c) { return c.id === clientSel.value; });
+    var cfgKeys = fceClient ? Object.keys(fceClient.classificationConfig || {}) : [];
+    classes = cfgKeys.length ? cfgKeys : FCE_CLASSIFICATIONS;
   } else {
     var clients = getClients();
     var client = clients.find(function(c) { return c.id === clientSel.value; });
@@ -8365,6 +8513,29 @@ function onApptTypeChange() {
   populateApptClassificationDropdown();
 }
 
+// Resolve a library task against a classification's task_overrides so the
+// assessment renders purely from fce_config with no library lookups.
+function resolveFceTask(task, classCfg) {
+  var fields = task.fields || {};
+  var ovr = (classCfg && classCfg.task_overrides && classCfg.task_overrides[task.name]) || {};
+  return {
+    id: task.id,
+    name: task.name,
+    protocol: ovr.protocol || task.protocol || '',
+    hr_style: fields.hr_style || null,
+    hr_count: ovr.hr_count || fields.hr_count || 0,
+    hr_labels: ovr.hr_labels || fields.hr_labels || null,
+    manual_handling_rating: !!fields.manual_handling_rating,
+    restriction_rating: !!fields.restriction_rating,
+    extra_fields: fields.extra_fields || []
+  };
+}
+
+function getApptClassCfg(client) {
+  var cls = (document.getElementById('appt-classification') || {}).value || '';
+  return (client && client.classificationConfig && client.classificationConfig[cls]) || null;
+}
+
 // Per-referral FCE config panel — pre-populated from the client's default_config
 function renderApptFceConfig() {
   var body = document.getElementById('appt-fce-config-body');
@@ -8372,7 +8543,8 @@ function renderApptFceConfig() {
   var clientId = (document.getElementById('appt-client') || {}).value || '';
   var client = getClients().find(function(c) { return c.id === clientId; });
   var cfg = (client && client.defaultConfig) || {};
-  var rowStyle = 'display:flex;align-items:center;gap:10px;padding:6px 0;cursor:pointer';
+  var classCfg = getApptClassCfg(client);
+  var rowStyle = 'display:flex;align-items:flex-start;gap:10px;padding:6px 0;cursor:pointer';
   var html = '<div style="color:var(--olive-light);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px">Sections</div>';
   FCE_SECTIONS.forEach(function(s) {
     html += '<label style="' + rowStyle + '"><input type="checkbox" data-fce-section="' + s.key + '"' + (fceSectionEnabled(cfg, s.key) ? ' checked' : '') + '> ' + s.label + '</label>';
@@ -8383,23 +8555,39 @@ function renderApptFceConfig() {
     html += '<div style="color:var(--mid);font-style:italic;padding:4px 0">Task library unavailable — check connection and refresh.</div>';
   }
   tasks.forEach(function(t) {
-    html += '<label style="' + rowStyle + '"><input type="checkbox" data-fce-task="' + t.id + '" data-fce-task-name="' + t.name.replace(/"/g, '&quot;') + '"' + (fceTaskEnabled(cfg, t.id) ? ' checked' : '') + '> ' + t.name + '</label>';
+    var resolved = resolveFceTask(t, classCfg);
+    html += '<label style="' + rowStyle + '"><input type="checkbox" style="margin-top:3px" data-fce-task="' + t.id + '"' + (fceTaskEnabled(cfg, t.id) ? ' checked' : '') + '>' +
+      '<span>' + t.name +
+      (resolved.protocol ? '<span style="display:block;color:var(--mid);font-size:11px">' + resolved.protocol + '</span>' : '') +
+      '</span></label>';
   });
+  if (classCfg && classCfg.max_weight_kg) {
+    html += '<div style="color:var(--olive-light);font-size:11px;margin-top:8px">Lifting / Carrying maximum for this classification: <strong>' + classCfg.max_weight_kg + ' kg</strong></div>';
+  }
   body.innerHTML = html;
 }
 
-// Resolve the panel into the fce_config saved on the appointment
+// Resolve the panel into the fce_config saved on the appointment. Tasks are
+// stored FULLY RESOLVED (protocol/hr_count/hr_labels/extra fields) so the
+// assessment screen renders from fce_config alone.
 function collectApptFceConfig() {
+  var clientId = (document.getElementById('appt-client') || {}).value || '';
+  var client = getClients().find(function(c) { return c.id === clientId; });
+  var classCfg = getApptClassCfg(client);
   var cfg = {
     classification: (document.getElementById('appt-classification') || {}).value || '',
+    max_weight_kg: (classCfg && classCfg.max_weight_kg) || null,
     sections: {},
     tasks: []
   };
   document.querySelectorAll('#appt-fce-config-body [data-fce-section]').forEach(function(cb) {
     cfg.sections[cb.getAttribute('data-fce-section')] = cb.checked;
   });
+  var library = getFceTasks();
   document.querySelectorAll('#appt-fce-config-body [data-fce-task]').forEach(function(cb) {
-    if (cb.checked) cfg.tasks.push({ id: cb.getAttribute('data-fce-task'), name: cb.getAttribute('data-fce-task-name') || '' });
+    if (!cb.checked) return;
+    var task = library.find(function(t) { return t.id === cb.getAttribute('data-fce-task'); });
+    if (task) cfg.tasks.push(resolveFceTask(task, classCfg));
   });
   return cfg;
 }
@@ -8805,7 +8993,1133 @@ async function startPEMA(btnEl, token) {
   }
 }
 
-// ─── FCE START (Phase 1: placeholder screen) ────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════
+// FCE ASSESSMENT (Phase 2) — renders entirely from the appointment's fce_config
+// ═════════════════════════════════════════════════════════════════════════════
+
+function escFce(s) {
+  return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// FCE form wordings — taken verbatim from the AIM FCE form (2026-07 revision).
+const FCE_MED_HISTORY = [
+  'Do you suffer from any heart conditions?',
+  'Do you suffer from any lung conditions?',
+  'Do you suffer from diabetes?',
+  'Do you suffer from fits/seizures/dizziness?',
+  'Are you currently taking any medication?',
+  'Do you suffer from any other conditions?',
+  'Do you complete any exercise?',
+  'Do you or have you ever been a smoker?',
+  'Do you drink alcohol?'
+];
+const FCE_INJURY_HISTORY = [
+  'Have you ever had a mid back or neck injury?',
+  'Have you ever had a low back injury?',
+  'Have you ever had a shoulder injury?',
+  'Have you ever had an elbow or hand injury?',
+  'Have you ever had a hip injury?',
+  'Have you ever had a knee injury?',
+  'Have you ever had a foot or ankle injury?',
+  'Have you ever had a work related injury?',
+  'Have you ever had a sport or hobby injury?',
+  'Have you ever had any other injury?'
+];
+const FCE_FUNCTIONAL_STATUS = [
+  'Do you have any pain lifting heavy objects?',
+  'Do you have any pain working overhead?',
+  'Do you have any pain using hand tools?',
+  'Do you have any pain squatting or kneeling?',
+  'Do you have any pain sitting or standing?',
+  'Do you have any pain walking or climbing?'
+];
+const FCE_MSK_TESTS = [
+  { name: 'Shoulder Impingement', method: '(Empty Can/Hawkins)', opts: ['Normal','Pain/Weakness'] },
+  { name: 'Knee Stability', method: '(ACL/PCL/MCL/LCL)', opts: ['Normal','Pain/Laxity'] },
+  { name: 'Knee Menisci', method: "(McMurray's/Duck Walk)", opts: ['Normal','Pain'] },
+  { name: 'Ankle Stability', method: '(Anterior Draw/Inv/Ever)', opts: ['Normal','Pain/Laxity'] },
+  { name: 'Hip Testing', method: "(FABER's/Quadrant/Squeeze)", opts: ['Normal','Pain/Weakness'] },
+  { name: 'Resisted Wrist Extension', method: '', opts: ['Normal','Pain'] },
+  { name: 'Slump Test', method: '', opts: ['Normal','Pain/Restriction'] }
+];
+const FCE_MSK_NOTE = 'Pain should be measured on a Pain Rating Scale (0-10). Weakness should be rated on an Oxford Rating Scale (1-5). Laxity and Restriction should be assessed and appropriate comment be documented.';
+const FCE_THOMAS_LEVELS = ['Hip below parallel','Hip parallel, knee 90°','Hip parallel, knee <90°','Hip flexion 0-30°','Hip flexion >30°'];
+const FCE_SLR_RANGES = ['0-60 degrees','60-90 degrees','90-120 degrees','120+ degrees'];
+const FCE_ABDO_OPTS = ['Knees bent, hands behind head','Knees bent, arms across chest','Knees bent, arms out straight','Unable to perform'];
+const FCE_PTOL_ITEMS = ['Sitting','Standing','Crawling / Kneeling','Full Sustained Squat','Reaching Overhead','Reaching Forward','Bending Forward'];
+const FCE_DETERMINATIONS = [
+  { code: 'G',  colour: '#4a7c59', band: 'GREEN', text: 'Demonstrated the functional capacity to perform the proposed role without restrictions and without risk to self or others.' },
+  { code: 'A',  colour: '#b8860b', band: 'AMBER', text: 'Suitable for the proposed role provided the following restrictions listed below can be accommodated.' },
+  { code: 'R1', colour: '#8b3a2f', band: 'RED',   text: 'Temporarily unsuitable, subject to a review or further medical information from GP or Specialist.' },
+  { code: 'R2', colour: '#8b3a2f', band: 'RED',   text: 'Unsuitable for the role based on risk to self or others.' }
+];
+const FCE_AUTHORITY_TEXT = 'For the purpose of this Functional Capacity Evaluation you are required to disclose to your employer any information about your current condition and function and how this may impact your ability to complete the inherent requirements of your job. The information obtained will be used only for the purpose of your employment and will not be provided to any other party without your prior consent. By signing below you agree to disclose all relevant information and authorise the health professional conducting the assessment to obtain and release this medical information to your employer.';
+const FCE_CONSENT_TEXT = 'This Functional Capacity Evaluation is a test of your capacity to complete the inherent requirements of the position you are currently employed in. You will be expected to set your own limits and will not be asked to undertake any task that you feel you can not perform safely. The assessor will cease the assessment at any stage if in their opinion they feel it is unsafe for you to proceed. Each task will be explained to you in full before testing. By signing below you agree to proceed and confirm there are no reasons you can not perform this Functional Capacity Evaluation.';
+
+// ─── FCE screen rendering ────────────────────────────────────────────────────
+function fceSmartField(taId, placeholder, extraHtml) {
+  return '<div class="smart-field">' +
+    (extraHtml || '') +
+    '<textarea class="smart-textarea" id="' + taId + '" placeholder="' + escFce(placeholder) + '"></textarea>' +
+  '</div>';
+}
+
+function fceChips(group, opts) {
+  return '<div class="fce-chips" style="display:flex;gap:8px;flex-wrap:wrap">' + opts.map(function(o, oi) {
+    return '<button class="option-chip" onclick="selectFceChip(this,\'' + group + '\',' + oi + ')">' + escFce(o) + '</button>';
+  }).join('') + '</div>';
+}
+
+function fceYnRows(prefix, questions) {
+  return questions.map(function(q, i) {
+    var key = prefix + '-' + i;
+    return '<div class="q-card">' +
+      '<div class="q-label"><span class="q-num">' + (i + 1) + '</span>' + escFce(q) + '</div>' +
+      '<div class="yn-group">' +
+        '<button class="yn-btn" onclick="toggleFceYN(this,\'' + key + '\',\'yes\')">Yes</button>' +
+        '<button class="yn-btn" onclick="toggleFceYN(this,\'' + key + '\',\'no\')">No</button>' +
+      '</div>' +
+      '<input type="hidden" id="' + key + '" class="fce-yn-state">' +
+      '<div class="detail-field" id="' + key + '-detail">' +
+        '<label>Details</label>' +
+        '<textarea id="' + key + '-detail-text" placeholder="Details..."></textarea>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+function fceSigBlock(canvasId, label, dateId) {
+  return '<div class="q-card" style="margin-top:16px">' +
+    '<div class="q-label" style="margin-bottom:10px">' + escFce(label) + '</div>' +
+    '<div class="sig-wrap">' +
+      '<canvas class="sig-canvas" id="' + canvasId + '"></canvas>' +
+      '<div class="sig-placeholder" id="' + canvasId + '-ph">Sign here with finger or stylus</div>' +
+    '</div>' +
+    '<div class="sig-actions">' +
+      '<button class="sig-clear" onclick="clearSig(\'' + canvasId + '\',\'' + canvasId + '-ph\')">Clear / Re-sign</button>' +
+    '</div>' +
+    '<div style="display:flex;justify-content:flex-end;margin-top:12px">' +
+      '<div class="form-group" style="width:180px"><label>Date</label><input class="form-control" type="date" id="' + dateId + '"></div>' +
+    '</div>' +
+  '</div>';
+}
+
+function fceSectionShell(id, title, desc, bodyHtml) {
+  return '<div class="clinician-section" id="' + id + '">' +
+    '<div class="section-title" style="margin-bottom:4px">' + escFce(title) + '</div>' +
+    (desc ? '<div class="section-desc">' + desc + '</div>' : '') +
+    bodyHtml +
+  '</div>';
+}
+
+function fceTaskCardHtml(t, i) {
+  var hrCount = parseInt(t.hr_count, 10) || 0;
+  var hrLabels = t.hr_labels || null;
+  var hrFields = '<div class="mh-field"><label>Baseline HR (bpm)</label><input id="fce-task-' + i + '-hr-base" placeholder="—" type="number"></div>';
+  for (var j = 0; j < hrCount; j++) {
+    var lbl = (hrLabels && hrLabels[j]) || ((t.hr_style === 'intervals' ? 'Interval ' : 'Rep ') + (j + 1) + ' HR');
+    hrFields += '<div class="mh-field"><label>' + escFce(lbl) + ' (bpm)</label><input id="fce-task-' + i + '-hr-' + j + '" placeholder="—" type="number" data-fce-hr="1"></div>';
+  }
+  var extraFields = (t.extra_fields || []).map(function(f) {
+    return '<div class="mh-field"><label>' + escFce(f.label || f.key) + '</label><input id="fce-task-' + i + '-x-' + escFce(f.key) + '" type="' + (f.type === 'number' ? 'number' : 'text') + '" placeholder="—"></div>';
+  }).join('');
+  var mhHtml = '';
+  if (t.manual_handling_rating) {
+    mhHtml = '<div style="margin:12px 0">' +
+      '<label style="font-size:11px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.04em;display:block;margin-bottom:8px">Manual Handling Rating <span style="font-weight:300;font-size:10px">(1 = poor · 4 = excellent)</span></label>' +
+      '<div class="mh-grid">' +
+      ['stance', 'posture', 'control'].map(function(dim) {
+        return '<div class="mh-field"><label>' + dim.charAt(0).toUpperCase() + dim.slice(1) + '</label>' +
+          '<select id="fce-task-' + i + '-mh-' + dim + '"><option value=""></option><option>1</option><option>2</option><option>3</option><option>4</option></select></div>';
+      }).join('') +
+      '</div></div>';
+  }
+  var restrictionHtml = '';
+  if (t.restriction_rating) {
+    restrictionHtml = '<div style="margin-top:12px">' +
+      '<label style="font-size:11px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.04em;display:block;margin-bottom:8px">Restriction Rating</label>' +
+      fceChips('fce-task-' + i + '-restriction', ['Unrestricted', 'Minimal Restriction', 'Moderate Restriction', 'Unable']) +
+      '</div>';
+  }
+  return '<div class="clin-card" style="margin-bottom:14px" id="fce-task-card-' + i + '">' +
+    '<div class="clin-card-header"><h3>' + escFce(t.name) + '</h3><span class="badge badge-olive">Required Test</span></div>' +
+    '<div class="clin-card-body">' +
+      (t.protocol ? '<div style="font-size:13px;color:var(--mid);margin-bottom:12px;font-style:italic">' + escFce(t.protocol) + '</div>' : '') +
+      '<div class="mh-grid" style="margin-bottom:4px">' + hrFields + extraFields + '</div>' +
+      '<div style="margin:12px 0">' +
+        '<label style="font-size:11px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.04em;display:block;margin-bottom:8px">Discomfort Reported</label>' +
+        fceChips('fce-task-' + i + '-disc', ['None', 'Awareness', 'Pain']) +
+      '</div>' +
+      '<div class="mh-grid" style="margin-bottom:4px">' +
+        '<div class="mh-field"><label>Pain Rating (0–10)</label><input id="fce-task-' + i + '-pain" type="number" min="0" max="10" placeholder="0"></div>' +
+        '<div class="mh-field"><label>RPE (0–10)</label><input id="fce-task-' + i + '-rpe" type="number" min="0" max="10" placeholder="0"></div>' +
+      '</div>' +
+      mhHtml +
+      '<div class="smart-field" style="margin-top:12px">' +
+        '<label style="font-size:11px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.04em;display:block;margin-bottom:6px">Additional Comments</label>' +
+        '<textarea class="smart-textarea" id="fce-task-' + i + '-comments" placeholder="Task comments..."></textarea>' +
+        '<div style="margin-top:8px"><button class="option-chip" style="font-weight:600" onclick="generateTaskComment(' + i + ')">✎ Generate Comment</button></div>' +
+      '</div>' +
+      restrictionHtml +
+    '</div>' +
+  '</div>';
+}
+
+function renderFceScreen(appt) {
+  var cfg = appt.fce_config || {};
+  var sections = cfg.sections || {};
+  var stepOn = sections.step_test !== false;
+  var ptolOn = sections.postural_tolerances !== false;
+  var ergoOn = sections.workstation_ergonomics !== false;
+  var tasks = window._fceTasks || [];
+
+  // Summary bar
+  document.getElementById('fce-bar-name').textContent = ((appt.patient_first_name || '') + ' ' + (appt.patient_last_name || '')).trim() || '—';
+  document.getElementById('fce-bar-client').textContent = appt.client_name || '—';
+  document.getElementById('fce-bar-class').textContent = cfg.classification || appt.client_classification || '—';
+  document.getElementById('fce-bar-maxwt').textContent = cfg.max_weight_kg ? cfg.max_weight_kg + ' kg' : '—';
+  document.getElementById('fce-bar-date').textContent = appt.appointment_date || '—';
+
+  // Navigation
+  var navGroups = [
+    { label: 'Intake', items: [['fce-emp', 'Employee Details'], ['fce-auth', 'Authority & Release'], ['fce-consent', 'Consent to Proceed'], ['fce-intro', 'Introduction'], ['fce-symptoms', 'Current Symptoms'], ['fce-medhx', 'Medical History'], ['fce-injhx', 'Injury History'], ['fce-fstatus', 'Functional Status']] },
+    { label: 'Baseline', items: [['fce-baseline', 'Pre-Assessment Baseline']] },
+    { label: 'Musculoskeletal', items: [['fce-rom', 'Range of Motion'], ['fce-postural', 'Postural Analysis'], ['fce-msk', 'Special MSK Tests'], ['fce-grip', 'Grip Strength']] },
+    { label: 'Functional', items: [].concat(stepOn ? [['fce-steptest', '3 Minute Step Test']] : []).concat(ptolOn ? [['fce-ptol', 'Postural Tolerance']] : []).concat([['fce-tasks', 'Tasks']]).concat(ergoOn ? [['fce-ergo', 'Workstation Ergonomics']] : []) },
+    { label: 'Outcome', items: [['fce-summary', 'Evaluation Summary'], ['fce-conclusion', 'Conclusion'], ['fce-recs', 'Recommendations'], ['fce-signoff', 'Assessor Sign-off']] }
+  ];
+  document.getElementById('fce-nav').innerHTML = navGroups.map(function(g) {
+    return '<div class="clinician-nav-section"><div class="clinician-nav-label">' + g.label + '</div>' +
+      g.items.map(function(it) {
+        return '<div class="clinician-nav-item" onclick="showFceSection(\'' + it[0] + '\',this)"><span class="nav-dot"></span>' + it[1] + '</div>';
+      }).join('') + '</div>';
+  }).join('');
+
+  var html = '';
+
+  // (a) Employee details
+  html += fceSectionShell('fce-emp', 'Employee Details', 'Prefilled from the referral — confirm with the employee before starting.',
+    '<div class="clin-card"><div class="clin-card-body">' +
+      '<div class="mh-grid">' +
+        '<div class="mh-field"><label>First Name</label><input id="fce-firstname"></div>' +
+        '<div class="mh-field"><label>Surname</label><input id="fce-surname"></div>' +
+        '<div class="mh-field"><label>Date of Birth</label><input id="fce-dob" type="date" oninput="calcFceMaxHR();calcFceGrip(\'r\');calcFceGrip(\'l\')"></div>' +
+        '<div class="mh-field"><label>Job Title / Position</label><input id="fce-job"></div>' +
+        '<div class="mh-field"><label>Site / Location</label><input id="fce-site"></div>' +
+        '<div class="mh-field"><label>Assessment Date</label><input id="fce-date" type="date"></div>' +
+        '<div class="mh-field"><label>Assessment Time</label><input id="fce-time" type="time"></div>' +
+        '<div class="mh-field"><label>Assessor</label><input id="fce-assessor-name" placeholder="Assessor full name"></div>' +
+      '</div>' +
+      '<div style="display:flex;gap:32px;flex-wrap:wrap;margin-top:14px">' +
+        '<div><label style="font-size:11px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.04em;display:block;margin-bottom:8px">Gender</label>' + fceChips('fce-gender', ['Male', 'Female']) + '</div>' +
+        '<div><label style="font-size:11px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.04em;display:block;margin-bottom:8px">Dominant Hand</label>' + fceChips('fce-dominant', ['Right', 'Left']) + '</div>' +
+      '</div>' +
+    '</div></div>');
+
+  // (b) Authority to Obtain and Release Information
+  html += fceSectionShell('fce-auth', 'Authority to Obtain and Release Information', null,
+    '<div class="consent-box"><strong>Authority to Obtain and Release Medical Information</strong><br><br>' + FCE_AUTHORITY_TEXT + '</div>' +
+    fceSigBlock('fce-sig-auth', 'Employee Signature — Authority to Obtain and Release Information', 'fce-auth-date'));
+
+  // (c) Consent to Proceed
+  html += fceSectionShell('fce-consent', 'Consent to Proceed', null,
+    '<div class="consent-box"><strong>Consent to Proceed with Assessment</strong><br><br>' + FCE_CONSENT_TEXT + '</div>' +
+    fceSigBlock('fce-sig-consent', 'Employee Signature — Consent to Proceed', 'fce-consent-date'));
+
+  // (d) Introduction
+  html += fceSectionShell('fce-intro', 'Introduction', 'Background to the referral. Standard textarea — dictation friendly.',
+    '<div class="clin-card"><div class="clin-card-body">' +
+      fceSmartField('fce-intro-text', 'Referral background, mechanism of injury, current work status...') +
+    '</div></div>');
+
+  // (e) Injury history / current symptoms
+  html += fceSectionShell('fce-symptoms', 'Injury History / Current Symptoms', null,
+    '<div class="clin-card"><div class="clin-card-body">' +
+      '<div class="form-group"><label>Affected Body Region(s)</label><input class="form-control" id="fce-regions" placeholder="e.g. right shoulder, low back"></div>' +
+      '<label style="font-size:11px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.04em;display:block;margin:12px 0 6px">Current Symptoms</label>' +
+      fceSmartField('fce-symptoms-text', 'Current symptoms as described by the employee...') +
+    '</div></div>');
+
+  // (f)(g)(h) history rows
+  html += fceSectionShell('fce-medhx', 'Medical History', null, fceYnRows('fce-mh', FCE_MED_HISTORY));
+  html += fceSectionShell('fce-injhx', 'Injury History', null, fceYnRows('fce-ih', FCE_INJURY_HISTORY));
+  html += fceSectionShell('fce-fstatus', 'Functional Status', null,
+    fceYnRows('fce-fs', FCE_FUNCTIONAL_STATUS) +
+    '<div class="clin-card" style="margin-top:14px"><div class="clin-card-body">' +
+      '<label style="font-size:11px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.04em;display:block;margin-bottom:6px">Additional Comments</label>' +
+      fceSmartField('fce-fstatus-comments', 'Functional status comments...') +
+    '</div></div>');
+
+  // (i) Pre-assessment baseline
+  html += fceSectionShell('fce-baseline', 'Pre-Assessment Baseline', 'BP &gt;160/100 requires medical clearance to proceed. BMI: Underweight &lt;18.5 | Healthy 18.5-24.9 | Overweight 25.0-29.9 | Obese &gt;30.',
+    '<div class="clin-card"><div class="clin-card-body">' +
+      '<div class="vitals-grid">' +
+        '<div class="vital-item"><div class="vital-label">BP Systolic</div><input class="vital-input" id="fce-bp-sys" placeholder="120" oninput="checkFceBP()"><div class="vital-unit">mmHg</div></div>' +
+        '<div class="vital-item"><div class="vital-label">BP Diastolic</div><input class="vital-input" id="fce-bp-dia" placeholder="80" oninput="checkFceBP()"><div class="vital-unit">mmHg</div></div>' +
+        '<div class="vital-item"><div class="vital-label">Resting HR</div><input class="vital-input" id="fce-resthr" placeholder="72"><div class="vital-unit">bpm</div></div>' +
+        '<div class="vital-item"><div class="vital-label">Height</div><input class="vital-input" id="fce-height" placeholder="1.75" oninput="calcFceBMI()"><div class="vital-unit">m</div></div>' +
+        '<div class="vital-item"><div class="vital-label">Weight</div><input class="vital-input" id="fce-weight" placeholder="80" oninput="calcFceBMI()"><div class="vital-unit">kg</div></div>' +
+        '<div class="vital-item"><div class="vital-label">BMI</div><div class="vital-input" id="fce-bmi">—</div><div class="vital-unit" id="fce-bmi-cat">—</div></div>' +
+        '<div class="vital-item"><div class="vital-label">Max HR (220−age)</div><div class="vital-input" id="fce-maxhr" style="font-size:20px">—</div><div class="vital-unit">bpm</div></div>' +
+        '<div class="vital-item"><div class="vital-label">85% Max HR</div><div class="vital-input" id="fce-maxhr85" style="font-size:20px">—</div><div class="vital-unit">bpm</div></div>' +
+      '</div>' +
+      '<div id="fce-bp-warning" style="margin-top:12px;font-size:13px;font-weight:600"></div>' +
+    '</div></div>');
+
+  // (j) ROM
+  html += fceSectionShell('fce-rom', 'Range of Motion', 'ROM testing should include assessment of all physiological joint movements through the entire available range. Pain should be measured using the Pain Rating Scale (0-10). Limitation should be measured accurately and documented accordingly.',
+    '<div class="clin-card"><div class="clin-card-body">' +
+      romJoints.map(function(joint, i) {
+        return '<div class="rom-row"><div class="rom-joint">' + escFce(joint) + '</div>' +
+          '<div class="rom-options">' + fceChips('fce-rom-' + i, ['Normal', 'Pain', 'Limited']) + '</div>' +
+          '<div style="flex:1"><input id="fce-rom-' + i + '-detail" style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:\'DM Sans\',sans-serif;outline:none" placeholder="Details..."></div>' +
+        '</div>';
+      }).join('') +
+    '</div></div>');
+
+  // (k) Postural analysis
+  html += fceSectionShell('fce-postural', 'Postural Analysis', 'Postural Analysis includes visual observation of relaxed postures in both standing and sitting positions. Shoulder/Scapula should include elevation to assess scapulohumeral and scapulothoracic movements.',
+    '<div class="clin-card"><div class="clin-card-body">' +
+      posturalRegions.map(function(r, i) {
+        return '<div class="rom-row"><div class="rom-joint">' + escFce(r) + '</div>' +
+          '<div class="rom-options">' + fceChips('fce-post-' + i, ['Normal', 'Abnormal']) + '</div>' +
+          '<div style="flex:1"><input id="fce-post-' + i + '-detail" style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:\'DM Sans\',sans-serif;outline:none" placeholder="Details if abnormal..."></div>' +
+        '</div>';
+      }).join('') +
+      '<div style="margin-top:14px"><label style="font-size:11px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.04em;display:block;margin-bottom:6px">Additional Comments</label>' +
+      fceSmartField('fce-postural-comments', 'Postural analysis comments...') + '</div>' +
+    '</div></div>');
+
+  // (l) Special MSK tests
+  var thomasRows = FCE_THOMAS_LEVELS.map(function(lvl, i) {
+    return '<tr><td style="padding:6px 8px;border-bottom:1px solid var(--border);font-size:12px">' + escFce(lvl) + '</td>' +
+      '<td style="text-align:center;padding:6px 8px;border-bottom:1px solid var(--border)"><input type="checkbox" id="fce-thomas-' + i + '-l"></td>' +
+      '<td style="text-align:center;padding:6px 8px;border-bottom:1px solid var(--border)"><input type="checkbox" id="fce-thomas-' + i + '-r"></td></tr>';
+  }).join('');
+  var slrRows = FCE_SLR_RANGES.map(function(rg, i) {
+    return '<tr><td style="padding:6px 8px;border-bottom:1px solid var(--border);font-size:12px">' + escFce(rg) + '</td>' +
+      '<td style="text-align:center;padding:6px 8px;border-bottom:1px solid var(--border)"><input type="checkbox" id="fce-slr-' + i + '-l"></td>' +
+      '<td style="text-align:center;padding:6px 8px;border-bottom:1px solid var(--border)"><input type="checkbox" id="fce-slr-' + i + '-r"></td></tr>';
+  }).join('');
+  html += fceSectionShell('fce-msk', 'Special MSK Tests', FCE_MSK_NOTE,
+    FCE_MSK_TESTS.map(function(t, i) {
+      return '<div class="clin-card" style="margin-bottom:12px"><div class="clin-card-header"><h3>' + escFce(t.name) + ' <span style="font-weight:300;font-size:11px;color:var(--mid)">' + escFce(t.method) + '</span></h3></div>' +
+        '<div class="clin-card-body">' + fceChips('fce-msk-' + i, t.opts) +
+        '<input id="fce-msk-' + i + '-detail" style="width:100%;margin-top:10px;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:\'DM Sans\',sans-serif;outline:none" placeholder="Details...">' +
+        '</div></div>';
+    }).join('') +
+    '<div class="clin-card" style="margin-bottom:12px"><div class="clin-card-header"><h3>Thomas Test <span style="font-weight:300;font-size:11px;color:var(--mid)">(Hip flexor length)</span></h3></div>' +
+      '<div class="clin-card-body"><table style="width:100%;border-collapse:collapse">' +
+      '<thead><tr><th style="text-align:left;padding:6px 8px;font-size:10px;color:var(--mid);text-transform:uppercase;letter-spacing:0.5px">Finding</th><th style="padding:6px 8px;font-size:10px;color:var(--mid)">LEFT</th><th style="padding:6px 8px;font-size:10px;color:var(--mid)">RIGHT</th></tr></thead>' +
+      '<tbody>' + thomasRows + '</tbody></table></div></div>' +
+    '<div class="clin-card" style="margin-bottom:12px"><div class="clin-card-header"><h3>Straight Leg Raise <span style="font-weight:300;font-size:11px;color:var(--mid)">(Record L &amp; R)</span></h3></div>' +
+      '<div class="clin-card-body"><table style="width:100%;border-collapse:collapse">' +
+      '<thead><tr><th style="text-align:left;padding:6px 8px;font-size:10px;color:var(--mid);text-transform:uppercase;letter-spacing:0.5px">Range</th><th style="padding:6px 8px;font-size:10px;color:var(--mid)">LEFT</th><th style="padding:6px 8px;font-size:10px;color:var(--mid)">RIGHT</th></tr></thead>' +
+      '<tbody>' + slrRows + '</tbody></table></div></div>' +
+    '<div class="clin-card" style="margin-bottom:12px"><div class="clin-card-header"><h3>Abdominal Strength</h3></div>' +
+      '<div class="clin-card-body">' + fceChips('fce-abdo', FCE_ABDO_OPTS) + '</div></div>' +
+    '<div class="clin-card"><div class="clin-card-body">' +
+      '<label style="font-size:11px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.04em;display:block;margin-bottom:6px">Additional Comments</label>' +
+      fceSmartField('fce-msk-comments', 'MSK testing comments...') +
+    '</div></div>');
+
+  // (m) Grip strength
+  html += fceSectionShell('fce-grip', 'Grip Strength', 'Hand Held Hydraulic Dynamometer - Setting 2. Elbow position must be maintained at 90 degrees flexion, and remain by applicant\'s side.',
+    '<div class="clin-card"><div class="clin-card-body">' +
+      [['r', 'Right'], ['l', 'Left']].map(function(pair) {
+        var s = pair[0];
+        return '<div style="margin-bottom:16px"><label style="font-size:11px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.04em;display:block;margin-bottom:8px">' + pair[1] + ' Hand</label>' +
+          '<div class="mh-grid">' +
+          '<div class="mh-field"><label>Trial 1 (kg)</label><input id="fce-grip-' + s + '1" type="number" oninput="calcFceGrip(\'' + s + '\')"></div>' +
+          '<div class="mh-field"><label>Trial 2 (kg)</label><input id="fce-grip-' + s + '2" type="number" oninput="calcFceGrip(\'' + s + '\')"></div>' +
+          '<div class="mh-field"><label>Trial 3 (kg)</label><input id="fce-grip-' + s + '3" type="number" oninput="calcFceGrip(\'' + s + '\')"></div>' +
+          '<div class="mh-field"><label>Average (kg)</label><input id="fce-grip-' + s + '-avg" readonly style="background:var(--olive-ultra)"></div>' +
+          '<div class="mh-field"><label>% Normative</label><input id="fce-grip-' + s + '-norm" readonly placeholder="Auto" style="background:var(--olive-ultra)"></div>' +
+          '<div class="mh-field"><label>CV (&gt;15% flag)</label><input id="fce-grip-' + s + '-cv" readonly placeholder="Auto" style="background:var(--olive-ultra)"></div>' +
+          '</div></div>';
+      }).join('') +
+      '<label style="font-size:11px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.04em;display:block;margin-bottom:6px">Additional Comments</label>' +
+      fceSmartField('fce-grip-comments', 'Grip strength comments...') +
+    '</div></div>');
+
+  // (n) Step test — config gated. Keeps its 1-min-post field (step test protocol).
+  if (stepOn) {
+    html += fceSectionShell('fce-steptest', '3 Minute Step Test', '300mm Step. Metronome @ 96 beats per minute in an Up-Up-Down-Down pattern. Lead legs can be alternated at the discretion of the applicant. Prompt applicant to maintain pace and cease testing should HR limit be exceeded.',
+      '<div class="clin-card"><div class="clin-card-body">' +
+        '<div class="vitals-grid">' +
+          '<div class="vital-item"><div class="vital-label">Max HR for Test</div><div class="vital-input" id="fce-st-maxhr">—</div><div class="vital-unit">bpm</div></div>' +
+          '<div class="vital-item"><div class="vital-label">Baseline HR</div><input class="vital-input" id="fce-st-base" placeholder="72"><div class="vital-unit">bpm</div></div>' +
+          '<div class="vital-item"><div class="vital-label">3-Minute HR</div><input class="vital-input" id="fce-st-3min" data-fce-hr="1" placeholder="—"><div class="vital-unit">bpm</div></div>' +
+          '<div class="vital-item"><div class="vital-label">1-Min Post HR</div><input class="vital-input" id="fce-st-post" data-fce-hr="1" placeholder="—"><div class="vital-unit">bpm</div></div>' +
+          '<div class="vital-item"><div class="vital-label">Pain Rating</div><input class="vital-input" id="fce-st-pain" placeholder="0"><div class="vital-unit">/10</div></div>' +
+          '<div class="vital-item"><div class="vital-label">RPE</div><input class="vital-input" id="fce-st-rpe" placeholder="0"><div class="vital-unit">/10</div></div>' +
+        '</div>' +
+        '<div style="margin-top:16px"><label style="font-size:12px;font-weight:700;color:var(--charcoal);text-transform:uppercase;display:block;margin-bottom:8px">Result</label>' +
+        fceChips('fce-st-result', ['Poor', 'Fair', 'Average', 'Good', 'Excellent']) + '</div>' +
+        '<div style="margin-top:14px"><label style="font-size:11px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.04em;display:block;margin-bottom:6px">Additional Comments</label>' +
+        fceSmartField('fce-st-comments', 'Step test comments...') + '</div>' +
+      '</div></div>');
+  }
+
+  // (o) Postural tolerance — config gated
+  if (ptolOn) {
+    html += fceSectionShell('fce-ptol', 'Postural Tolerance', 'The applicant must sustain each posture without rest or adjustment for an allocated time. Crawling = traditional crawling on hands and knees. Full Squat Sustained = full squat resting on heels while manipulating nut and bolt.',
+      FCE_PTOL_ITEMS.map(function(item, i) {
+        return '<div class="clin-card" style="margin-bottom:12px"><div class="clin-card-header"><h3>' + escFce(item) + '</h3></div>' +
+          '<div class="clin-card-body"><div class="mh-grid">' +
+          '<div class="mh-field"><label>Time Achieved</label><input id="fce-ptol-' + i + '-time" placeholder="e.g. 2:00"></div>' +
+          '<div class="mh-field"><label>1 min HR (bpm)</label><input id="fce-ptol-' + i + '-hr1" type="number" data-fce-hr="1" placeholder="—"></div>' +
+          '<div class="mh-field"><label>2 min HR (bpm)</label><input id="fce-ptol-' + i + '-hr2" type="number" data-fce-hr="1" placeholder="—"></div>' +
+          '<div class="mh-field"><label>Pain (0–10)</label><input id="fce-ptol-' + i + '-pain" type="number" min="0" max="10" placeholder="0"></div>' +
+          '<div class="mh-field"><label>RPE (0–10)</label><input id="fce-ptol-' + i + '-rpe" type="number" min="0" max="10" placeholder="0"></div>' +
+          '</div></div></div>';
+      }).join('') +
+      '<div class="clin-card"><div class="clin-card-body">' +
+        '<label style="font-size:11px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.04em;display:block;margin-bottom:6px">Additional Comments</label>' +
+        fceSmartField('fce-ptol-comments', 'Postural tolerance comments...') +
+      '</div></div>');
+  }
+
+  // (p) Tasks
+  html += fceSectionShell('fce-tasks', 'Tasks', 'One card per task enabled on this referral, rendered from the resolved configuration. No time-to-complete or 1-minute-post HR fields apply to tasks.',
+    tasks.length
+      ? tasks.map(fceTaskCardHtml).join('')
+      : '<div class="clin-card"><div class="clin-card-body"><p style="color:var(--mid);font-size:13px;font-style:italic">No tasks were enabled on this referral.</p></div></div>');
+
+  // (q) Workstation ergonomics — config gated
+  if (ergoOn) {
+    html += fceSectionShell('fce-ergo', 'Workstation Ergonomics', null,
+      '<div class="clin-card"><div class="clin-card-body">' +
+        '<label style="font-size:11px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.04em;display:block;margin-bottom:6px">Observations</label>' +
+        fceSmartField('fce-ergo-obs', 'Workstation setup observations...') +
+        '<label style="font-size:11px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.04em;display:block;margin:12px 0 6px">Comments / Recommendations</label>' +
+        fceSmartField('fce-ergo-rec', 'Ergonomic recommendations...') +
+      '</div></div>');
+  }
+
+  // (r) Evaluation summary
+  html += fceSectionShell('fce-summary', 'Evaluation Summary', 'Generate a draft from recorded findings, then edit freely.',
+    '<div class="clin-card"><div class="clin-card-body">' +
+      '<div style="margin-bottom:10px"><button class="option-chip" style="font-weight:600" onclick="generateFceSummary()">✎ Generate Summary Draft</button></div>' +
+      fceSmartField('fce-summary-text', 'Summary of observations...') +
+    '</div></div>');
+
+  // (s) Conclusion — determination table
+  html += fceSectionShell('fce-conclusion', 'Conclusion', 'Single determination. Comments are required for AMBER or RED determinations — finalise is blocked without them.',
+    '<div class="clin-card"><div class="clin-card-header"><h3>In the opinion of the assessor the applicant has:</h3></div>' +
+    '<div class="clin-card-body" id="fce-det">' +
+      FCE_DETERMINATIONS.map(function(d) {
+        return '<div class="outcome-option" onclick="selectFceDetermination(this,\'' + d.code + '\')" style="display:flex;gap:14px;align-items:flex-start;padding:14px;border:2px solid var(--border);border-radius:8px;margin-bottom:10px;cursor:pointer">' +
+          '<span style="flex-shrink:0;display:inline-block;background:' + d.colour + ';color:white;padding:4px 12px;border-radius:4px;font-size:12px;font-weight:700;letter-spacing:0.5px">' + d.band + '</span>' +
+          '<span style="font-size:14px;line-height:1.6">' + escFce(d.text) + '</span>' +
+        '</div>';
+      }).join('') +
+      '<input type="hidden" id="fce-determination">' +
+      '<div class="form-group" style="margin-top:14px"><label>Comments (Required for AMBER or RED Determinations)</label>' +
+      '<textarea class="form-control" id="fce-det-comments" style="min-height:90px" placeholder="Restrictions, review requirements or risk rationale..."></textarea></div>' +
+    '</div></div>');
+
+  // (t) Recommendations
+  html += fceSectionShell('fce-recs', 'Recommendations', 'In the opinion of the assessor the applicant may benefit from the following:',
+    '<div class="clin-card"><div class="clin-card-body">' +
+      '<label style="display:flex;align-items:center;gap:10px;padding:8px 0;cursor:pointer"><input type="checkbox" id="fce-rec-cardio"> Aerobic / cardiovascular endurance training</label>' +
+      '<label style="display:flex;align-items:center;gap:10px;padding:8px 0;cursor:pointer"><input type="checkbox" id="fce-rec-mh"> Manual handling education + training</label>' +
+      '<label style="display:flex;align-items:center;gap:10px;padding:8px 0;cursor:pointer"><input type="checkbox" id="fce-rec-strength"> Strength training</label>' +
+      '<div class="form-group" style="margin-left:28px"><input class="form-control" id="fce-rec-strength-region" placeholder="Target region(s)..."></div>' +
+      '<label style="display:flex;align-items:center;gap:10px;padding:8px 0;cursor:pointer"><input type="checkbox" id="fce-rec-gp"> Referral to GP</label>' +
+      '<div class="form-group" style="margin-left:28px"><input class="form-control" id="fce-rec-gp-reason" placeholder="Reason for referral..."></div>' +
+      '<label style="display:flex;align-items:center;gap:10px;padding:8px 0;cursor:pointer"><input type="checkbox" id="fce-rec-other"> Other</label>' +
+      '<div class="form-group" style="margin-left:28px"><input class="form-control" id="fce-rec-other-details" placeholder="Details..."></div>' +
+    '</div></div>');
+
+  // (u) Assessor sign-off
+  html += fceSectionShell('fce-signoff', 'Assessor Sign-off', null,
+    '<div class="clin-card"><div class="clin-card-body">' +
+      '<div class="mh-grid">' +
+        '<div class="mh-field"><label>Assessor Name</label><input id="fce-signoff-name" placeholder="From Employee Details" readonly style="background:var(--olive-ultra)"></div>' +
+        '<div class="mh-field"><label>Qualification</label><input id="fce-assessor-qual" value="Physiotherapist"></div>' +
+      '</div>' +
+      fceSigBlock('fce-sig-assessor', 'Assessor Signature', 'fce-signoff-date') +
+    '</div></div>');
+
+  document.getElementById('fce-content').innerHTML = html;
+
+  // Post-render init
+  setTimeout(function() {
+    ['fce-sig-auth', 'fce-sig-consent', 'fce-sig-assessor'].forEach(function(id) { initSig(id, id + '-ph'); });
+  }, 60);
+  var today = new Date().toISOString().split('T')[0];
+  ['fce-auth-date', 'fce-consent-date', 'fce-signoff-date'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el && !el.value) el.value = today;
+  });
+
+  // Prefill from the appointment
+  function setVal(id, v) { var el = document.getElementById(id); if (el && v) el.value = v; }
+  setVal('fce-firstname', appt.patient_first_name);
+  setVal('fce-surname', appt.patient_last_name);
+  setVal('fce-job', appt.position_applied_for);
+  setVal('fce-site', appt.site);
+  setVal('fce-date', appt.appointment_date);
+  setVal('fce-time', appt.appointment_time);
+  // Assessor from the logged-in clinician session (editable)
+  var sess = getAuthSession();
+  if (sess && sess.email) {
+    var guess = sess.email.split('@')[0].replace(/[._-]+/g, ' ').replace(/\b\w/g, function(c) { return c.toUpperCase(); });
+    setVal('fce-assessor-name', guess);
+  }
+  calcFceMaxHR();
+}
+
+// ─── FCE interactivity ───────────────────────────────────────────────────────
+function showFceSection(id, navItem) {
+  if (typeof saveFceDataToStorage === 'function') saveFceDataToStorage();
+  document.querySelectorAll('#screen-fce .clinician-section').forEach(function(s) { s.classList.remove('active'); });
+  document.querySelectorAll('#screen-fce .clinician-nav-item').forEach(function(n) { n.classList.remove('active'); });
+  var target = document.getElementById(id);
+  if (target) target.classList.add('active');
+  if (navItem) navItem.classList.add('active');
+  else {
+    var nav = Array.from(document.querySelectorAll('#screen-fce .clinician-nav-item')).find(function(n) {
+      return (n.getAttribute('onclick') || '').indexOf("'" + id + "'") >= 0;
+    });
+    if (nav) nav.classList.add('active');
+  }
+  if (id === 'fce-signoff') {
+    var nameEl = document.getElementById('fce-signoff-name');
+    if (nameEl) nameEl.value = (document.getElementById('fce-assessor-name') || {}).value || '';
+  }
+  window.scrollTo(0, 0);
+}
+
+function selectFceChip(el, group) {
+  var container = el.closest('.fce-chips');
+  if (container) container.querySelectorAll('.option-chip').forEach(function(c) { c.classList.remove('selected-normal'); });
+  el.classList.add('selected-normal');
+  saveFceDataDebounced();
+}
+
+function getFceChipText(group) {
+  var chip = Array.from(document.querySelectorAll('#screen-fce .option-chip.selected-normal')).find(function(c) {
+    return (c.getAttribute('onclick') || '').indexOf("'" + group + "'") >= 0;
+  });
+  return chip ? chip.textContent.trim() : '';
+}
+
+function toggleFceYN(btn, key, val) {
+  var group = btn.parentElement;
+  group.querySelectorAll('.yn-btn').forEach(function(b) { b.className = 'yn-btn'; });
+  btn.classList.add(val === 'yes' ? 'selected-yes' : 'selected-no');
+  var hidden = document.getElementById(key);
+  if (hidden) hidden.value = val;
+  var detail = document.getElementById(key + '-detail');
+  if (detail) detail.classList.toggle('visible', val === 'yes');
+  saveFceDataDebounced();
+}
+
+// ─── FCE baseline calcs (mirrors PEMA logic; own state so PEMA is untouched) ─
+function calcFceBMI() {
+  var h = parseFloat((document.getElementById('fce-height') || {}).value);
+  var w = parseFloat((document.getElementById('fce-weight') || {}).value);
+  if (h > 0 && w > 0) {
+    var bmi = (w / (h * h)).toFixed(1);
+    var cat = bmi < 18.5 ? 'Underweight' : bmi < 25 ? 'Healthy' : bmi < 30 ? 'Overweight' : 'Obese';
+    var el = document.getElementById('fce-bmi'); if (el) el.textContent = bmi;
+    var catEl = document.getElementById('fce-bmi-cat'); if (catEl) catEl.textContent = cat;
+  }
+}
+
+function calcFceMaxHR() {
+  var dob = (document.getElementById('fce-dob') || {}).value;
+  var age = 35;
+  if (dob) { age = Math.floor((Date.now() - new Date(dob)) / (1000 * 60 * 60 * 24 * 365.25)); }
+  var max100 = 220 - age;
+  var max85 = Math.round(max100 * 0.85);
+  window._fceMaxHR = max100;
+  window._fceMaxHR85 = max85;
+  var v100 = document.getElementById('fce-maxhr'); if (v100) v100.textContent = max100 + ' bpm';
+  var v85 = document.getElementById('fce-maxhr85'); if (v85) v85.textContent = max85 + ' bpm';
+  var stEl = document.getElementById('fce-st-maxhr'); if (stEl) stEl.textContent = max100 + ' bpm';
+}
+
+function checkFceBP() {
+  var sys = parseInt((document.getElementById('fce-bp-sys') || {}).value);
+  var dia = parseInt((document.getElementById('fce-bp-dia') || {}).value);
+  var warn = document.getElementById('fce-bp-warning');
+  if (!warn) return;
+  if (sys > 160 || dia > 100) {
+    warn.textContent = '⚠ Medical clearance required — functional testing locked';
+    warn.style.color = 'var(--error)';
+    window._fceBpElevated = true;
+    lockFceFunctionalSections(true);
+  } else if (sys > 0) {
+    warn.textContent = '✓ Within limits — functional testing cleared';
+    warn.style.color = 'var(--success)';
+    window._fceBpElevated = false;
+    if (!window._fceBpOverridden) lockFceFunctionalSections(false);
+  }
+}
+
+function lockFceFunctionalSections(lock) {
+  ['fce-steptest', 'fce-ptol', 'fce-tasks'].forEach(function(id) {
+    var sec = document.getElementById(id);
+    if (!sec) return;
+    var overlay = sec.querySelector('.bp-lock-overlay');
+    if (lock) {
+      if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.className = 'bp-lock-overlay';
+        overlay.style.cssText = 'position:absolute;inset:0;background:rgba(247,247,244,0.92);z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:8px;padding:32px;text-align:center';
+        overlay.innerHTML =
+          '<div style="font-size:16px;font-weight:700;color:#8b3a2f;margin-bottom:8px">Functional Testing Locked</div>' +
+          '<div style="font-size:13px;color:#6b6b65;margin-bottom:16px;line-height:1.6">Blood pressure exceeds 160/100 mmHg. Functional testing cannot proceed until medical clearance is obtained from the employee\'s treating GP.</div>' +
+          '<button onclick="fceBpBypass()" style="background:#6d6f57;color:white;border:none;padding:10px 20px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">GP Clearance Provided — Unlock</button>';
+        sec.style.position = 'relative';
+        sec.appendChild(overlay);
+      }
+      overlay.style.display = 'flex';
+    } else if (overlay) {
+      overlay.style.display = 'none';
+    }
+  });
+}
+
+function fceBpBypass() {
+  if (!confirm('Confirm that a GP clearance certificate has been sighted and the employee is approved to proceed with functional testing despite elevated blood pressure.\n\nThis override will be documented in the report.')) return;
+  window._fceBpOverridden = true;
+  lockFceFunctionalSections(false);
+  var ta = document.getElementById('fce-summary-text');
+  if (ta && ta.value.indexOf('clearance') < 0) {
+    var note = 'Note: Blood pressure was recorded above 160/100 mmHg. GP clearance certificate sighted prior to commencement of functional testing. Assessment proceeded with medical approval.';
+    ta.value = (ta.value ? ta.value + '\n\n' : '') + note;
+  }
+}
+
+// FCE grip — same trials/CV/normative maths as PEMA but reads the FCE form's
+// own DOB / gender / dominant hand, so PEMA patient state is never touched.
+function getFceGripNorm(side, age) {
+  var gender = getFceChipText('fce-gender');
+  var isMale = gender.toLowerCase().indexOf('male') === 0;
+  var norms = isMale ? GRIP_NORMS.male : GRIP_NORMS.female;
+  if (isNaN(age) || age < 15) return null;
+  var isLeftHanded = getFceChipText('fce-dominant').toLowerCase().indexOf('l') === 0;
+  var useDominantColumn = isLeftHanded ? (side === 'l') : (side === 'r');
+  for (var i = 0; i < norms.length; i++) {
+    var row = norms[i];
+    if (age >= row[0] && age <= row[1]) return useDominantColumn ? row[2] : row[3];
+  }
+  var last = norms[norms.length - 1];
+  return useDominantColumn ? last[2] : last[3];
+}
+
+function calcFceGrip(side) {
+  var t1 = parseFloat((document.getElementById('fce-grip-' + side + '1') || {}).value) || 0;
+  var t2 = parseFloat((document.getElementById('fce-grip-' + side + '2') || {}).value) || 0;
+  var t3 = parseFloat((document.getElementById('fce-grip-' + side + '3') || {}).value) || 0;
+  var count = [t1, t2, t3].filter(function(v) { return v > 0; }).length;
+  if (!count) return;
+  var avg = ((t1 + t2 + t3) / count).toFixed(1);
+  var avgEl = document.getElementById('fce-grip-' + side + '-avg');
+  if (avgEl) avgEl.value = avg;
+  if (count === 3) {
+    var mean = (t1 + t2 + t3) / 3;
+    var sd = Math.sqrt([t1, t2, t3].reduce(function(s, v) { return s + (v - mean) * (v - mean); }, 0) / 3);
+    var cv = Math.round(sd / mean * 100);
+    var cvEl = document.getElementById('fce-grip-' + side + '-cv');
+    if (cvEl) {
+      cvEl.value = cv + '%';
+      cvEl.style.color = cv > 15 ? 'var(--error)' : 'var(--success)';
+    }
+  }
+  var dob = (document.getElementById('fce-dob') || {}).value;
+  var normEl = document.getElementById('fce-grip-' + side + '-norm');
+  if (!dob) {
+    if (normEl && !normEl.value) normEl.placeholder = 'Enter DOB + gender for normative %';
+    return;
+  }
+  var age = Math.floor((Date.now() - new Date(dob)) / (1000 * 60 * 60 * 24 * 365.25));
+  var norm = getFceGripNorm(side, age);
+  if (norm && norm > 0 && normEl) normEl.value = Math.round(parseFloat(avg) / norm * 100) + '% (norm: ' + norm + 'kg)';
+}
+
+// ─── FCE 85% max HR breach + exertion chips (own copy — writes to FCE state) ─
+function checkFceHRBreach(inputEl) {
+  var val = parseFloat(inputEl.value);
+  var max85 = window._fceMaxHR85 || 0;
+  var breachId = getHRBreachId(inputEl);
+  var existing = document.getElementById(breachId);
+  var breachActive = max85 > 0 && inputEl.value.trim() !== '' && val > max85;
+
+  if (!breachActive) {
+    if (existing) {
+      existing.remove();
+      var taOld = findHRLinkedTextarea(inputEl);
+      if (taOld && taOld.dataset.hrAutoText) {
+        if (taOld.value === taOld.dataset.hrAutoText) taOld.value = '';
+        else if (taOld.value.indexOf(taOld.dataset.hrAutoText + '\n') === 0) taOld.value = taOld.value.slice(taOld.dataset.hrAutoText.length + 1);
+        delete taOld.dataset.hrAutoText;
+      }
+    }
+    return;
+  }
+
+  var sentence = '85% max HR exceeded — peak HR ' + val + ' bpm (85% max: ' + max85 + ' bpm).';
+  var ta = findHRLinkedTextarea(inputEl);
+  if (ta) {
+    if (!ta.value.trim() || ta.value === ta.dataset.hrAutoText) {
+      ta.value = sentence;
+      ta.dataset.hrAutoText = sentence;
+    } else if (ta.dataset.hrAutoText && ta.value.indexOf(ta.dataset.hrAutoText) === 0) {
+      ta.value = sentence + ta.value.slice(ta.dataset.hrAutoText.length);
+      ta.dataset.hrAutoText = sentence;
+    }
+  }
+  if (existing) return;
+
+  var chipsDiv = document.createElement('div');
+  chipsDiv.id = breachId;
+  chipsDiv.className = 'hr-exertion-chips';
+  chipsDiv.style.marginTop = '8px';
+  chipsDiv.innerHTML =
+    '<div style="font-size:11px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px">Signs of Exertion Observed</div>' +
+    '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+      '<div class="prompt-chip" onclick="selectFceExertion(this,\'nil signs of exertion noted\')">Nil signs</div>' +
+      '<div class="prompt-chip" onclick="selectFceExertion(this,\'mild signs of exertion noted (mild perspiration)\')">Mild</div>' +
+      '<div class="prompt-chip" onclick="selectFceExertion(this,\'moderate signs of exertion noted (perspiration, shortness of breath)\')">Moderate</div>' +
+      '<div class="prompt-chip" onclick="selectFceExertion(this,\'significant signs of exertion noted (heavy perspiration, marked shortness of breath, pallor)\')">Significant</div>' +
+    '</div>';
+  var insertAfter = findHRChipsInsertPoint(inputEl);
+  if (insertAfter && insertAfter.parentElement) insertAfter.parentElement.insertBefore(chipsDiv, insertAfter.nextSibling);
+  saveFceDataDebounced();
+}
+
+function selectFceExertion(chip, text) {
+  var exertionDiv = chip.closest('.hr-exertion-chips');
+  if (!exertionDiv) return;
+  exertionDiv.querySelectorAll('.prompt-chip').forEach(function(c) { c.classList.remove('selected'); });
+  chip.classList.add('selected');
+  var peakInput = exertionDiv.id ? document.querySelector('[data-hr-breach-id="' + exertionDiv.id + '"]') : null;
+  var ta = peakInput ? findHRLinkedTextarea(peakInput) : null;
+  if (!ta) {
+    var container = exertionDiv.closest('.clin-card, .clinician-section');
+    ta = container ? container.querySelector('.smart-textarea') : null;
+  }
+  if (ta) {
+    var max85 = window._fceMaxHR85 || 0;
+    var peakVal = peakInput ? parseFloat(peakInput.value) : NaN;
+    var breachLine = (max85 > 0 && !isNaN(peakVal) && peakVal > max85)
+      ? '85% max HR exceeded — peak HR ' + peakVal + ' bpm (85% max: ' + max85 + ' bpm).' : '';
+    var kept = ta.value.split('\n').filter(function(l) {
+      var t = l.trim();
+      return !/^85% max HR exceeded/.test(t) && !/^Signs of exertion observed:/.test(t);
+    }).join('\n').trim();
+    var parts = [];
+    if (breachLine) parts.push(breachLine);
+    if (kept) parts.push(kept);
+    parts.push('Signs of exertion observed: ' + text + '.');
+    ta.value = parts.join('\n');
+    if (breachLine) ta.dataset.hrAutoText = breachLine;
+  }
+  saveFceDataDebounced();
+}
+
+// ─── Per-task comment generator ──────────────────────────────────────────────
+function fceSalutation() {
+  var gender = getFceChipText('fce-gender');
+  var title = gender === 'Female' ? 'Ms' : 'Mr';
+  var surname = (document.getElementById('fce-surname') || {}).value || (window._fceAppointment || {}).patient_last_name || '';
+  return (title + ' ' + surname).trim();
+}
+
+function generateTaskComment(i) {
+  var t = (window._fceTasks || [])[i];
+  if (!t) return;
+  var ta = document.getElementById('fce-task-' + i + '-comments');
+  if (!ta) return;
+
+  var disc = getFceChipText('fce-task-' + i + '-disc') || 'None';
+  var painEl = document.getElementById('fce-task-' + i + '-pain');
+  var painVal = painEl ? painEl.value.trim() : '';
+  if (disc === 'Pain' && painVal === '') {
+    alert('Enter the pain rating (0–10) first — the generated comment includes it.');
+    if (painEl) painEl.focus();
+    return;
+  }
+
+  // Sentence 1: salutation + protocol (lower-cased, lightly normalised)
+  var protocol = (t.protocol || t.name || '').trim().toLowerCase().replace(/\s+/g, ' ').replace(/\.$/, '');
+  var s1 = fceSalutation() + ' completed ' + protocol;
+  if (disc === 'Awareness')  s1 += ', reporting an awareness of [region] but no reports of pain or discomfort.';
+  else if (disc === 'Pain')  s1 += ', reporting discomfort/pain (' + painVal + '/10) [region].';
+  else                       s1 += ' with no signs of discomfort or reports of pain.';
+
+  var lines = [s1];
+
+  // 85% HR line — any recorded HR field in this task above the 85% threshold
+  var max85 = window._fceMaxHR85 || 0;
+  var card = document.getElementById('fce-task-card-' + i);
+  var breached = false;
+  if (card && max85 > 0) {
+    card.querySelectorAll('input[data-fce-hr]').forEach(function(inp) {
+      var v = parseFloat(inp.value);
+      if (!isNaN(v) && v > max85) breached = true;
+    });
+  }
+  if (breached) {
+    var exertChip = card ? card.querySelector('.hr-exertion-chips .prompt-chip.selected') : null;
+    var exertText = exertChip ? (exertChip.getAttribute('onclick') || '').match(/selectFceExertion\(this,'([^']+)'\)/) : null;
+    lines.push('85% max HR exceeded — ' + ((exertText && exertText[1]) || 'nil signs of exertion noted') + '.');
+  }
+
+  // Manual handling line — only when the rating applies and all three are filled
+  if (t.manual_handling_rating) {
+    var vals = ['stance', 'posture', 'control'].map(function(dim) {
+      return parseInt((document.getElementById('fce-task-' + i + '-mh-' + dim) || {}).value, 10);
+    });
+    if (vals.every(function(v) { return !isNaN(v); })) {
+      if (vals.every(function(v) { return v === 4; })) lines.push('Excellent manual handling technique was adopted throughout.');
+      else if (vals.every(function(v) { return v >= 3; })) lines.push('Good manual handling technique was adopted throughout.');
+      // any rating ≤2: no auto-praise — left for a manual comment
+    }
+  }
+
+  var comment = lines.join(' ');
+  if (ta.value.trim() && !confirm('Replace the existing comment for this task?')) return;
+  ta.value = comment;
+  delete ta.dataset.hrAutoText;
+
+  // Select the [region] token so typing or dictation replaces it immediately
+  var idx = comment.indexOf('[region]');
+  ta.focus();
+  if (idx >= 0) ta.setSelectionRange(idx, idx + 8);
+  saveFceDataDebounced();
+}
+
+// ─── Evaluation summary draft ────────────────────────────────────────────────
+function generateFceSummary() {
+  var ta = document.getElementById('fce-summary-text');
+  if (!ta) return;
+  var lines = ['• ' + fceSalutation() + ' participated fully in all components of the assessment.'];
+  var max85 = window._fceMaxHR85 || 0;
+
+  (window._fceTasks || []).forEach(function(t, i) {
+    var disc = getFceChipText('fce-task-' + i + '-disc');
+    if (disc && disc !== 'None') {
+      var pain = (document.getElementById('fce-task-' + i + '-pain') || {}).value;
+      lines.push('• ' + t.name + ': ' + (disc === 'Pain' ? 'discomfort/pain reported' + (pain ? ' (' + pain + '/10)' : '') : 'awareness reported') + '.');
+    }
+    var restriction = getFceChipText('fce-task-' + i + '-restriction');
+    if (restriction && restriction !== 'Unrestricted') lines.push('• ' + t.name + ': ' + restriction.toLowerCase() + ' identified.');
+    var card = document.getElementById('fce-task-card-' + i);
+    if (card && max85 > 0) {
+      var breached = false;
+      card.querySelectorAll('input[data-fce-hr]').forEach(function(inp) {
+        var v = parseFloat(inp.value);
+        if (!isNaN(v) && v > max85) breached = true;
+      });
+      if (breached) lines.push('• ' + t.name + ': 85% max HR exceeded during testing.');
+    }
+  });
+
+  romJoints.forEach(function(joint, i) {
+    var sel = getFceChipText('fce-rom-' + i);
+    if (sel && sel !== 'Normal') {
+      var detail = (document.getElementById('fce-rom-' + i + '-detail') || {}).value;
+      lines.push('• ROM — ' + joint + ': ' + sel.toLowerCase() + (detail ? ' (' + detail + ')' : '') + '.');
+    }
+  });
+  posturalRegions.forEach(function(r, i) {
+    var sel = getFceChipText('fce-post-' + i);
+    if (sel === 'Abnormal') {
+      var detail = (document.getElementById('fce-post-' + i + '-detail') || {}).value;
+      lines.push('• Postural analysis — ' + r + ': abnormal' + (detail ? ' (' + detail + ')' : '') + '.');
+    }
+  });
+  FCE_MSK_TESTS.forEach(function(t, i) {
+    var sel = getFceChipText('fce-msk-' + i);
+    if (sel && sel !== t.opts[0]) {
+      var detail = (document.getElementById('fce-msk-' + i + '-detail') || {}).value;
+      lines.push('• ' + t.name + ': ' + sel.toLowerCase() + (detail ? ' (' + detail + ')' : '') + '.');
+    }
+  });
+
+  var draft = lines.join('\n');
+  if (ta.value.trim() && !confirm('Replace the existing summary text with the generated draft?')) return;
+  ta.value = draft;
+  ta.focus();
+  saveFceDataDebounced();
+}
+
+// ─── Determination ───────────────────────────────────────────────────────────
+function selectFceDetermination(el, code) {
+  document.querySelectorAll('#fce-det .outcome-option').forEach(function(o) {
+    o.classList.remove('selected');
+    o.style.borderColor = 'var(--border)';
+    o.style.background = '';
+  });
+  el.classList.add('selected');
+  el.style.borderColor = 'var(--olive)';
+  el.style.background = 'var(--olive-pale)';
+  var hidden = document.getElementById('fce-determination');
+  if (hidden) hidden.value = code;
+  saveFceDataDebounced();
+}
+
+// ─── Autosave (mirrors PEMA: localStorage + clinician_progress sync) ─────────
+function saveFceDataToStorage() {
+  if (!window._currentFceToken) return;
+  var data = {};
+  document.querySelectorAll('#screen-fce input, #screen-fce select, #screen-fce textarea').forEach(function(el) {
+    if (!el.id) return;
+    data[el.id] = (el.type === 'checkbox') ? (el.checked ? '1' : '') : el.value;
+  });
+  document.querySelectorAll('#screen-fce .option-chip.selected-normal').forEach(function(chip) {
+    var oc = chip.getAttribute('onclick') || '';
+    if (oc) data['fchip_' + oc] = '1';
+  });
+  ['fce-sig-auth', 'fce-sig-consent', 'fce-sig-assessor'].forEach(function(id) {
+    var sig = getSigGlobal(id);
+    if (sig) data['sig_' + id] = sig;
+  });
+  data['_token'] = window._currentFceToken;
+  data['_type'] = 'fce';
+  try {
+    localStorage.setItem('aim_fce_data', JSON.stringify(data));
+    localStorage.setItem('aim_fce_timestamp', new Date().toISOString());
+  } catch(e) {}
+  syncFceDataToSupabase(window._currentFceToken, data);
+}
+
+var _fceSaveTimer = null;
+function saveFceDataDebounced() {
+  clearTimeout(_fceSaveTimer);
+  _fceSaveTimer = setTimeout(saveFceDataToStorage, 300);
+}
+
+var _fceSyncTimer = null;
+function syncFceDataToSupabase(token, data) {
+  clearTimeout(_fceSyncTimer);
+  _fceSyncTimer = setTimeout(async function() {
+    try {
+      var jwt = await getAccessToken();
+      await fetch(SUPABASE_URL + '/rest/v1/clinician_progress', {
+        method: 'POST',
+        headers: {
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': 'Bearer ' + (jwt || SUPABASE_ANON_KEY),
+          'Content-Type': 'application/json',
+          'Prefer': 'resolution=merge-duplicates'
+        },
+        body: JSON.stringify({ token: token, progress_data: data, updated_at: new Date().toISOString() })
+      });
+    } catch(e) { console.error('[FCE] progress sync failed:', e); }
+  }, 5000);
+}
+
+function drawFceSig(canvasId, dataUrl) {
+  var canvas = document.getElementById(canvasId);
+  if (!canvas || !dataUrl) return;
+  var img = new Image();
+  img.onload = function() {
+    canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+    var ph = document.getElementById(canvasId + '-ph');
+    if (ph) ph.style.display = 'none';
+  };
+  img.src = dataUrl;
+}
+
+function restoreFceData(data) {
+  Object.keys(data).forEach(function(key) {
+    if (key.charAt(0) === '_' || key.indexOf('fchip_') === 0 || key.indexOf('sig_') === 0) return;
+    var el = document.getElementById(key);
+    if (!el || data[key] === undefined) return;
+    if (el.type === 'checkbox') el.checked = data[key] === '1';
+    else el.value = data[key];
+  });
+  Object.keys(data).forEach(function(key) {
+    if (key.indexOf('fchip_') !== 0) return;
+    var oc = key.slice(6);
+    var chip = Array.from(document.querySelectorAll('#screen-fce .option-chip')).find(function(c) {
+      return (c.getAttribute('onclick') || '') === oc;
+    });
+    if (chip) chip.classList.add('selected-normal');
+  });
+  ['fce-sig-auth', 'fce-sig-consent', 'fce-sig-assessor'].forEach(function(id) {
+    setTimeout(function() { drawFceSig(id, data['sig_' + id]); }, 150);
+  });
+  refreshFceDerived();
+}
+
+function refreshFceDerived() {
+  // Yes/No rows: reapply button states + detail visibility from hidden inputs
+  document.querySelectorAll('#screen-fce .fce-yn-state').forEach(function(hidden) {
+    var val = hidden.value;
+    if (!val) return;
+    var card = hidden.closest('.q-card');
+    if (card) {
+      card.querySelectorAll('.yn-btn').forEach(function(b) {
+        b.className = 'yn-btn';
+        var isYes = b.textContent.trim() === 'Yes';
+        if ((val === 'yes' && isYes) || (val === 'no' && !isYes)) b.classList.add(val === 'yes' ? 'selected-yes' : 'selected-no');
+      });
+    }
+    var detail = document.getElementById(hidden.id + '-detail');
+    if (detail) detail.classList.toggle('visible', val === 'yes');
+  });
+  // Determination highlight
+  var det = (document.getElementById('fce-determination') || {}).value;
+  if (det) {
+    var codes = FCE_DETERMINATIONS.map(function(d) { return d.code; });
+    var opt = document.querySelectorAll('#fce-det .outcome-option')[codes.indexOf(det)];
+    if (opt) {
+      opt.classList.add('selected');
+      opt.style.borderColor = 'var(--olive)';
+      opt.style.background = 'var(--olive-pale)';
+    }
+  }
+  calcFceMaxHR();
+  calcFceBMI();
+  checkFceBP();
+  calcFceGrip('r');
+  calcFceGrip('l');
+  // Recreate 85% HR breach chips for restored values
+  document.querySelectorAll('#screen-fce input[data-fce-hr]').forEach(function(inp) {
+    if (inp.value.trim() !== '') checkFceHRBreach(inp);
+  });
+}
+
+var _fceAutoSaveTimer = null;
+function wireFceAutoSave() {
+  var screen = document.getElementById('screen-fce');
+  if (!screen) return;
+  screen.addEventListener('input', function(e) {
+    if (e.target.dataset && e.target.dataset.fceHr) checkFceHRBreach(e.target);
+    clearTimeout(_fceAutoSaveTimer);
+    var delay = (e.target.tagName === 'TEXTAREA' || e.target.type === 'text' || e.target.type === 'number') ? 800 : 0;
+    _fceAutoSaveTimer = setTimeout(saveFceDataToStorage, delay);
+  });
+  screen.addEventListener('change', function() {
+    clearTimeout(_fceAutoSaveTimer);
+    _fceAutoSaveTimer = setTimeout(saveFceDataToStorage, 100);
+  });
+  // Signature canvases are rendered dynamically — capture strokes by delegation
+  ['mouseup', 'touchend'].forEach(function(evt) {
+    screen.addEventListener(evt, function(e) {
+      if (e.target && e.target.classList && e.target.classList.contains('sig-canvas')) {
+        setTimeout(saveFceDataToStorage, 150);
+      }
+    });
+  });
+}
+
+// ─── Finalise + PDF stub ─────────────────────────────────────────────────────
+function validateFCE() {
+  var problems = [];
+  var det = (document.getElementById('fce-determination') || {}).value;
+  if (!det) problems.push('Select a determination in the Conclusion section.');
+  else if (det !== 'G' && !((document.getElementById('fce-det-comments') || {}).value || '').trim()) {
+    problems.push('Comments are required for AMBER or RED determinations.');
+  }
+  if (!getSigGlobal('fce-sig-auth')) problems.push('Authority to Obtain and Release Information signature is missing.');
+  if (!getSigGlobal('fce-sig-consent')) problems.push('Consent to Proceed signature is missing.');
+  if (!getSigGlobal('fce-sig-assessor')) problems.push('Assessor signature is missing.');
+  return problems;
+}
+
+// !! PHASE 3 STUB !! — buildFCEPDF only produces a minimal title page so the
+// finalise → upload → mark-finalised plumbing is provable end-to-end.
+// The full FCE report layout is Phase 3 work.
+function buildFCEPDF() {
+  var jsPDF = window.jspdf.jsPDF;
+  var doc = new jsPDF('p', 'mm', 'a4');
+  var appt = window._fceAppointment || {};
+  var cfg = appt.fce_config || {};
+  var name = ((appt.patient_first_name || '') + ' ' + (appt.patient_last_name || '')).trim() || 'Unknown';
+  var det = FCE_DETERMINATIONS.find(function(d) { return d.code === (document.getElementById('fce-determination') || {}).value; });
+
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(22);
+  doc.text('Functional Capacity Evaluation', 20, 40);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(12);
+  var y = 60;
+  [['Employee', name],
+   ['Client', appt.client_name || '—'],
+   ['Classification', cfg.classification || appt.client_classification || '—'],
+   ['Assessment Date', appt.appointment_date || '—'],
+   ['Determination', det ? det.band + ' — ' + det.text : '—']].forEach(function(row) {
+    doc.setFont('helvetica', 'bold'); doc.text(row[0] + ':', 20, y);
+    doc.setFont('helvetica', 'normal');
+    var wrapped = doc.splitTextToSize(String(row[1]), 130);
+    doc.text(wrapped, 60, y);
+    y += 8 + (wrapped.length - 1) * 6;
+  });
+  doc.setFontSize(10); doc.setTextColor(150);
+  doc.text('DRAFT — placeholder report. The full FCE report layout arrives in Phase 3.', 20, y + 12);
+
+  var safeName = name.replace(/[^a-z0-9]+/gi, '_');
+  return { doc: doc, filename: 'FCE_' + safeName + '_' + new Date().toISOString().split('T')[0] + '.pdf' };
+}
+
+function finaliseFCE() {
+  var problems = validateFCE();
+  if (problems.length) {
+    alert('Cannot finalise yet:\n\n• ' + problems.join('\n• '));
+    showFceSection('fce-conclusion');
+    return;
+  }
+  var btn = document.querySelector('#screen-fce [onclick="finaliseFCE()"]');
+  var origText = btn ? btn.textContent : '';
+  function restoreBtn() { if (btn) { btn.textContent = origText; btn.disabled = false; } }
+  if (btn) { btn.textContent = 'Finalising…'; btn.disabled = true; }
+  function tryBuild() {
+    finaliseFCEAsync().then(restoreBtn).catch(function(e) {
+      restoreBtn(); console.error('FCE finalise error:', e); alert('Finalise error: ' + e.message);
+    });
+  }
+  if (window.jspdf && window.jspdf.jsPDF) tryBuild();
+  else {
+    var s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+    s.onload = function() { setTimeout(tryBuild, 100); };
+    s.onerror = function() { restoreBtn(); alert('Could not load PDF library. Check internet connection.'); };
+    document.head.appendChild(s);
+  }
+}
+
+async function finaliseFCEAsync() {
+  saveFceDataToStorage();
+  var out = buildFCEPDF();
+  if (!out || !out.doc) throw new Error('PDF could not be generated.');
+  var blob = out.doc.output('blob');
+  var token = window._currentFceToken;
+  var path = (token || 'fce-manual-' + new Date().toISOString().split('T')[0]) + '/' + out.filename;
+
+  try {
+    await sbStorageUpload(path, blob);
+  } catch(e) {
+    out.doc.save(out.filename); // never lose a finished report
+    throw new Error('Upload to the report store failed, so the PDF was downloaded locally instead.\n\n' + e.message);
+  }
+
+  if (token) {
+    try {
+      await sbUpdate('appointments', 'token=eq.' + token, { status: 'finalised', pdf_path: path, finalised_at: new Date().toISOString() });
+    } catch(e) {
+      console.warn('[FCE] finalise status update failed:', e);
+      out.doc.save(out.filename);
+      alert('The PDF was uploaded, but the appointment record could not be updated (' + e.message + ').\n\nA local copy has been downloaded so the report is not lost.');
+    }
+    try { await sbDelete('clinician_progress', 'token=eq.' + token); } catch(e) { console.warn('[FCE] progress cleanup failed:', e); }
+  }
+
+  localStorage.removeItem('aim_fce_data');
+  localStorage.removeItem('aim_fce_timestamp');
+  window._currentFceToken = null;
+  showToast('FCE finalised — export the PDF from the dashboard.');
+  showScreen('screen-portal');
+  loadUpcomingAppointments();
+}
+
+// ─── Start FCE ───────────────────────────────────────────────────────────────
 async function startFCE(btnEl, token) {
   if (btnEl) { btnEl.textContent = 'Loading…'; btnEl.disabled = true; }
   try {
@@ -8813,51 +10127,52 @@ async function startFCE(btnEl, token) {
     if (!rows || !rows.length) throw new Error('Appointment not found — it may have been removed.');
     var appt = rows[0];
     window._fceAppointment = appt;
+    window._currentFceToken = token;
+    window._fceBpElevated = false;
+    window._fceBpOverridden = false;
+
+    // Resolve tasks: Phase 2 configs are fully resolved; Phase 1 configs only
+    // stored {id, name}, so fall back to the task library for those.
+    var cfgTasks = (appt.fce_config && appt.fce_config.tasks) || [];
+    var library = getFceTasks();
+    window._fceTasks = cfgTasks.map(function(t) {
+      if (t.protocol !== undefined) return t; // already resolved at appointment creation
+      var lib = library.find(function(l) { return l.id === t.id; });
+      return lib ? resolveFceTask(lib, null) : { id: t.id, name: t.name || 'Task', protocol: '', hr_style: null, hr_count: 0, hr_labels: null, manual_handling_rating: false, restriction_rating: false, extra_fields: [] };
+    });
+
     var match = getClients().find(function(c) { return c.name === appt.client_name; });
     if (match) applyClientToAssessment(match.id);
-    renderFcePlaceholder(appt);
+
+    renderFceScreen(appt);
+
+    // Restore in-progress work: cloud first, then this device's local copy
+    var restored = false;
+    try {
+      var prog = await sbSelect('clinician_progress', 'token=eq.' + token + '&select=progress_data');
+      if (prog && prog.length && prog[0].progress_data && prog[0].progress_data._type === 'fce') {
+        setTimeout(function() { restoreFceData(prog[0].progress_data); }, 120);
+        restored = true;
+        showToast('In-progress FCE restored from cloud.');
+      }
+    } catch(e) { console.warn('[FCE] cloud progress fetch failed:', e); }
+    if (!restored) {
+      try {
+        var local = JSON.parse(localStorage.getItem('aim_fce_data') || 'null');
+        if (local && local._token === token) {
+          setTimeout(function() { restoreFceData(local); }, 120);
+          showToast('In-progress FCE restored from this device.');
+        }
+      } catch(e) {}
+    }
+
     showScreen('screen-fce');
+    showFceSection('fce-emp');
   } catch(e) {
     alert('Failed to load FCE appointment: ' + e.message);
   } finally {
     if (btnEl) { btnEl.textContent = 'Start FCE →'; btnEl.disabled = false; }
   }
-}
-
-function renderFcePlaceholder(appt) {
-  var body = document.getElementById('fce-placeholder-body');
-  if (!body) return;
-  var cfg = appt.fce_config || {};
-  var d = appt.appointment_date ? new Date(appt.appointment_date + 'T12:00:00') : null;
-  var dateStr = d ? d.toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : '—';
-  var timeStr = appt.appointment_time ? formatApptTime(appt.appointment_time) : '—';
-
-  function row(label, value) {
-    return '<div style="display:flex;gap:12px;padding:7px 0;border-bottom:1px solid var(--border);font-size:14px">' +
-      '<div style="flex:0 0 160px;color:var(--mid);font-size:12px;text-transform:uppercase;letter-spacing:0.5px;padding-top:2px">' + label + '</div>' +
-      '<div style="flex:1;color:var(--black)">' + value + '</div></div>';
-  }
-
-  var sectionsHtml = FCE_SECTIONS.map(function(s) {
-    var on = !(cfg.sections && cfg.sections[s.key] === false);
-    return '<span style="display:inline-block;margin:2px 6px 2px 0;padding:3px 10px;border-radius:12px;font-size:12px;' +
-      (on ? 'background:var(--olive-pale);color:var(--olive)' : 'background:#eee;color:#999;text-decoration:line-through') + '">' + s.label + '</span>';
-  }).join('');
-
-  var tasksHtml = (cfg.tasks && cfg.tasks.length)
-    ? cfg.tasks.map(function(t) { return '<span style="display:inline-block;margin:2px 6px 2px 0;padding:3px 10px;border-radius:12px;font-size:12px;background:var(--olive-pale);color:var(--olive)">' + (t.name || t.id) + '</span>'; }).join('')
-    : '<em style="color:var(--mid)">No tasks selected for this referral.</em>';
-
-  body.innerHTML =
-    row('Patient', (appt.patient_first_name || '') + ' ' + (appt.patient_last_name || '')) +
-    row('Appointment', dateStr + ' at ' + timeStr) +
-    row('Client', appt.client_name || '—') +
-    row('Classification', (cfg.classification || appt.client_classification || '—')) +
-    row('Position', appt.position_applied_for || '—') +
-    row('Site', appt.site || '—') +
-    row('Sections', sectionsHtml) +
-    row('Tasks', tasksHtml) +
-    '<p style="color:var(--mid);font-size:13px;margin-top:14px">Referral config loaded correctly. FCE recording screens arrive in Phase 2.</p>';
 }
 
 function copyApptLink(btnEl, token) {
@@ -9417,6 +10732,7 @@ document.addEventListener('DOMContentLoaded', () => {
   checkAndShowRecoveryBanner();
   wireClinicianAutoSave();
   checkAndShowClinicianRecoveryBanner();
+  wireFceAutoSave();
   populateApptClientDropdown();
   var _isTokenUrl = isPatientTokenUrl();
   var _isPatientMode = new URLSearchParams(window.location.search).get('mode') === 'patient';
