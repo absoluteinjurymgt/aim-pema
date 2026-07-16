@@ -1589,6 +1589,7 @@
     </div>
     <div class="nav-actions">
       <button class="nav-btn" onclick="saveFceDataToStorage();showScreen('screen-portal');loadUpcomingAppointments()">← Portal</button>
+      <button class="nav-btn" id="fce-fieldwork-btn" onclick="markFieldworkComplete(this)" style="background:#8a6d3b;border-color:#8a6d3b;color:white">Fieldwork Complete ✓</button>
       <button class="nav-btn primary" onclick="finaliseFCE()">Finalise FCE</button>
     </div>
   </nav>
@@ -8900,10 +8901,15 @@ function renderApptQueue(appts) {
       ? '<span style="display:inline-block;background:#8a6d3b;color:white;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;letter-spacing:0.5px;vertical-align:middle;margin-left:8px">FCE</span>'
       : '<span style="display:inline-block;background:rgba(255,255,255,0.12);color:var(--light);padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;letter-spacing:0.5px;vertical-align:middle;margin-left:8px">PEMA</span>';
 
+    var isFieldworkDone = a.status === 'fieldwork_complete';
+
+    // FCE status progression: Pending → Fieldwork Complete → Finalised → Exported
     var badge = isFinalised
       ? '<span style="display:inline-block;background:#6d6f57;color:white;padding:3px 9px;border-radius:4px;font-size:11px;font-weight:600">📄 Finalised — report ready</span>'
+      : (isFCE && isFieldworkDone)
+      ? '<span style="display:inline-block;background:#b8860b;color:white;padding:3px 9px;border-radius:4px;font-size:11px;font-weight:600">⏱ Fieldwork Complete — awaiting write-up</span>'
       : isFCE
-      ? '<span style="display:inline-block;background:#4a7c59;color:white;padding:3px 9px;border-radius:4px;font-size:11px;font-weight:600">✓ Ready to Assess</span>'
+      ? '<span style="display:inline-block;background:rgba(255,255,255,0.08);color:var(--light);padding:3px 9px;border-radius:4px;font-size:11px">Pending — ready to assess</span>'
       : isComplete
       ? '<span style="display:inline-block;background:#4a7c59;color:white;padding:3px 9px;border-radius:4px;font-size:11px;font-weight:600">✓ Questionnaire Complete</span>'
       : '<span style="display:inline-block;background:rgba(255,255,255,0.08);color:var(--light);padding:3px 9px;border-radius:4px;font-size:11px">Questionnaire Pending</span>';
@@ -10012,7 +10018,37 @@ function wireFceAutoSave() {
   });
 }
 
-// ─── Finalise + PDF stub ─────────────────────────────────────────────────────
+// ─── Fieldwork Complete ──────────────────────────────────────────────────────
+// Status marker only: no validation, no locking — the assessment stays editable.
+// Only ever moves status forward from pending; never regresses a finalised or
+// exported appointment.
+async function markFieldworkComplete(btn) {
+  var token = window._currentFceToken;
+  if (!token) { showErrorToast('No FCE appointment loaded.'); return; }
+  var orig = btn ? btn.textContent : '';
+  if (btn) { btn.textContent = 'Saving…'; btn.disabled = true; }
+  saveFceDataToStorage();
+  try {
+    // Check the live status (another device may have finalised this appointment)
+    var rows = await sbSelect('appointments', 'token=eq.' + token + '&select=status');
+    var current = (rows && rows[0] && rows[0].status) || (window._fceAppointment || {}).status || '';
+    if (current === 'finalised' || current === 'exported') {
+      if (window._fceAppointment) window._fceAppointment.status = current;
+      showToast('Already finalised — status unchanged.');
+      return;
+    }
+    await sbUpdate('appointments', 'token=eq.' + token, { status: 'fieldwork_complete' });
+    if (window._fceAppointment) window._fceAppointment.status = 'fieldwork_complete';
+    showToast('Fieldwork marked complete — write-up can continue any time.');
+  } catch(e) {
+    console.error('[FCE] fieldwork status update failed:', e);
+    showErrorToast('Could not update status — check connection and try again.');
+  } finally {
+    if (btn) { btn.textContent = orig; btn.disabled = false; }
+  }
+}
+
+// ─── Finalise + PDF ──────────────────────────────────────────────────────────
 function validateFCE() {
   var problems = [];
   var det = (document.getElementById('fce-determination') || {}).value;
@@ -10026,37 +10062,537 @@ function validateFCE() {
   return problems;
 }
 
-// !! PHASE 3 STUB !! — buildFCEPDF only produces a minimal title page so the
-// finalise → upload → mark-finalised plumbing is provable end-to-end.
-// The full FCE report layout is Phase 3 work.
+// Full FCE report PDF, laid out to match the AIM paper form. Self-contained so
+// future per-client template variants (clients.determination_template) can
+// branch inside this function — 'standard' is the only template for now.
 function buildFCEPDF() {
   var jsPDF = window.jspdf.jsPDF;
-  var doc = new jsPDF('p', 'mm', 'a4');
+  var doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   var appt = window._fceAppointment || {};
   var cfg = appt.fce_config || {};
-  var name = ((appt.patient_first_name || '') + ' ' + (appt.patient_last_name || '')).trim() || 'Unknown';
-  var det = FCE_DETERMINATIONS.find(function(d) { return d.code === (document.getElementById('fce-determination') || {}).value; });
+  var tasks = window._fceTasks || [];
+  var sections = cfg.sections || {};
+  var stepOn = sections.step_test !== false && !!document.getElementById('fce-steptest');
+  var ptolOn = sections.postural_tolerances !== false && !!document.getElementById('fce-ptol');
+  var ergoOn = sections.workstation_ergonomics !== false && !!document.getElementById('fce-ergo');
 
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(22);
-  doc.text('Functional Capacity Evaluation', 20, 40);
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(12);
-  var y = 60;
-  [['Employee', name],
-   ['Client', appt.client_name || '—'],
-   ['Classification', cfg.classification || appt.client_classification || '—'],
-   ['Assessment Date', appt.appointment_date || '—'],
-   ['Determination', det ? det.band + ' — ' + det.text : '—']].forEach(function(row) {
-    doc.setFont('helvetica', 'bold'); doc.text(row[0] + ':', 20, y);
-    doc.setFont('helvetica', 'normal');
-    var wrapped = doc.splitTextToSize(String(row[1]), 130);
-    doc.text(wrapped, 60, y);
-    y += 8 + (wrapped.length - 1) * 6;
+  // Accent matches the PEMA report/app branding (olive). GREEN/AMBER/RED below
+  // are functional determination colours only, not branding.
+  var OLIVE = [109, 111, 87], BLACK = [26, 26, 24], CHARCOAL = [46, 46, 42], MID = [107, 107, 101],
+      LIGHT_BG = [247, 247, 244], BORDER_COL = [221, 221, 213], WHITE = [255, 255, 255],
+      GREEN = [74, 124, 89], AMBER = [184, 134, 11], RED = [139, 58, 47];
+  var PW = 210, PH = 297, ML = 14, MR = 14, CW = PW - ML - MR;
+  var TOTAL = '{tp}';
+  var classification = cfg.classification || appt.client_classification || '';
+  var y = 0;
+
+  function val(id) { var el = document.getElementById(id); if (!el) return ''; return el.value || el.textContent || ''; }
+  function chipText(group) {
+    var sel = Array.from(document.querySelectorAll('#screen-fce .option-chip.selected-normal')).find(function(c) {
+      return (c.getAttribute('onclick') || '').indexOf("'" + group + "'") >= 0;
+    });
+    return sel ? sel.textContent.trim() : '';
+  }
+  function isChecked(id) { var el = document.getElementById(id); return !!(el && el.checked); }
+
+  // ── Page furniture ──
+  function pageHeader() {
+    doc.setFillColor.apply(doc, BLACK); doc.rect(0, 0, PW, 26, 'F');
+    doc.setFillColor.apply(doc, OLIVE); doc.rect(0, 26, PW, 2, 'F');
+    try { doc.addImage(AIM_LOGO_EMBEDDED, 'PNG', ML, 4, 18, 18); } catch(e) {}
+    doc.setFontSize(13); doc.setFont('helvetica', 'bold'); doc.setTextColor.apply(doc, WHITE);
+    doc.text('FUNCTIONAL CAPACITY EVALUATION', PW - MR, 13, { align: 'right' });
+    doc.setFontSize(8.5); doc.setFont('helvetica', 'normal');
+    doc.setTextColor(180, 181, 165);
+    doc.text(classification ? classification + ' Classification' : 'Absolute Injury Management', PW - MR, 20, { align: 'right' });
+  }
+  function drawFooter() {
+    var p = doc.internal.getCurrentPageInfo().pageNumber;
+    doc.setDrawColor.apply(doc, BORDER_COL); doc.setLineWidth(0.3); doc.line(ML, PH - 12, PW - MR, PH - 12);
+    doc.setFontSize(7); doc.setTextColor.apply(doc, MID); doc.setFont('helvetica', 'normal');
+    doc.text('www.absoluteim.com.au', ML, PH - 7);
+    doc.text('Page ' + p + ' of ' + TOTAL, PW - MR, PH - 7, { align: 'right' });
+  }
+  function newPage() { doc.addPage(); pageHeader(); drawFooter(); y = 34; }
+  function checkY(n) { if (y + (n || 16) > PH - 18) newPage(); }
+
+  function secBar(title) {
+    checkY(16);
+    doc.setFillColor.apply(doc, BLACK); doc.rect(ML, y, CW, 8, 'F');
+    doc.setFontSize(9); doc.setFont('helvetica', 'bold'); doc.setTextColor.apply(doc, WHITE);
+    doc.text(String(title).toUpperCase(), ML + 3, y + 5.5); y += 12;
+  }
+  function note(text) {
+    var lines = doc.splitTextToSize(text, CW);
+    checkY(lines.length * 3.6 + 4);
+    doc.setFontSize(7.5); doc.setFont('helvetica', 'italic'); doc.setTextColor.apply(doc, MID);
+    doc.text(lines, ML, y); y += lines.length * 3.6 + 3;
+  }
+  function tickBox(x, cy, ticked, size) {
+    size = size || 3.4;
+    doc.setDrawColor.apply(doc, CHARCOAL); doc.setLineWidth(0.3);
+    doc.rect(x, cy, size, size, 'S');
+    if (ticked) {
+      doc.setDrawColor.apply(doc, OLIVE); doc.setLineWidth(0.7);
+      doc.line(x + 0.6, cy + size * 0.55, x + size * 0.42, cy + size - 0.6);
+      doc.line(x + size * 0.42, cy + size - 0.6, x + size - 0.4, cy + 0.7);
+    }
+  }
+  // Free text with pagination — clinician text is never truncated
+  function txtBlock(text) {
+    doc.setFontSize(8.5); doc.setFont('helvetica', 'normal'); doc.setTextColor.apply(doc, CHARCOAL);
+    var lines = doc.splitTextToSize((text && text.trim()) ? text.trim() : '—', CW - 4);
+    var i = 0;
+    while (i < lines.length) {
+      checkY(10);
+      var avail = Math.max(1, Math.floor((PH - 18 - y) / 4.2));
+      var chunk = lines.slice(i, i + avail);
+      doc.setFontSize(8.5); doc.setFont('helvetica', 'normal'); doc.setTextColor.apply(doc, CHARCOAL);
+      doc.text(chunk, ML + 2, y);
+      y += chunk.length * 4.2;
+      i += chunk.length;
+    }
+    y += 3;
+  }
+  function labelled(label, value, x, w) {
+    doc.setFontSize(6.8); doc.setFont('helvetica', 'bold'); doc.setTextColor.apply(doc, MID);
+    doc.text(String(label).toUpperCase(), x, y);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor.apply(doc, BLACK);
+    var lines = doc.splitTextToSize(String(value || '—'), w - 2);
+    doc.text(lines, x, y + 3.8);
+    return lines.length * 4 + 5;
+  }
+  function fieldRow(pairs) {
+    checkY(13);
+    var w = CW / pairs.length, h = 0;
+    pairs.forEach(function(p, i) { h = Math.max(h, labelled(p[0], p[1], ML + i * w, w - 4)); });
+    y += h + 3;
+  }
+  function sigBlock(label, sigData, dateVal) {
+    checkY(33);
+    doc.setFontSize(7); doc.setFont('helvetica', 'bold'); doc.setTextColor.apply(doc, MID);
+    doc.text(String(label).toUpperCase(), ML, y);
+    doc.setDrawColor.apply(doc, BORDER_COL); doc.setLineWidth(0.3);
+    doc.rect(ML, y + 2, 80, 22, 'S');
+    if (sigData) { try { doc.addImage(sigData, 'PNG', ML + 2, y + 3, 76, 20); } catch(e) {} }
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor.apply(doc, BLACK);
+    doc.text('Date: ' + (dateVal || '—'), ML + 90, y + 14);
+    y += 30;
+  }
+  function ynRows(prefix, questions) {
+    questions.forEach(function(q, i) {
+      var ans = val(prefix + '-' + i);
+      var details = (val(prefix + '-' + i + '-detail-text') || '').trim();
+      var qLines = doc.splitTextToSize(q, CW - 44);
+      var dLines = details ? doc.splitTextToSize('Details: ' + details, CW - 16) : [];
+      var rowH = qLines.length * 3.8 + 3 + (dLines.length ? dLines.length * 3.4 + 1.5 : 0);
+      checkY(rowH + 2);
+      if (i % 2 === 0) { doc.setFillColor.apply(doc, LIGHT_BG); doc.rect(ML, y - 1.5, CW, rowH + 2.5, 'F'); }
+      doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.setTextColor.apply(doc, CHARCOAL);
+      doc.text(qLines, ML + 2, y + 2.5);
+      doc.setFontSize(7); doc.setTextColor.apply(doc, MID);
+      tickBox(PW - MR - 34, y, ans === 'yes'); doc.text('YES', PW - MR - 29.5, y + 2.8);
+      tickBox(PW - MR - 17, y, ans === 'no'); doc.text('NO', PW - MR - 12.5, y + 2.8);
+      if (dLines.length) {
+        doc.setFontSize(7.5); doc.setTextColor.apply(doc, MID);
+        doc.text(dLines, ML + 6, y + qLines.length * 3.8 + 3);
+      }
+      y += rowH + 2;
+    });
+    y += 2;
+  }
+  function selectorRow(name, opts, selectedText, detail) {
+    var dLines = (detail && detail.trim()) ? doc.splitTextToSize('Details: ' + detail.trim(), CW - 52) : [];
+    var rowH = 6.5 + (dLines.length ? dLines.length * 3.4 + 1 : 0);
+    checkY(rowH + 2);
+    doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.setTextColor.apply(doc, CHARCOAL);
+    doc.text(doc.splitTextToSize(name, 46), ML + 1, y + 2.8);
+    var x = ML + 50;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7.2);
+    opts.forEach(function(o) {
+      tickBox(x, y, o === selectedText);
+      doc.setTextColor.apply(doc, CHARCOAL);
+      doc.text(o, x + 4.4, y + 2.7);
+      x += 4.4 + doc.getTextWidth(o) + 6;
+    });
+    if (dLines.length) {
+      doc.setFontSize(7.5); doc.setTextColor.apply(doc, MID);
+      doc.text(dLines, ML + 50, y + 6.2);
+    }
+    doc.setDrawColor.apply(doc, BORDER_COL); doc.setLineWidth(0.15);
+    doc.line(ML, y + rowH, PW - MR, y + rowH);
+    y += rowH + 2;
+  }
+  function lrGrid(title, rows, prefix) {
+    checkY(12 + rows.length * 6);
+    doc.setFillColor.apply(doc, LIGHT_BG); doc.setDrawColor.apply(doc, BORDER_COL); doc.setLineWidth(0.3);
+    doc.rect(ML, y, CW, 6.5, 'FD');
+    doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.setTextColor.apply(doc, CHARCOAL);
+    doc.text(title, ML + 2, y + 4.4);
+    doc.setFontSize(7);
+    doc.text('LEFT', ML + CW - 34, y + 4.4); doc.text('RIGHT', ML + CW - 16, y + 4.4);
+    y += 8;
+    rows.forEach(function(label, i) {
+      checkY(6.5);
+      doc.setFontSize(7.8); doc.setFont('helvetica', 'normal'); doc.setTextColor.apply(doc, CHARCOAL);
+      doc.text(label, ML + 2, y + 2.8);
+      tickBox(ML + CW - 33, y, isChecked(prefix + '-' + i + '-l'));
+      tickBox(ML + CW - 15, y, isChecked(prefix + '-' + i + '-r'));
+      doc.setDrawColor.apply(doc, BORDER_COL); doc.setLineWidth(0.15);
+      doc.line(ML, y + 5, PW - MR, y + 5);
+      y += 6;
+    });
+    y += 3;
+  }
+  function refTable(headers, rows, widths) {
+    function row(cols, isHdr, alt) {
+      checkY(7);
+      var x = ML;
+      if (isHdr) doc.setFillColor.apply(doc, CHARCOAL);
+      else if (alt) doc.setFillColor.apply(doc, LIGHT_BG);
+      else doc.setFillColor.apply(doc, WHITE);
+      doc.rect(ML, y, CW, 5.5, 'F');
+      doc.setDrawColor.apply(doc, BORDER_COL); doc.setLineWidth(0.15); doc.rect(ML, y, CW, 5.5, 'S');
+      cols.forEach(function(c, i) {
+        doc.setFontSize(7); doc.setFont('helvetica', isHdr ? 'bold' : 'normal');
+        if (isHdr) doc.setTextColor(255, 255, 255); else doc.setTextColor.apply(doc, CHARCOAL);
+        doc.text(String(c), x + 2, y + 3.8);
+        x += widths[i];
+      });
+      y += 5.5;
+    }
+    row(headers, true, false);
+    rows.forEach(function(r, i) { row(r, false, i % 2 === 0); });
+    y += 3;
+  }
+  function dottedDivider() {
+    checkY(6);
+    doc.setDrawColor.apply(doc, MID); doc.setLineWidth(0.3);
+    doc.setLineDashPattern([1, 1.5], 0);
+    doc.line(ML, y, PW - MR, y);
+    doc.setLineDashPattern([], 0);
+    y += 5;
+  }
+
+  // ════ PAGE 1 — Employee Details / Authority / Consent ════
+  pageHeader(); drawFooter(); y = 34;
+
+  // Client logo, top-right of page 1 content (skipped gracefully when absent)
+  var clientLogo = getLogoDataUrl('client');
+  if (clientLogo) {
+    var fmt = /^data:image\/jpe?g/i.test(clientLogo) ? 'JPEG' : 'PNG';
+    try { doc.addImage(clientLogo, fmt, PW - MR - 34, y - 2, 0, 12); } catch(e) {}
+  }
+
+  secBar('Employee Details');
+  var gender = chipText('fce-gender');
+  fieldRow([['Name', (val('fce-firstname') + ' ' + val('fce-surname')).trim()], ['Date of Birth', val('fce-dob')], ['Gender', gender]]);
+  fieldRow([['Job Title', val('fce-job')], ['Site / Location', val('fce-site')], ['Client', appt.client_name || '']]);
+  fieldRow([['Assessment Date', val('fce-date')], ['Time', val('fce-time')], ['Assessor', (val('fce-assessor-name') + ', ' + (val('fce-assessor-qual') || 'Physiotherapist')).replace(/^, /, '')]]);
+  y += 2;
+
+  secBar('Authority to Obtain and Release Information');
+  txtBlock(FCE_AUTHORITY_TEXT);
+  sigBlock('Employee Signature', getSigGlobal('fce-sig-auth'), val('fce-auth-date'));
+
+  secBar('Consent to Proceed');
+  txtBlock(FCE_CONSENT_TEXT);
+  sigBlock('Employee Signature', getSigGlobal('fce-sig-consent'), val('fce-consent-date'));
+
+  // ════ PAGE 2 — Introduction / Current Symptoms ════
+  newPage();
+  secBar('Introduction');
+  txtBlock(val('fce-intro-text'));
+  secBar('Injury History / Current Symptoms');
+  fieldRow([['Affected Body Region(s)', val('fce-regions')]]);
+  doc.setFontSize(7); doc.setFont('helvetica', 'bold'); doc.setTextColor.apply(doc, MID);
+  checkY(8); doc.text('CURRENT SYMPTOMS', ML, y); y += 4;
+  txtBlock(val('fce-symptoms-text'));
+
+  // ════ PAGE 3 — Histories ════
+  newPage();
+  secBar('Medical History');
+  ynRows('fce-mh', FCE_MED_HISTORY);
+  secBar('Injury History');
+  ynRows('fce-ih', FCE_INJURY_HISTORY);
+  secBar('Functional Status');
+  ynRows('fce-fs', FCE_FUNCTIONAL_STATUS);
+  if ((val('fce-fstatus-comments') || '').trim()) {
+    checkY(8); doc.setFontSize(7); doc.setFont('helvetica', 'bold'); doc.setTextColor.apply(doc, MID);
+    doc.text('ADDITIONAL COMMENTS', ML, y); y += 4;
+    txtBlock(val('fce-fstatus-comments'));
+  }
+
+  // ════ PAGE 4 — Baseline / ROM / Postural ════
+  newPage();
+  secBar('Pre-Assessment Baseline');
+  note('BP >160/100 requires medical clearance to proceed.');
+  fieldRow([['Blood Pressure', (val('fce-bp-sys') && val('fce-bp-dia')) ? val('fce-bp-sys') + '/' + val('fce-bp-dia') + ' mmHg' : ''], ['Resting HR', val('fce-resthr') ? val('fce-resthr') + ' bpm' : ''], ['Height', val('fce-height') ? val('fce-height') + ' m' : ''], ['Weight', val('fce-weight') ? val('fce-weight') + ' kg' : '']]);
+  fieldRow([['BMI', val('fce-bmi')], ['Max HR (220-age)', val('fce-maxhr')], ['85% Max HR', val('fce-maxhr85')]]);
+  // BMI legend with applicable category ticked
+  var bmiNum = parseFloat(val('fce-bmi'));
+  var bmiCat = isNaN(bmiNum) ? '' : (bmiNum < 18.5 ? 'Underweight' : bmiNum < 25 ? 'Healthy' : bmiNum < 30 ? 'Overweight' : 'Obese');
+  checkY(8);
+  var bx = ML;
+  doc.setFontSize(7.2); doc.setFont('helvetica', 'normal');
+  [['Underweight', '<18.5'], ['Healthy', '18.5-24.9'], ['Overweight', '25.0-29.9'], ['Obese', '>30']].forEach(function(pair) {
+    tickBox(bx, y, pair[0] === bmiCat);
+    doc.setTextColor.apply(doc, CHARCOAL);
+    doc.text(pair[0] + ' ' + pair[1], bx + 4.4, y + 2.7);
+    bx += 4.4 + doc.getTextWidth(pair[0] + ' ' + pair[1]) + 8;
   });
-  doc.setFontSize(10); doc.setTextColor(150);
-  doc.text('DRAFT — placeholder report. The full FCE report layout arrives in Phase 3.', 20, y + 12);
+  y += 8;
 
-  var safeName = name.replace(/[^a-z0-9]+/gi, '_');
-  return { doc: doc, filename: 'FCE_' + safeName + '_' + new Date().toISOString().split('T')[0] + '.pdf' };
+  secBar('Range of Motion');
+  note('ROM testing should include assessment of all physiological joint movements through the entire available range. Pain should be measured using the Pain Rating Scale (0-10). Limitation should be measured accurately and documented accordingly.');
+  romJoints.forEach(function(joint, i) {
+    selectorRow(joint, ['Normal', 'Pain', 'Limited'], chipText('fce-rom-' + i), val('fce-rom-' + i + '-detail'));
+  });
+  y += 2;
+
+  secBar('Postural Analysis');
+  note('Postural Analysis includes visual observation of relaxed postures in both standing and sitting positions. Shoulder/Scapula should include elevation to assess scapulohumeral and scapulothoracic movements.');
+  posturalRegions.forEach(function(r, i) {
+    selectorRow(r, ['Normal', 'Abnormal'], chipText('fce-post-' + i), val('fce-post-' + i + '-detail'));
+  });
+  if ((val('fce-postural-comments') || '').trim()) {
+    checkY(8); doc.setFontSize(7); doc.setFont('helvetica', 'bold'); doc.setTextColor.apply(doc, MID);
+    doc.text('ADDITIONAL COMMENTS', ML, y); y += 4;
+    txtBlock(val('fce-postural-comments'));
+  }
+
+  // ════ PAGE 5 — MSK / Grip ════
+  newPage();
+  secBar('Special MSK Tests');
+  note(FCE_MSK_NOTE);
+  FCE_MSK_TESTS.forEach(function(t, i) {
+    selectorRow(t.name + (t.method ? ' ' + t.method : ''), t.opts, chipText('fce-msk-' + i), val('fce-msk-' + i + '-detail'));
+  });
+  y += 2;
+  lrGrid('Thomas Test (Hip flexor length)', FCE_THOMAS_LEVELS, 'fce-thomas');
+  lrGrid('Straight Leg Raise', FCE_SLR_RANGES, 'fce-slr');
+  checkY(10);
+  doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.setTextColor.apply(doc, CHARCOAL);
+  doc.text('Abdominal Strength', ML + 1, y + 2.8);
+  var ax = ML + 50, abdoSel = chipText('fce-abdo');
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(6.8);
+  FCE_ABDO_OPTS.forEach(function(o) {
+    tickBox(ax, y, o === abdoSel);
+    doc.setTextColor.apply(doc, CHARCOAL);
+    doc.text(o, ax + 4.2, y + 2.7);
+    ax += 4.2 + doc.getTextWidth(o) + 4;
+  });
+  y += 8;
+  if ((val('fce-msk-comments') || '').trim()) {
+    checkY(8); doc.setFontSize(7); doc.setFont('helvetica', 'bold'); doc.setTextColor.apply(doc, MID);
+    doc.text('ADDITIONAL COMMENTS', ML, y); y += 4;
+    txtBlock(val('fce-msk-comments'));
+  }
+
+  secBar('Grip Strength');
+  note('Hand Held Hydraulic Dynamometer - Setting 2. Elbow position must be maintained at 90 degrees flexion, and remain by applicant\'s side.');
+  fieldRow([['Right — Trial 1', val('fce-grip-r1')], ['Trial 2', val('fce-grip-r2')], ['Trial 3', val('fce-grip-r3')], ['Average', val('fce-grip-r-avg')], ['% Normative', val('fce-grip-r-norm')]]);
+  fieldRow([['Left — Trial 1', val('fce-grip-l1')], ['Trial 2', val('fce-grip-l2')], ['Trial 3', val('fce-grip-l3')], ['Average', val('fce-grip-l-avg')], ['% Normative', val('fce-grip-l-norm')]]);
+  // Normative reference table (Mathiowetz norms, kg)
+  var gw = [CW - 4 * 34, 34, 34, 34, 34];
+  refTable(['Age', 'Male Dominant', 'Male Non-Dom', 'Female Dominant', 'Female Non-Dom'],
+    GRIP_NORMS.male.map(function(m, i) {
+      var f = GRIP_NORMS.female[i];
+      return [m[0] + '-' + (m[1] === 99 ? '75+' : m[1]), m[2], m[3], f[2], f[3]];
+    }), gw);
+  if ((val('fce-grip-comments') || '').trim()) {
+    checkY(8); doc.setFontSize(7); doc.setFont('helvetica', 'bold'); doc.setTextColor.apply(doc, MID);
+    doc.text('ADDITIONAL COMMENTS', ML, y); y += 4;
+    txtBlock(val('fce-grip-comments'));
+  }
+
+  // ════ PAGE 6 — Step Test / Postural Tolerance (config gated) ════
+  if (stepOn || ptolOn) newPage();
+  if (stepOn) {
+    secBar('3 Minute Step Test');
+    note('300mm Step. Metronome @ 96 beats per minute in an Up-Up-Down-Down pattern. Lead legs can be alternated at the discretion of the applicant. Prompt applicant to maintain pace and cease testing should HR limit be exceeded.');
+    fieldRow([['Max HR for Test', val('fce-st-maxhr')], ['Baseline HR', val('fce-st-base')], ['3-Minute HR', val('fce-st-3min')], ['1-Min Post HR', val('fce-st-post')]]);
+    fieldRow([['Pain Rating', val('fce-st-pain') ? val('fce-st-pain') + '/10' : ''], ['RPE', val('fce-st-rpe') ? val('fce-st-rpe') + '/10' : '']]);
+    refTable(['Fitness Level', 'Male (bpm)', 'Female (bpm)', 'Percentile'],
+      [['Excellent', '<71', '<97', '90th'], ['Good', '71-102', '97-127', '75th'], ['Average', '103-117', '128-142', '50th'], ['Fair', '118-147', '143-171', '25th'], ['Poor', '148+', '172+', '10th']],
+      [CW - 3 * 36, 36, 36, 36]);
+    checkY(8);
+    var stx = ML + 1, stSel = chipText('fce-st-result');
+    doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.setTextColor.apply(doc, CHARCOAL);
+    doc.text('Result:', stx, y + 2.8); stx += 14;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7.2);
+    ['Poor', 'Fair', 'Average', 'Good', 'Excellent'].forEach(function(o) {
+      tickBox(stx, y, o === stSel);
+      doc.text(o, stx + 4.4, y + 2.7);
+      stx += 4.4 + doc.getTextWidth(o) + 7;
+    });
+    y += 8;
+    if ((val('fce-st-comments') || '').trim()) txtBlock(val('fce-st-comments'));
+  }
+  if (ptolOn) {
+    secBar('Postural Tolerance');
+    note('The applicant must sustain each posture without rest or adjustment for an allocated time. Crawling = traditional crawling on hands and knees. Full Squat Sustained = full squat resting on heels while manipulating nut and bolt.');
+    refTable(['Posture', 'Time Achieved', '1 min HR', '2 min HR', 'Pain (0-10)', 'RPE (0-10)'],
+      FCE_PTOL_ITEMS.map(function(item, i) {
+        return [item, val('fce-ptol-' + i + '-time'), val('fce-ptol-' + i + '-hr1'), val('fce-ptol-' + i + '-hr2'), val('fce-ptol-' + i + '-pain'), val('fce-ptol-' + i + '-rpe')];
+      }), [CW - 5 * 24, 24, 24, 24, 24, 24]);
+    if ((val('fce-ptol-comments') || '').trim()) {
+      checkY(8); doc.setFontSize(7); doc.setFont('helvetica', 'bold'); doc.setTextColor.apply(doc, MID);
+      doc.text('ADDITIONAL COMMENTS', ML, y); y += 4;
+      txtBlock(val('fce-ptol-comments'));
+    }
+  }
+
+  // ════ PAGE 7+ — Tasks ════
+  newPage();
+  secBar('Functional Tasks');
+  if (!tasks.length) txtBlock('No tasks were enabled on this referral.');
+  tasks.forEach(function(t, i) {
+    // Keep each task's heading with at least its first field rows
+    checkY(34);
+    doc.setFontSize(9.5); doc.setFont('helvetica', 'bold'); doc.setTextColor.apply(doc, BLACK);
+    doc.text(t.name, ML + 1, y + 3);
+    tickBox(PW - MR - 30, y, true);
+    doc.setFontSize(7); doc.setFont('helvetica', 'normal'); doc.setTextColor.apply(doc, MID);
+    doc.text('Required Test', PW - MR - 25, y + 2.8);
+    y += 7;
+    if (t.protocol) {
+      doc.setFontSize(8); doc.setFont('helvetica', 'italic'); doc.setTextColor.apply(doc, MID);
+      var pLines = doc.splitTextToSize(t.protocol, CW - 4);
+      doc.text(pLines, ML + 1, y); y += pLines.length * 3.8 + 2;
+    }
+    var hrPairs = [['Baseline HR', val('fce-task-' + i + '-hr-base')]];
+    var hrCount = parseInt(t.hr_count, 10) || 0;
+    for (var j = 0; j < hrCount; j++) {
+      var lbl = (t.hr_labels && t.hr_labels[j]) || ((t.hr_style === 'intervals' ? 'Interval ' : 'Rep ') + (j + 1) + ' HR');
+      hrPairs.push([lbl, val('fce-task-' + i + '-hr-' + j)]);
+    }
+    (t.extra_fields || []).forEach(function(f) {
+      hrPairs.push([f.label || f.key, val('fce-task-' + i + '-x-' + f.key)]);
+    });
+    hrPairs.push(['Pain (0-10)', val('fce-task-' + i + '-pain')]);
+    hrPairs.push(['RPE (0-10)', val('fce-task-' + i + '-rpe')]);
+    for (var k = 0; k < hrPairs.length; k += 5) fieldRow(hrPairs.slice(k, k + 5));
+    if (t.manual_handling_rating) {
+      fieldRow([['MH — Stance (1-4)', val('fce-task-' + i + '-mh-stance')], ['MH — Posture (1-4)', val('fce-task-' + i + '-mh-posture')], ['MH — Control (1-4)', val('fce-task-' + i + '-mh-control')]]);
+    }
+    var comments = val('fce-task-' + i + '-comments');
+    if ((comments || '').trim()) {
+      checkY(8); doc.setFontSize(7); doc.setFont('helvetica', 'bold'); doc.setTextColor.apply(doc, MID);
+      doc.text('ADDITIONAL COMMENTS', ML, y); y += 4;
+      txtBlock(comments);
+    }
+    if (t.restriction_rating) {
+      checkY(8);
+      var rx = ML + 1, rSel = chipText('fce-task-' + i + '-restriction');
+      doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.setTextColor.apply(doc, CHARCOAL);
+      doc.text('Restriction:', rx, y + 2.8); rx += 20;
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(7.2);
+      ['Unrestricted', 'Minimal Restriction', 'Moderate Restriction', 'Unable'].forEach(function(o) {
+        tickBox(rx, y, o === rSel);
+        doc.text(o, rx + 4.4, y + 2.7);
+        rx += 4.4 + doc.getTextWidth(o) + 6;
+      });
+      y += 7;
+    }
+    if (i < tasks.length - 1) dottedDivider();
+  });
+
+  // ════ Workstation Ergonomics (config gated) ════
+  if (ergoOn) {
+    newPage();
+    secBar('Workstation Ergonomics');
+    checkY(8); doc.setFontSize(7); doc.setFont('helvetica', 'bold'); doc.setTextColor.apply(doc, MID);
+    doc.text('OBSERVATIONS', ML, y); y += 4;
+    txtBlock(val('fce-ergo-obs'));
+    checkY(8); doc.setFontSize(7); doc.setFont('helvetica', 'bold'); doc.setTextColor.apply(doc, MID);
+    doc.text('COMMENTS / RECOMMENDATIONS', ML, y); y += 4;
+    txtBlock(val('fce-ergo-rec'));
+  }
+
+  // ════ Evaluation Summary ════
+  newPage();
+  secBar('Evaluation Summary');
+  txtBlock(val('fce-summary-text'));
+
+  // ════ Conclusion — determination table ════
+  newPage();
+  secBar('Conclusion');
+  checkY(8);
+  doc.setFontSize(8.5); doc.setFont('helvetica', 'bold'); doc.setTextColor.apply(doc, CHARCOAL);
+  doc.text('In the opinion of the assessor the applicant has:', ML, y); y += 6;
+  var detSel = val('fce-determination');
+  var detW = [14, 26, CW - 40];
+  // header row
+  checkY(8);
+  doc.setFillColor.apply(doc, BLACK); doc.rect(ML, y, CW, 6.5, 'F');
+  doc.setFontSize(7.5); doc.setFont('helvetica', 'bold'); doc.setTextColor(255, 255, 255);
+  doc.text('SELECT', ML + 2, y + 4.4);
+  doc.text('STATUS', ML + detW[0] + 2, y + 4.4);
+  doc.text('DETERMINATION', ML + detW[0] + detW[1] + 2, y + 4.4);
+  y += 6.5;
+  FCE_DETERMINATIONS.forEach(function(d) {
+    var lines = doc.splitTextToSize(d.text, detW[2] - 5);
+    var rowH = Math.max(11, lines.length * 3.8 + 4.5);
+    checkY(rowH);
+    var col = d.code === 'G' ? GREEN : d.code === 'A' ? AMBER : RED;
+    doc.setDrawColor.apply(doc, BORDER_COL); doc.setLineWidth(0.2);
+    doc.rect(ML, y, detW[0], rowH, 'S');
+    tickBox(ML + detW[0] / 2 - 1.7, y + rowH / 2 - 1.7, d.code === detSel);
+    doc.setFillColor.apply(doc, col); doc.rect(ML + detW[0], y, detW[1], rowH, 'F');
+    doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.setTextColor(255, 255, 255);
+    doc.text(d.band, ML + detW[0] + detW[1] / 2, y + rowH / 2 + 1.3, { align: 'center' });
+    doc.setDrawColor.apply(doc, BORDER_COL);
+    doc.rect(ML + detW[0] + detW[1], y, detW[2], rowH, 'S');
+    doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.setTextColor.apply(doc, CHARCOAL);
+    doc.text(lines, ML + detW[0] + detW[1] + 2.5, y + 4.5);
+    y += rowH;
+  });
+  y += 6;
+  checkY(8); doc.setFontSize(7); doc.setFont('helvetica', 'bold'); doc.setTextColor.apply(doc, MID);
+  doc.text('COMMENTS (REQUIRED FOR AMBER OR RED DETERMINATIONS)', ML, y); y += 4;
+  txtBlock(val('fce-det-comments'));
+
+  // ════ Recommendations + Sign-off ════
+  newPage();
+  secBar('Recommendations');
+  checkY(8);
+  doc.setFontSize(8.5); doc.setFont('helvetica', 'bold'); doc.setTextColor.apply(doc, CHARCOAL);
+  doc.text('In the opinion of the assessor the applicant may benefit from the following:', ML, y); y += 6;
+  [['fce-rec-cardio', 'Aerobic / cardiovascular endurance training', ''],
+   ['fce-rec-mh', 'Manual handling education + training', ''],
+   ['fce-rec-strength', 'Strength training', val('fce-rec-strength-region')],
+   ['fce-rec-gp', 'Referral to GP', val('fce-rec-gp-reason')],
+   ['fce-rec-other', 'Other', val('fce-rec-other-details')]].forEach(function(rec) {
+    var suffix = (rec[2] || '').trim();
+    var text = rec[1] + (suffix ? ' — ' + suffix : '');
+    var lines = doc.splitTextToSize(text, CW - 10);
+    checkY(lines.length * 4 + 3);
+    tickBox(ML + 1, y, isChecked(rec[0]));
+    doc.setFontSize(8.5); doc.setFont('helvetica', 'normal'); doc.setTextColor.apply(doc, CHARCOAL);
+    doc.text(lines, ML + 7, y + 2.8);
+    y += lines.length * 4 + 3;
+  });
+  y += 6;
+
+  secBar('Assessor Sign-off');
+  fieldRow([['Assessor Name', val('fce-assessor-name')], ['Qualification', val('fce-assessor-qual') || 'Physiotherapist']]);
+  sigBlock('Assessor Signature', getSigGlobal('fce-sig-assessor'), val('fce-signoff-date'));
+
+  // Resolve 'Page N of M' totals
+  if (typeof doc.putTotalPages === 'function') doc.putTotalPages(TOTAL);
+
+  // Filename: 'SURNAME F FCE CLIENT CLASSIFICATION DDMMYY.pdf'
+  var surname = (val('fce-surname') || appt.patient_last_name || 'UNKNOWN').toUpperCase().replace(/[^A-Z ]/g, '').trim();
+  var firstInitial = ((val('fce-firstname') || appt.patient_first_name || '').charAt(0) || '').toUpperCase();
+  var clientPart = (appt.client_name || '').toUpperCase().replace(/[^A-Z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+  var classPart = (classification || '').toUpperCase().replace(/[^A-Z0-9 ]/g, '').trim();
+  var now = new Date();
+  function p2(n) { return (n < 10 ? '0' : '') + n; }
+  var ddmmyy = p2(now.getDate()) + p2(now.getMonth() + 1) + String(now.getFullYear()).slice(2);
+  var filename = [surname, firstInitial, 'FCE', clientPart, classPart, ddmmyy].filter(Boolean).join(' ') + '.pdf';
+
+  return { doc: doc, filename: filename };
 }
 
 function finaliseFCE() {
