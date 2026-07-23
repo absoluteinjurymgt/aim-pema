@@ -7069,17 +7069,24 @@ async function exportReportPDF(btnEl, token) {
   if (btnEl) { btnEl.textContent = orig; btnEl.disabled = false; }
 }
 
+// Export no longer deletes the PDF — the retention sweep removes it 72 hours
+// after exported_at, giving a re-download window.
 async function markReportExported(btnEl, token) {
-  if (!confirm('Mark as exported?\n\nThe stored PDF will be permanently deleted from the server and this appointment will leave the active list.')) return;
-  if (btnEl) { btnEl.textContent = 'Removing…'; btnEl.disabled = true; }
+  var isFce = false;
   try {
-    var rows = await sbSelect('appointments', 'token=eq.' + token + '&select=pdf_path');
-    var path = rows && rows[0] && rows[0].pdf_path;
-    if (path) { try { await sbStorageDelete(path); } catch(e) { console.warn('[PEMA] PDF delete failed:', e); } }
-    await sbUpdate('appointments', 'token=eq.' + token, { status: 'exported', pdf_path: null });
+    var typeRows = await sbSelect('appointments', 'token=eq.' + token + '&select=assessment_type');
+    isFce = !!(typeRows && typeRows[0] && typeRows[0].assessment_type === 'fce');
+  } catch(e) {}
+  var msg = isFce
+    ? 'Mark as exported?\n\nThe report remains in the queue with Amend available, and the PDF can still be re-downloaded for 72 hours before it is removed from the server.'
+    : 'Mark as exported?\n\nThe stored PDF will be permanently deleted from the server and this appointment will leave the active list.';
+  if (!confirm(msg)) return;
+  if (btnEl) { btnEl.textContent = 'Marking…'; btnEl.disabled = true; }
+  try {
+    await sbUpdate('appointments', 'token=eq.' + token, { status: 'exported', exported_at: new Date().toISOString() });
     loadUpcomingAppointments();
   } catch(e) {
-    alert('Failed: ' + e.message);
+    alert('Failed: ' + e.message + '\n\nIf this mentions a missing exported_at column, run supabase/fce_phase4b_export_grace.sql in Supabase first.');
     if (btnEl) { btnEl.textContent = 'Mark Exported'; btnEl.disabled = false; }
   }
 }
@@ -8878,6 +8885,16 @@ async function loadUpcomingAppointments() {
         a.status = 'expired';
       }
     });
+    // 72-hour export grace: after the window, delete the stored PDF only —
+    // the appointment row keeps its existing lifecycle (FCE + PEMA aligned)
+    var graceCutoff = Date.now() - 72 * 3600 * 1000;
+    (rows || []).forEach(function(a) {
+      if (a.status === 'exported' && a.pdf_path && a.exported_at && new Date(a.exported_at).getTime() < graceCutoff) {
+        sbStorageDelete(a.pdf_path).catch(function(e) { console.warn('[PEMA] export-grace delete failed:', e); });
+        sbUpdate('appointments', 'token=eq.' + a.token, { pdf_path: null }).catch(function() {});
+        a.pdf_path = null;
+      }
+    });
     renderApptQueue((rows || []).filter(function(a) {
       if (a.status === 'expired') return false;
       if (a.status === 'exported') return a.assessment_type === 'fce';
@@ -8948,10 +8965,12 @@ function renderApptQueue(appts) {
         (isFCE ? '<button onclick="amendFCE(this,\'' + a.token + '\')" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);color:var(--light);padding:8px 14px;border-radius:8px;font-size:12px;cursor:pointer;font-family:\'DM Sans\',sans-serif;white-space:nowrap">Amend ✎</button>' : '');
     }
 
-    // Exported FCE: report already delivered (PDF removed at export) — only
-    // Amend remains, which reopens the assessment for refinalise
+    // Exported FCE: re-download stays available while the PDF survives the
+    // 72-hour grace window; Amend always remains
     if (isFCE && isExported) {
-      startBtn = '<button onclick="amendFCE(this,\'' + a.token + '\')" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);color:var(--light);padding:10px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:\'DM Sans\',sans-serif;min-height:44px;white-space:nowrap">Amend ✎</button>';
+      startBtn =
+        (a.pdf_path ? '<button onclick="exportReportPDF(this,\'' + a.token + '\')" style="background:var(--olive);border:none;color:white;padding:10px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:\'DM Sans\',sans-serif;min-height:44px;white-space:nowrap">Export PDF ⬇</button>' : '') +
+        '<button onclick="amendFCE(this,\'' + a.token + '\')" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);color:var(--light);padding:10px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:\'DM Sans\',sans-serif;min-height:44px;white-space:nowrap">Amend ✎</button>';
     }
 
     var detailsBtn = '<button onclick="(function(el){el.style.display=el.style.display===\'block\'?\'none\':\'block\';})(document.getElementById(\'' + cardId + '\'))" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:var(--light);padding:5px 10px;border-radius:6px;font-size:11px;cursor:pointer;font-family:\'DM Sans\',sans-serif;white-space:nowrap">Details ▾</button>';

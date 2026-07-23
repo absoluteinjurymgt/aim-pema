@@ -1,4 +1,4 @@
-const CACHE_NAME = 'aim-pema-v8';
+const CACHE_NAME = 'aim-pema-v9';
 
 const PRE_CACHE = [
   '/',
