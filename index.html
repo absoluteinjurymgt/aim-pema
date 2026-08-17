@@ -1517,6 +1517,7 @@
         <select id="appt-type" onchange="onApptTypeChange()" style="width:100%;padding:10px 12px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:8px;color:white;font-size:16px;font-family:'DM Sans',sans-serif;box-sizing:border-box;-webkit-appearance:none;appearance:none">
           <option value="pema">PEMA — Pre-Employment Medical</option>
           <option value="fce">FCE — Functional Capacity Evaluation</option>
+          <option value="pefa">PEFA — Pre-Employment Functional Assessment</option>
         </select>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
@@ -1542,7 +1543,7 @@
         </div>
         <div>
           <label style="color:var(--olive-light);font-size:12px;display:block;margin-bottom:4px">Classification for this Assessment *</label>
-          <select id="appt-classification" onchange="if(getApptAssessmentType()==='fce')renderApptFceConfig()" style="width:100%;padding:10px 12px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:8px;color:white;font-size:16px;font-family:'DM Sans',sans-serif;box-sizing:border-box;-webkit-appearance:none;appearance:none"></select>
+          <select id="appt-classification" onchange="if(isClinOnlyType(getApptAssessmentType()))renderApptFceConfig()" style="width:100%;padding:10px 12px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:8px;color:white;font-size:16px;font-family:'DM Sans',sans-serif;box-sizing:border-box;-webkit-appearance:none;appearance:none"></select>
         </div>
         <div>
           <label style="color:var(--olive-light);font-size:12px;display:block;margin-bottom:4px">Position Applied For</label>
@@ -1584,7 +1585,7 @@
     <div class="nav-brand">
       <div class="nav-logo"></div>
       <div>
-        <div class="nav-subtitle" style="color:rgba(255,255,255,0.6);font-size:13px">Functional Capacity Evaluation</div>
+        <div class="nav-subtitle" id="fce-nav-subtitle" style="color:rgba(255,255,255,0.6);font-size:13px">Functional Capacity Evaluation</div>
       </div>
     </div>
     <div class="nav-actions">
@@ -1605,6 +1606,36 @@
     <div class="clinician-nav" id="fce-nav"></div>
     <div class="clinician-content" id="fce-content">
       <p style="color:var(--mid);font-size:13px;padding:24px">No FCE appointment loaded. Return to the portal and choose "Start FCE" on an appointment.</p>
+    </div>
+  </div>
+</div>
+
+<div id="screen-pefa" class="screen" style="background:var(--olive-ultra)">
+  <nav class="nav">
+    <div class="nav-brand">
+      <div class="nav-logo"></div>
+      <div>
+        <div class="nav-subtitle" style="color:rgba(255,255,255,0.6);font-size:13px">Pre-Employment Functional Assessment</div>
+      </div>
+    </div>
+    <div class="nav-actions">
+      <button class="nav-btn" onclick="savePefaDataToStorage();showScreen('screen-portal');loadUpcomingAppointments()">← Portal</button>
+      <button class="nav-btn" id="pefa-amend-btn" onclick="amendFCE(this, window._currentPefaToken)" style="display:none">Amend ✎</button>
+      <button class="nav-btn" id="pefa-fieldwork-btn" onclick="markFieldworkComplete(this)" style="background:#8a6d3b;border-color:#8a6d3b;color:white">Fieldwork Complete ✓</button>
+      <button class="nav-btn primary" onclick="finalisePEFA()">Finalise PEFA</button>
+    </div>
+  </nav>
+  <div class="patient-summary-bar" id="pefa-summary-bar">
+    <div class="ps-item"><div class="ps-label">Applicant</div><div class="ps-value" id="pefa-bar-name">—</div></div>
+    <div class="ps-item"><div class="ps-label">Client</div><div class="ps-value" id="pefa-bar-client">—</div></div>
+    <div class="ps-item"><div class="ps-label">Classification</div><div class="ps-value" id="pefa-bar-class">—</div></div>
+    <div class="ps-item"><div class="ps-label">Max Lift/Carry</div><div class="ps-value" id="pefa-bar-maxwt">—</div></div>
+    <div class="ps-item"><div class="ps-label">Date</div><div class="ps-value" id="pefa-bar-date">—</div></div>
+  </div>
+  <div class="clinician-layout">
+    <div class="clinician-nav" id="pefa-nav"></div>
+    <div class="clinician-content" id="pefa-content">
+      <p style="color:var(--mid);font-size:13px;padding:24px">No PEFA appointment loaded. Return to the portal and choose "Start PEFA" on an appointment.</p>
     </div>
   </div>
 </div>
@@ -1745,6 +1776,17 @@
               <button onclick="toggleCustomTaskForm()" style="background:none;border:1px solid var(--border);color:var(--mid);padding:9px 18px;border-radius:6px;font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif">Cancel</button>
             </div>
           </div>
+        </div>
+      </div>
+
+      <div class="config-card">
+        <div class="config-card-header">
+          <h3>PEFA Defaults</h3>
+          <span class="badge badge-olive">Pre-Employment Functional Assessment</span>
+        </div>
+        <div class="config-card-body">
+          <p style="color:var(--mid);font-size:13px;margin:0 0 14px">Optional PEFA sections for this client. Histories, baseline, ROM, postural analysis, manual handling and the determination are always included. Classifications and weights are shared with the FCE Classifications below.</p>
+          <div id="pefa-defaults-body"></div>
         </div>
       </div>
 
@@ -5385,7 +5427,31 @@ function loadClientIntoForm(id) {
     if (lbl) lbl.style.display = '';
   }
   renderFceDefaults(client);
+  renderPefaDefaults(client);
   renderFceClassifications(client);
+}
+
+function renderPefaDefaults(client) {
+  var body = document.getElementById('pefa-defaults-body');
+  if (!body || !client) return;
+  var cfg = client.defaultConfig || {};
+  body.innerHTML = PEFA_SECTIONS.map(function(s) {
+    return '<div class="toggle-row">' +
+      '<div class="toggle-info"><h4>' + s.label + '</h4></div>' +
+      '<label class="toggle"><input type="checkbox" ' + (pefaSectionEnabled(cfg, s.key) ? 'checked ' : '') +
+        'onchange="togglePefaDefaultSection(\'' + s.key + '\', this.checked)"><span class="toggle-slider"></span></label>' +
+      '</div>';
+  }).join('');
+}
+
+function togglePefaDefaultSection(key, on) {
+  var client = getClients().find(function(c) { return c.id === getCurrentClientId(); });
+  if (!client) return;
+  client.defaultConfig = client.defaultConfig || {};
+  client.defaultConfig.pefa = client.defaultConfig.pefa || {};
+  client.defaultConfig.pefa.sections = client.defaultConfig.pefa.sections || {};
+  client.defaultConfig.pefa.sections[key] = on;
+  queueClientCloudSave(client.id);
 }
 
 function saveCurrentClient() {
@@ -5492,6 +5558,23 @@ const FCE_SECTIONS = [
   { key: 'workstation_ergonomics', label: 'Workstation Ergonomics' }
 ];
 const FCE_CLASSIFICATIONS = ['Sedentary', 'Light', 'Medium', 'Heavy', 'Very Heavy'];
+
+// PEFA optional sections. The always-on spine (consent, history questionnaire,
+// baseline vitals, outcomes/conclusion, recommendations, sign-off) is not
+// togglable. Missing key = enabled.
+const PEFA_SECTIONS = [
+  { key: 'rom',                 label: 'Range of Motion' },
+  { key: 'postural_analysis',   label: 'Postural Analysis' },
+  { key: 'special_msk',         label: 'Special MSK Tests' },
+  { key: 'grip_strength',       label: 'Grip Strength' },
+  { key: 'climbing',            label: 'Climbing / Stepping' },
+  { key: 'step_test',           label: '3 Minute Step Test' },
+  { key: 'postural_tolerances', label: 'Postural Tolerance' },
+  { key: 'manual_handling',     label: 'Manual Handling' }
+];
+function pefaSectionEnabled(cfg, key) {
+  return !(cfg && cfg.pefa && cfg.pefa.sections && cfg.pefa.sections[key] === false);
+}
 
 async function loadFceTasks() {
   if (isPatientTokenUrl()) return;
@@ -7072,12 +7155,12 @@ async function exportReportPDF(btnEl, token) {
 // Export no longer deletes the PDF — the retention sweep removes it 72 hours
 // after exported_at, giving a re-download window.
 async function markReportExported(btnEl, token) {
-  var isFce = false;
+  var isClinOnly = false;
   try {
     var typeRows = await sbSelect('appointments', 'token=eq.' + token + '&select=assessment_type');
-    isFce = !!(typeRows && typeRows[0] && typeRows[0].assessment_type === 'fce');
+    isClinOnly = !!(typeRows && typeRows[0] && isClinOnlyType(typeRows[0].assessment_type));
   } catch(e) {}
-  var msg = isFce
+  var msg = isClinOnly
     ? 'Mark as exported?\n\nThe report remains in the queue with Amend available, and the PDF can still be re-downloaded for 72 hours before it is removed from the server.'
     : 'Mark as exported?\n\nThe stored PDF will be permanently deleted from the server and this appointment will leave the active list.';
   if (!confirm(msg)) return;
@@ -8490,8 +8573,8 @@ function populateApptClassificationDropdown() {
   var classSel = document.getElementById('appt-classification');
   if (!classSel || !clientSel) return;
   var classes;
-  if (getApptAssessmentType() === 'fce') {
-    // Client-defined classifications drive FCE; generic list is the fallback
+  if (isClinOnlyType(getApptAssessmentType())) {
+    // Client-defined classifications drive FCE and PEFA; generic list is the fallback
     var fceClient = getClients().find(function(c) { return c.id === clientSel.value; });
     var cfgKeys = fceClient ? Object.keys(fceClient.classificationConfig || {}) : [];
     classes = cfgKeys.length ? cfgKeys : FCE_CLASSIFICATIONS;
@@ -8503,22 +8586,25 @@ function populateApptClassificationDropdown() {
   classSel.innerHTML = classes.map(function(cls) {
     return '<option value="' + cls + '">' + cls + '</option>';
   }).join('');
-  if (getApptAssessmentType() === 'fce') renderApptFceConfig();
+  if (isClinOnlyType(getApptAssessmentType())) renderApptFceConfig();
 }
 
 function getApptAssessmentType() {
   return (document.getElementById('appt-type') || {}).value || 'pema';
 }
 
+// FCE and PEFA are clinician-only: no questionnaire token/SMS flow
+function isClinOnlyType(type) { return type === 'fce' || type === 'pefa'; }
+
 function onApptTypeChange() {
-  var fce = getApptAssessmentType() === 'fce';
+  var type = getApptAssessmentType();
+  var clinOnly = isClinOnlyType(type);
   var panel = document.getElementById('appt-fce-config');
-  if (panel) panel.style.display = fce ? 'block' : 'none';
+  if (panel) panel.style.display = clinOnly ? 'block' : 'none';
   var btn = document.getElementById('generate-appt-btn');
-  if (btn) btn.textContent = fce ? 'Create FCE Appointment' : 'Generate Questionnaire Link';
-  // FCE appointments have no questionnaire link/SMS
+  if (btn) btn.textContent = type === 'fce' ? 'Create FCE Appointment' : type === 'pefa' ? 'Create PEFA Appointment' : 'Generate Questionnaire Link';
   var smsBox = document.getElementById('appt-sms-box');
-  if (smsBox && fce) smsBox.style.display = 'none';
+  if (smsBox && clinOnly) smsBox.style.display = 'none';
   populateApptClassificationDropdown();
 }
 
@@ -8545,7 +8631,7 @@ function getApptClassCfg(client) {
   return (client && client.classificationConfig && client.classificationConfig[cls]) || null;
 }
 
-// Per-referral FCE config panel — pre-populated from the client's default_config
+// Per-referral FCE/PEFA config panel — pre-populated from the client's default_config
 function renderApptFceConfig() {
   var body = document.getElementById('appt-fce-config-body');
   if (!body) return;
@@ -8553,6 +8639,20 @@ function renderApptFceConfig() {
   var client = getClients().find(function(c) { return c.id === clientId; });
   var cfg = (client && client.defaultConfig) || {};
   var classCfg = getApptClassCfg(client);
+  if (getApptAssessmentType() === 'pefa') {
+    // PEFA: optional section toggles only — no task list, no protocol overrides
+    var pRow = 'display:flex;align-items:center;gap:10px;padding:6px 0;cursor:pointer';
+    var pHtml = '<div style="color:var(--olive-light);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px">Optional Sections</div>';
+    PEFA_SECTIONS.forEach(function(s) {
+      pHtml += '<label style="' + pRow + '"><input type="checkbox" data-pefa-section="' + s.key + '"' + (pefaSectionEnabled(cfg, s.key) ? ' checked' : '') + '> ' + s.label + '</label>';
+    });
+    pHtml += '<div style="color:var(--mid);font-size:11px;margin-top:6px">Histories, baseline, ROM, postural analysis, manual handling and determination are always included.</div>';
+    if (classCfg && classCfg.max_weight_kg) {
+      pHtml += '<div style="color:var(--olive-light);font-size:11px;margin-top:8px">Lifting / Carrying maximum for this classification: <strong>' + classCfg.max_weight_kg + ' kg</strong></div>';
+    }
+    body.innerHTML = pHtml;
+    return;
+  }
   var rowStyle = 'display:flex;align-items:flex-start;gap:10px;padding:6px 0;cursor:pointer';
   var html = '<div style="color:var(--olive-light);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px">Sections</div>';
   FCE_SECTIONS.forEach(function(s) {
@@ -8601,6 +8701,22 @@ function collectApptFceConfig() {
   return cfg;
 }
 
+// PEFA: only the classification weight applies — FCE task overrides are ignored
+function collectApptPefaConfig() {
+  var clientId = (document.getElementById('appt-client') || {}).value || '';
+  var client = getClients().find(function(c) { return c.id === clientId; });
+  var classCfg = getApptClassCfg(client);
+  var cfg = {
+    classification: (document.getElementById('appt-classification') || {}).value || '',
+    max_weight_kg: (classCfg && classCfg.max_weight_kg) || null,
+    sections: {}
+  };
+  document.querySelectorAll('#appt-fce-config-body [data-pefa-section]').forEach(function(cb) {
+    cfg.sections[cb.getAttribute('data-pefa-section')] = cb.checked;
+  });
+  return cfg;
+}
+
 
 async function createAppointment() {
   var btn = document.getElementById('generate-appt-btn');
@@ -8640,13 +8756,14 @@ async function createAppointment() {
       assessment_type: assessmentType
     };
     if (assessmentType === 'fce') row.fce_config = collectApptFceConfig();
+    if (assessmentType === 'pefa') row.pefa_config = collectApptPefaConfig();
     await sbInsert('appointments', row);
 
-    // FCE: no patient questionnaire — no token SMS, straight to the queue
-    if (assessmentType === 'fce') {
+    // FCE/PEFA: no patient questionnaire — no token SMS, straight to the queue
+    if (isClinOnlyType(assessmentType)) {
       var smsBoxF = document.getElementById('appt-sms-box');
       if (smsBoxF) smsBoxF.style.display = 'none';
-      showToast('FCE appointment created — ready in the queue below.');
+      showToast(assessmentType.toUpperCase() + ' appointment created — ready in the queue below.');
       loadUpcomingAppointments();
       return;
     }
@@ -8673,7 +8790,8 @@ async function createAppointment() {
     alert('Failed to create appointment: ' + e.message);
   } finally {
     if (btn) {
-      btn.textContent = (getApptAssessmentType() === 'fce') ? 'Create FCE Appointment' : 'Generate Questionnaire Link';
+      var t = getApptAssessmentType();
+      btn.textContent = t === 'fce' ? 'Create FCE Appointment' : t === 'pefa' ? 'Create PEFA Appointment' : 'Generate Questionnaire Link';
       btn.disabled = false;
     }
   }
@@ -8876,7 +8994,7 @@ async function loadUpcomingAppointments() {
     // the same window keyed off finalised_at) older than 30 days
     var cutoff = Date.now() - 30 * 24 * 3600 * 1000;
     (rows || []).forEach(function(a) {
-      var retires = a.status === 'finalised' || (a.status === 'exported' && a.assessment_type === 'fce');
+      var retires = a.status === 'finalised' || (a.status === 'exported' && isClinOnlyType(a.assessment_type));
       if (retires && a.finalised_at && new Date(a.finalised_at).getTime() < cutoff) {
         if (a.pdf_path) sbStorageDelete(a.pdf_path).catch(function(e) { console.warn('[PEMA] expiry delete failed:', e); });
         sbUpdate('appointments', 'token=eq.' + a.token, { status: 'expired', pdf_path: null }).catch(function() {});
@@ -8897,7 +9015,7 @@ async function loadUpcomingAppointments() {
     });
     renderApptQueue((rows || []).filter(function(a) {
       if (a.status === 'expired') return false;
-      if (a.status === 'exported') return a.assessment_type === 'fce';
+      if (a.status === 'exported') return isClinOnlyType(a.assessment_type);
       return true;
     }));
   } catch(e) {
@@ -8916,6 +9034,9 @@ function renderApptQueue(appts) {
   container.innerHTML = appts.map(function(a, idx) {
     var isComplete = a.status === 'complete';
     var isFCE = a.assessment_type === 'fce';
+    var isPefa = a.assessment_type === 'pefa';
+    var isClinOnly = isFCE || isPefa; // clinician-only: no questionnaire gating
+    var clinLabel = isPefa ? 'PEFA' : 'FCE';
     var cardId = 'appt-detail-' + idx;
     var link = 'https://pema.absoluteim.com.au/q/' + a.token;
     var d = a.appointment_date ? new Date(a.appointment_date + 'T12:00:00') : null;
@@ -8926,6 +9047,8 @@ function renderApptQueue(appts) {
 
     var typeBadge = isFCE
       ? '<span style="display:inline-block;background:#8a6d3b;color:white;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;letter-spacing:0.5px;vertical-align:middle;margin-left:8px">FCE</span>'
+      : isPefa
+      ? '<span style="display:inline-block;background:#4a6d8a;color:white;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;letter-spacing:0.5px;vertical-align:middle;margin-left:8px">PEFA</span>'
       : '<span style="display:inline-block;background:rgba(255,255,255,0.12);color:var(--light);padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;letter-spacing:0.5px;vertical-align:middle;margin-left:8px">PEMA</span>';
 
     var isFieldworkDone = a.status === 'fieldwork_complete';
@@ -8934,11 +9057,11 @@ function renderApptQueue(appts) {
     // FCE status progression: Pending → Fieldwork Complete → Finalised → Exported
     var badge = isFinalised
       ? '<span style="display:inline-block;background:#6d6f57;color:white;padding:3px 9px;border-radius:4px;font-size:11px;font-weight:600">📄 Finalised — report ready</span>'
-      : (isFCE && isExported)
+      : (isClinOnly && isExported)
       ? '<span style="display:inline-block;background:rgba(255,255,255,0.12);color:var(--light);padding:3px 9px;border-radius:4px;font-size:11px;font-weight:600">✓ Exported</span>'
-      : (isFCE && isFieldworkDone)
+      : (isClinOnly && isFieldworkDone)
       ? '<span style="display:inline-block;background:#b8860b;color:white;padding:3px 9px;border-radius:4px;font-size:11px;font-weight:600">⏱ Fieldwork Complete — awaiting write-up</span>'
-      : isFCE
+      : isClinOnly
       ? '<span style="display:inline-block;background:rgba(255,255,255,0.08);color:var(--light);padding:3px 9px;border-radius:4px;font-size:11px">Pending — ready to assess</span>'
       : isComplete
       ? '<span style="display:inline-block;background:#4a7c59;color:white;padding:3px 9px;border-radius:4px;font-size:11px;font-weight:600">✓ Questionnaire Complete</span>'
@@ -8946,9 +9069,10 @@ function renderApptQueue(appts) {
 
     var activeStyle = 'background:var(--olive);border:none;color:white;padding:10px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:\'DM Sans\',sans-serif;min-height:44px;white-space:nowrap';
     var startBtn;
-    if (isFCE) {
-      // FCE has no questionnaire gating — startable immediately
-      startBtn = '<button onclick="startFCE(this,\'' + a.token + '\')" style="' + activeStyle + '">Start FCE →</button>';
+    if (isClinOnly) {
+      // FCE/PEFA have no questionnaire gating — startable immediately
+      var startFn = isPefa ? 'startPEFA' : 'startFCE';
+      startBtn = '<button onclick="' + startFn + '(this,\'' + a.token + '\')" style="' + activeStyle + '">Start ' + clinLabel + ' →</button>';
     } else {
       var startStyle = isComplete
         ? activeStyle
@@ -8962,12 +9086,12 @@ function renderApptQueue(appts) {
       startBtn =
         '<button onclick="exportReportPDF(this,\'' + a.token + '\')" style="background:var(--olive);border:none;color:white;padding:10px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:\'DM Sans\',sans-serif;min-height:44px;white-space:nowrap">Export PDF ⬇</button>' +
         '<button onclick="markReportExported(this,\'' + a.token + '\')" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);color:var(--light);padding:8px 14px;border-radius:8px;font-size:12px;cursor:pointer;font-family:\'DM Sans\',sans-serif;white-space:nowrap">Mark Exported</button>' +
-        (isFCE ? '<button onclick="amendFCE(this,\'' + a.token + '\')" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);color:var(--light);padding:8px 14px;border-radius:8px;font-size:12px;cursor:pointer;font-family:\'DM Sans\',sans-serif;white-space:nowrap">Amend ✎</button>' : '');
+        (isClinOnly ? '<button onclick="amendFCE(this,\'' + a.token + '\')" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);color:var(--light);padding:8px 14px;border-radius:8px;font-size:12px;cursor:pointer;font-family:\'DM Sans\',sans-serif;white-space:nowrap">Amend ✎</button>' : '');
     }
 
-    // Exported FCE: re-download stays available while the PDF survives the
-    // 72-hour grace window; Amend always remains
-    if (isFCE && isExported) {
+    // Exported FCE/PEFA: re-download stays available while the PDF survives
+    // the 72-hour grace window; Amend always remains
+    if (isClinOnly && isExported) {
       startBtn =
         (a.pdf_path ? '<button onclick="exportReportPDF(this,\'' + a.token + '\')" style="background:var(--olive);border:none;color:white;padding:10px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:\'DM Sans\',sans-serif;min-height:44px;white-space:nowrap">Export PDF ⬇</button>' : '') +
         '<button onclick="amendFCE(this,\'' + a.token + '\')" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);color:var(--light);padding:10px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:\'DM Sans\',sans-serif;min-height:44px;white-space:nowrap">Amend ✎</button>';
@@ -8975,8 +9099,8 @@ function renderApptQueue(appts) {
 
     var detailsBtn = '<button onclick="(function(el){el.style.display=el.style.display===\'block\'?\'none\':\'block\';})(document.getElementById(\'' + cardId + '\'))" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:var(--light);padding:5px 10px;border-radius:6px;font-size:11px;cursor:pointer;font-family:\'DM Sans\',sans-serif;white-space:nowrap">Details ▾</button>';
 
-    var linkBlock = isFCE
-      ? '' // FCE appointments have no patient questionnaire link
+    var linkBlock = isClinOnly
+      ? '' // FCE/PEFA appointments have no patient questionnaire link
       : '<div style="color:var(--mid);font-size:10px;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:3px">Questionnaire Link</div>' +
         '<div style="color:var(--olive-light);font-size:12px;word-break:break-all;margin-bottom:10px">' + link + '</div>' +
         '<button onclick="copyApptLink(this,\'' + a.token + '\')" style="padding:8px 16px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:white;font-size:13px;font-family:\'DM Sans\',sans-serif;cursor:pointer;min-height:44px">Copy Link</button>';
@@ -10122,22 +10246,25 @@ function wireFceAutoSave() {
 // Only ever moves status forward from pending; never regresses a finalised or
 // exported appointment.
 async function markFieldworkComplete(btn) {
-  var token = window._currentFceToken;
-  if (!token) { showErrorToast('No FCE appointment loaded.'); return; }
+  // Shared by the FCE and PEFA screens — exactly one token is set at a time
+  var isPefaAssess = !!window._currentPefaToken;
+  var token = window._currentFceToken || window._currentPefaToken;
+  var apptObj = isPefaAssess ? window._pefaAppointment : window._fceAppointment;
+  if (!token) { showErrorToast('No assessment loaded.'); return; }
   var orig = btn ? btn.textContent : '';
   if (btn) { btn.textContent = 'Saving…'; btn.disabled = true; }
-  saveFceDataToStorage();
+  if (isPefaAssess) savePefaDataToStorage(); else saveFceDataToStorage();
   try {
     // Check the live status (another device may have finalised this appointment)
     var rows = await sbSelect('appointments', 'token=eq.' + token + '&select=status');
-    var current = (rows && rows[0] && rows[0].status) || (window._fceAppointment || {}).status || '';
+    var current = (rows && rows[0] && rows[0].status) || (apptObj || {}).status || '';
     if (current === 'finalised' || current === 'exported') {
-      if (window._fceAppointment) window._fceAppointment.status = current;
+      if (apptObj) apptObj.status = current;
       showToast('Already finalised — status unchanged.');
       return;
     }
     await sbUpdate('appointments', 'token=eq.' + token, { status: 'fieldwork_complete' });
-    if (window._fceAppointment) window._fceAppointment.status = 'fieldwork_complete';
+    if (apptObj) apptObj.status = 'fieldwork_complete';
     showToast('Fieldwork marked complete — write-up can continue any time.');
   } catch(e) {
     console.error('[FCE] fieldwork status update failed:', e);
@@ -10803,15 +10930,17 @@ async function amendFCE(btnEl, token) {
   var orig = btnEl ? btnEl.textContent : '';
   if (btnEl) { btnEl.textContent = 'Opening…'; btnEl.disabled = true; }
   try {
-    var rows = await sbSelect('appointments', 'token=eq.' + token + '&select=status');
+    var rows = await sbSelect('appointments', 'token=eq.' + token + '&select=status,assessment_type');
     var status = (rows && rows[0] && rows[0].status) || '';
+    var aType = (rows && rows[0] && rows[0].assessment_type) || 'fce';
     if (status === 'exported') {
       if (!confirm('This report has been exported. After refinalising, ensure the recipient receives the updated version.')) return;
     }
     await sbUpdate('appointments', 'token=eq.' + token, { status: 'fieldwork_complete' });
     showToast('Reopened for amendment — refinalise when the changes are done.');
     loadUpcomingAppointments();
-    await startFCE(null, token);
+    if (aType === 'pefa') await startPEFA(null, token);
+    else await startFCE(null, token);
   } catch(e) {
     alert('Could not reopen for amendment: ' + e.message);
   } finally {
@@ -10828,6 +10957,7 @@ async function startFCE(btnEl, token) {
     var appt = rows[0];
     window._fceAppointment = appt;
     window._currentFceToken = token;
+    window._currentPefaToken = null; // one clinician assessment active at a time
     window._fceBpElevated = false;
     window._fceBpOverridden = false;
 
@@ -10877,6 +11007,1369 @@ async function startFCE(btnEl, token) {
   } finally {
     if (btnEl) { btnEl.textContent = 'Start FCE →'; btnEl.disabled = false; }
   }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// PEFA (Pre-Employment Functional Assessment) — PEMA chassis, clinician-only.
+// Dedicated screen (#screen-pefa) with pefa- prefixed ids: PEMA's own inputs
+// are keyed to PEMA's autosave/globals and mostly have no ids, so the PEFA
+// renders PEMA's markup/format with ids and routes autosave through the
+// FCE-style mechanism (aim_pefa_data + clinician_progress, _type:'pefa').
+// PEMA consent/declaration texts are duplicated below because PEMA's live in
+// static patient-screen HTML and cannot be shared as strings.
+// ═════════════════════════════════════════════════════════════════════════════
+
+const PEFA_AUTHORITY_TEXT = 'For the purpose of this Pre-Employment Medical Assessment, you are required to disclose any previous or pre-existing injuries or conditions of which you are aware. This includes conditions that might affect or be affected by your proposed employment. The information obtained will be used only for the purpose of your application for employment and will not be provided to any other party without your prior consent.';
+const PEFA_CONSENT_TEXT = 'This assessment is a test of your capacity to complete the inherent requirements of the position you are applying for. You will be expected to set your own limits and will not be asked to undertake any task you feel you cannot perform safely. The assessor will cease the assessment at any stage if in their opinion it is unsafe to proceed. Each task will be explained to you in full before testing.';
+const PEFA_DECLARATION_TEXT = '<strong>I declare that:</strong> The information I have provided is true and complete to the best of my knowledge. I authorise Absolute Injury Management to obtain and release my medical information to my prospective employer for the purpose of this assessment only. I consent to proceed with the assessment and confirm there are no reasons I cannot safely participate. I am aware that failure to disclose relevant health information may affect my employment application.';
+const PEFA_OUTCOMES = [
+  { code: 'A', title: 'Demonstrated functional capacity consistent with the role — No restrictions or recommendations', desc: 'All tasks completed with 0/10 pain, technique within normal limits, and HR within testing parameters throughout.' },
+  { code: 'B', title: 'Demonstrated functional capacity consistent with the role — With recommendations for employer consideration', desc: 'Capacity demonstrated. The following recommendations are provided for the employer\'s awareness and consideration in placement planning.' },
+  { code: 'C', title: 'Demonstrated functional capacity consistent with the role — With restrictions identified', desc: 'Capacity demonstrated within defined parameters. The employer is advised to consider the restrictions noted below when determining placement suitability.' },
+  { code: 'D', title: 'Insufficient capacity demonstrated at this classification level', desc: 'The applicant did not demonstrate sufficient functional capacity for the assessed classification during this assessment. Further assessment, modified role consideration, or medical review is recommended prior to placement decision.' }
+];
+
+function pefaMhWeights(maxKg) {
+  return {
+    occ: maxKg ? maxKg + 'kg' : '—',
+    freq: maxKg ? Math.round(maxKg * 0.48) + 'kg' : '—',
+    cons: maxKg ? (Math.round(maxKg * 0.2 * 2) / 2) + 'kg' : '—'
+  };
+}
+
+function pefaSectionShell(id, title, desc, bodyHtml) {
+  return '<div class="clinician-section" id="' + id + '">' +
+    '<div class="section-title" style="margin-bottom:4px">' + escFce(title) + '</div>' +
+    (desc ? '<div class="section-desc">' + desc + '</div>' : '') +
+    bodyHtml + '</div>';
+}
+
+function pefaLabel(text) {
+  return '<label style="font-size:11px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.04em;display:block;margin-bottom:6px">' + text + '</label>';
+}
+
+function pefaChips(group, opts, handler) {
+  return '<div class="fce-chips" style="display:flex;gap:8px;flex-wrap:wrap">' + opts.map(function(o, oi) {
+    return '<button class="option-chip" onclick="' + (handler || 'selectPefaChip') + '(this,\'' + group + '\',' + oi + ')">' + escFce(o) + '</button>';
+  }).join('') + '</div>';
+}
+
+function pefaYnRows(prefix, questions) {
+  return questions.map(function(q, i) {
+    var key = prefix + '-' + i;
+    return '<div class="q-card">' +
+      '<div class="q-label"><span class="q-num">' + (i + 1) + '</span>' + escFce(q) + '</div>' +
+      '<div class="yn-group">' +
+        '<button class="yn-btn" onclick="togglePefaYN(this,\'' + key + '\',\'yes\')">Yes</button>' +
+        '<button class="yn-btn" onclick="togglePefaYN(this,\'' + key + '\',\'no\')">No</button>' +
+      '</div>' +
+      '<input type="hidden" id="' + key + '" class="pefa-yn-state">' +
+      '<div class="detail-field" id="' + key + '-detail"><label>Details</label>' +
+        '<textarea id="' + key + '-detail-text" placeholder="Details..."></textarea></div>' +
+    '</div>';
+  }).join('');
+}
+
+function pefaPromptChip(text, label) {
+  return '<div class="prompt-chip" onclick="insertPrompt(this,\'' + text.replace(/'/g, "\\'") + '\')">' + label + '</div>';
+}
+
+function renderPefaScreen(appt) {
+  var cfg = appt.pefa_config || {};
+  var sections = cfg.sections || {};
+  var on = function(key) { return sections[key] !== false; };
+  var maxKg = cfg.max_weight_kg || null;
+  var w = pefaMhWeights(maxKg);
+  var ladderReps = /very heavy/i.test(cfg.classification || '') ? 30 : /heavy/i.test(cfg.classification || '') ? 25 : 20;
+
+  document.getElementById('pefa-bar-name').textContent = ((appt.patient_first_name || '') + ' ' + (appt.patient_last_name || '')).trim() || '—';
+  document.getElementById('pefa-bar-client').textContent = appt.client_name || '—';
+  document.getElementById('pefa-bar-class').textContent = cfg.classification || appt.client_classification || '—';
+  document.getElementById('pefa-bar-maxwt').textContent = maxKg ? maxKg + ' kg' : '—';
+  document.getElementById('pefa-bar-date').textContent = appt.appointment_date || '—';
+
+  // Navigation (PEMA's own section order where sections are shared)
+  var navGroups = [
+    { label: 'Intake', items: [['pefa-emp', 'Applicant Details'], ['pefa-consent', 'Authority & Consent'], ['pefa-hmed', 'Medical History'], ['pefa-hinj', 'Injury History'], ['pefa-hfs', 'Functional Status']] },
+    { label: 'Baseline', items: [['pefa-vitals', 'Vitals & Baseline']] },
+    { label: 'Musculoskeletal', items: [].concat(on('rom') ? [['pefa-rom', 'Range of Motion']] : []).concat(on('postural_analysis') ? [['pefa-postural', 'Postural Analysis']] : []).concat(on('special_msk') ? [['pefa-msk', 'Special MSK Tests']] : []).concat(on('grip_strength') ? [['pefa-grip', 'Grip Strength']] : []) },
+    { label: 'Functional', items: [].concat(on('postural_tolerances') ? [['pefa-ptol', 'Postural Tolerance']] : []).concat(on('step_test') ? [['pefa-steptest', 'Step Test']] : []).concat(on('manual_handling') ? [['pefa-manual', 'Manual Handling']] : []).concat(on('climbing') ? [['pefa-climbing', 'Climbing / Stepping']] : []) },
+    { label: 'Outcome', items: [['pefa-outcome', 'Fitness Outcome'], ['pefa-signoff', 'Assessor Signature']] }
+  ];
+  document.getElementById('pefa-nav').innerHTML = navGroups.map(function(g) {
+    return '<div class="clinician-nav-section"><div class="clinician-nav-label">' + g.label + '</div>' +
+      g.items.map(function(it) { return '<div class="clinician-nav-item" onclick="showPefaSection(\'' + it[0] + '\',this)"><span class="nav-dot"></span>' + it[1] + '</div>'; }).join('') + '</div>';
+  }).join('');
+
+  var html = '';
+
+  // ── Applicant details (data PEMA gets from the questionnaire) ──
+  html += pefaSectionShell('pefa-emp', 'Applicant Details', 'Prefilled from the referral — confirm with the applicant before starting.',
+    '<div class="clin-card"><div class="clin-card-body">' +
+      '<div class="mh-grid">' +
+        '<div class="mh-field"><label>First Name</label><input id="pefa-firstname"></div>' +
+        '<div class="mh-field"><label>Surname</label><input id="pefa-surname"></div>' +
+        '<div class="mh-field"><label>Date of Birth</label><input id="pefa-dob" type="date" oninput="calcPefaMaxHR();calcPefaGrip(\'r\');calcPefaGrip(\'l\')"></div>' +
+        '<div class="mh-field"><label>Position Applied For</label><input id="pefa-job"></div>' +
+        '<div class="mh-field"><label>Site / Location</label><input id="pefa-site"></div>' +
+        '<div class="mh-field"><label>Assessment Date</label><input id="pefa-date" type="date"></div>' +
+        '<div class="mh-field"><label>Assessment Time</label><input id="pefa-time" type="time"></div>' +
+      '</div>' +
+      '<div style="display:flex;gap:32px;flex-wrap:wrap;margin-top:14px">' +
+        '<div>' + pefaLabel('Gender') + pefaChips('pefa-gender', ['Male', 'Female']) + '</div>' +
+        '<div>' + pefaLabel('Dominant Hand') + pefaChips('pefa-dominant', ['Right', 'Left']) + '</div>' +
+      '</div>' +
+    '</div></div>');
+
+  // ── Authority & Consent (PEMA's own wording and single-signature format) ──
+  html += pefaSectionShell('pefa-consent', 'Authority & Consent', 'Read with the applicant before signing.',
+    '<div class="consent-box"><strong>Authority to Obtain and Release Medical Information</strong><br><br>' + PEFA_AUTHORITY_TEXT + '</div>' +
+    '<div class="consent-box" style="margin-top:12px"><strong>Consent to Proceed with Assessment</strong><br><br>' + PEFA_CONSENT_TEXT + '</div>' +
+    '<div class="q-card" style="margin-top:16px">' +
+      '<div class="q-label" style="margin-bottom:6px">Applicant Consent Signature</div>' +
+      '<div style="font-size:13px;color:var(--charcoal);line-height:1.7;margin-bottom:16px;padding:12px;background:var(--olive-ultra);border-radius:8px;border-left:3px solid var(--olive)">' + PEFA_DECLARATION_TEXT + '</div>' +
+      '<div class="sig-wrap"><canvas class="sig-canvas" id="pefa-sig-consent"></canvas>' +
+      '<div class="sig-placeholder" id="pefa-sig-consent-ph">Sign here with your finger</div></div>' +
+      '<div class="sig-actions"><button class="sig-clear" onclick="clearSig(\'pefa-sig-consent\',\'pefa-sig-consent-ph\')">Clear</button></div>' +
+      '<div style="display:flex;justify-content:flex-end;margin-top:12px"><div class="form-group" style="width:180px"><label>Date</label><input class="form-control" type="date" id="pefa-consent-date"></div></div>' +
+    '</div>');
+
+  // ── History questionnaire (FCE arrays, completed in-room by the clinician) ──
+  html += pefaSectionShell('pefa-hmed', 'Medical History', 'Completed with the applicant by the assessor.', pefaYnRows('pefa-hm', FCE_MED_HISTORY));
+  html += pefaSectionShell('pefa-hinj', 'Injury History', null, pefaYnRows('pefa-hi', FCE_INJURY_HISTORY));
+  html += pefaSectionShell('pefa-hfs', 'Functional Status', null,
+    pefaYnRows('pefa-hf', FCE_FUNCTIONAL_STATUS) +
+    '<div class="clin-card" style="margin-top:14px"><div class="clin-card-body">' + pefaLabel('Additional Comments') +
+    '<div class="smart-field"><textarea class="smart-textarea" id="pefa-hfs-comments" placeholder="Functional status comments..."></textarea></div></div></div>');
+
+  // ── Vitals & baseline (PEMA markup, no DAS/screening items) ──
+  html += pefaSectionShell('pefa-vitals', 'Vitals & Baseline Measurements', 'Complete before commencing functional testing. BP &gt;160/100 requires medical clearance to proceed.',
+    '<div class="alert alert-warning">If BP exceeds 160/100 mmHg, do not proceed with physical testing. Refer for medical review.</div>' +
+    '<div class="clin-card"><div class="clin-card-header"><h3>Measurements</h3></div><div class="clin-card-body">' +
+      '<div class="vitals-grid">' +
+        '<div class="vital-item"><div class="vital-label">Blood Pressure</div>' +
+          '<div style="display:flex;align-items:center;gap:4px">' +
+          '<input class="vital-input" id="pefa-bp-sys" placeholder="120" style="width:50px" oninput="checkPefaBP()">' +
+          '<span style="font-size:18px;color:var(--mid)">/</span>' +
+          '<input class="vital-input" id="pefa-bp-dia" placeholder="80" style="width:50px" oninput="checkPefaBP()">' +
+          '</div><div class="vital-unit">mmHg</div><div class="vital-calc" id="pefa-bp-warning"></div></div>' +
+        '<div class="vital-item"><div class="vital-label">Resting HR</div><input class="vital-input" id="pefa-resthr" placeholder="72"><div class="vital-unit">bpm</div></div>' +
+        '<div class="vital-item"><div class="vital-label">Height</div><input class="vital-input" id="pefa-height" placeholder="1.75" oninput="calcPefaBMI()"><div class="vital-unit">metres</div></div>' +
+        '<div class="vital-item"><div class="vital-label">Weight</div><input class="vital-input" id="pefa-weight" placeholder="80" oninput="calcPefaBMI()"><div class="vital-unit">kg</div></div>' +
+        '<div class="vital-item"><div class="vital-label">BMI</div><div class="vital-input" id="pefa-bmi" style="font-size:20px">—</div><div class="vital-unit">kg/m²</div><div class="vital-calc" id="pefa-bmi-cat"></div></div>' +
+        '<div class="vital-item"><div class="vital-label">Max HR (100%)</div><div class="vital-input" id="pefa-maxhr" style="font-size:20px">—</div><div class="vital-unit">220 − age (bpm)</div></div>' +
+        '<div class="vital-item"><div class="vital-label">85% Max HR</div><div class="vital-input" id="pefa-maxhr85" style="font-size:20px">—</div><div class="vital-unit">aerobic threshold (bpm)</div></div>' +
+        '<div class="vital-item"><div class="vital-label">Max MH Test Weight</div><div class="vital-input" id="pefa-maxmh" style="font-size:20px">—</div><div class="vital-unit">60% body weight (kg)</div></div>' +
+      '</div>' +
+    '</div></div>');
+
+  // ── ROM (PEMA format, Pain + Limited independently selectable) ──
+  if (on('rom')) {
+    var bilateralJoints = ['Shoulder', 'Elbow', 'Wrist', 'Fingers/Thumb', 'Hip', 'Knee', 'Ankle'];
+    html += pefaSectionShell('pefa-rom', 'Range of Motion', 'Normal is exclusive; Pain and Limited can both be selected.',
+      '<div class="clin-card"><div class="clin-card-body">' +
+      romJoints.map(function(joint, i) {
+        var isBilateral = bilateralJoints.indexOf(joint) >= 0;
+        var placeholder = isBilateral ? 'L/R — degrees / findings...' : 'Degrees / findings...';
+        return '<div class="rom-row"><div class="rom-joint">' + escFce(joint) + (isBilateral ? ' <span style="font-size:10px;color:var(--mid)">(L &amp; R)</span>' : '') + '</div>' +
+          '<div class="rom-options">' + pefaChips('pefa-rom-' + i, ['Normal', 'Pain', 'Limited'], 'selectPefaRomChip') + '</div>' +
+          '<div style="flex:1">' +
+            '<input id="pefa-rom-' + i + '-detail" style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:\'DM Sans\',sans-serif;outline:none;margin-bottom:4px" placeholder="' + placeholder + '">' +
+            '<div id="pefa-rom-' + i + '-painrow" style="display:none;margin-top:3px">' +
+              '<input id="pefa-rom-' + i + '-painscore" style="width:90px;padding:5px 8px;border:1.5px solid var(--error);border-radius:6px;font-size:12px;font-family:\'DM Sans\',sans-serif;outline:none" placeholder="Pain /10" type="number" min="0" max="10">' +
+            '</div></div></div>';
+      }).join('') + '</div></div>');
+  }
+
+  // ── Postural analysis (PEMA format) ──
+  if (on('postural_analysis')) {
+    html += pefaSectionShell('pefa-postural', 'Postural Analysis', null,
+      '<div class="clin-card"><div class="clin-card-body">' +
+      posturalRegions.map(function(reg, i) {
+        return '<div class="rom-row"><div class="rom-joint">' + escFce(reg) + '</div>' +
+          '<div class="rom-options">' + pefaChips('pefa-post-' + i, ['Normal', 'Abnormal']) + '</div>' +
+          '<div style="flex:1"><input id="pefa-post-' + i + '-detail" style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:\'DM Sans\',sans-serif;outline:none" placeholder="Details if abnormal..."></div></div>';
+      }).join('') + '</div></div>');
+  }
+
+  // ── Special MSK tests (PEMA's 11 test cards, incl. SLR side logic + SLB grid) ──
+  if (on('special_msk')) {
+    html += pefaSectionShell('pefa-msk', 'Special MSK Tests', null,
+      mskTests.map(function(t, i) {
+        var isSlb = (i === 0);
+        var isSLR = t.name === 'Straight Leg Raise';
+        var slbHtml = isSlb ? (
+          '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:12px">' +
+          [['eo-l', 'Eyes Open — Left (sec)'], ['eo-r', 'Eyes Open — Right (sec)'], ['ec-l', 'Eyes Closed — Left (sec)'], ['ec-r', 'Eyes Closed — Right (sec)']].map(function(p) {
+            return '<div><label style="font-size:10px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.04em;display:block;margin-bottom:4px">' + p[1] + '</label><input class="form-control" id="pefa-slb-' + p[0] + '" placeholder="—" style="padding:8px 10px"></div>';
+          }).join('') + '</div>' +
+          '<div style="margin-bottom:10px;font-size:11px;color:var(--mid);font-style:italic;padding:8px;background:var(--olive-ultra);border-radius:6px">Reference: ≥10 sec eyes closed = functional. 5–9 sec = employer fall risk note. &lt;5 sec = restriction consideration.</div>'
+        ) : '';
+        var optsHtml = t.opts.map(function(o, oi) {
+          return isSLR
+            ? '<button class="option-chip" onclick="selectPefaSLR(this,' + oi + ')">' + escFce(o) + '</button>'
+            : '<button class="option-chip" onclick="selectPefaChip(this,\'pefa-msk-' + i + '\',' + oi + ')">' + escFce(o) + '</button>';
+        }).join('');
+        return '<div class="clin-card" style="margin-bottom:12px"><div class="clin-card-header"><h3>' + escFce(t.name) + ' <span style="font-weight:300;font-size:11px;color:var(--mid)">' + escFce(t.method) + '</span></h3></div>' +
+          '<div class="clin-card-body">' + slbHtml +
+          '<div class="fce-chips" style="display:flex;gap:8px;flex-wrap:wrap">' + optsHtml + '</div>' +
+          '<input id="pefa-msk-' + i + '-detail" style="width:100%;margin-top:10px;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:\'DM Sans\',sans-serif;outline:none" placeholder="Details / notes...">' +
+          '</div></div>';
+      }).join(''));
+  }
+
+  // ── Grip strength (PEMA format + interpretation chips) ──
+  if (on('grip_strength')) {
+    html += pefaSectionShell('pefa-grip', 'Grip Strength', 'Three trials per hand. % normative uses age, gender and dominant hand.',
+      '<div class="clin-card"><div class="clin-card-body">' +
+      [['r', 'Right'], ['l', 'Left']].map(function(pair) {
+        var s = pair[0];
+        return '<div style="margin-bottom:16px">' + pefaLabel(pair[1] + ' Hand') +
+          '<div class="mh-grid">' +
+          '<div class="mh-field"><label>Trial 1 (kg)</label><input id="pefa-grip-' + s + '1" type="number" oninput="calcPefaGrip(\'' + s + '\')"></div>' +
+          '<div class="mh-field"><label>Trial 2 (kg)</label><input id="pefa-grip-' + s + '2" type="number" oninput="calcPefaGrip(\'' + s + '\')"></div>' +
+          '<div class="mh-field"><label>Trial 3 (kg)</label><input id="pefa-grip-' + s + '3" type="number" oninput="calcPefaGrip(\'' + s + '\')"></div>' +
+          '<div class="mh-field"><label>Average (kg)</label><input id="pefa-grip-' + s + '-avg" readonly style="background:var(--olive-ultra)"></div>' +
+          '<div class="mh-field"><label>% Normative</label><input id="pefa-grip-' + s + '-norm" readonly placeholder="Auto" style="background:var(--olive-ultra)"></div>' +
+          '<div class="mh-field"><label>CV (&gt;15% flag)</label><input id="pefa-grip-' + s + '-cv" readonly placeholder="Auto" style="background:var(--olive-ultra)"></div>' +
+          '</div></div>';
+      }).join('') +
+      '<div class="smart-field">' + pefaLabel('Grip Strength Interpretation') +
+        '<textarea class="smart-textarea" id="pefa-grip-comments" placeholder="Grip strength interpretation..."></textarea>' +
+        '<div class="prompt-chips">' +
+          '<div class="prompt-chip" onclick="insertPefaGripPrompt(this,\'Grip strength within normal limits bilaterally — Right [R]%, Left [L]% of age-matched normative values. Consistent effort across all three trials (CV ≤15%). Bilateral symmetry within acceptable limits.\')">Normal bilaterally</div>' +
+          '<div class="prompt-chip" onclick="insertPefaGripPrompt(this,\'Reduced grip strength identified bilaterally — Right [R]%, Left [L]% of age-matched normative values. Employer to be advised regarding implications for roles requiring significant grip strength.\')">Reduced — bilateral</div>' +
+          '<div class="prompt-chip" onclick="insertPefaGripPrompt(this,\'Grip strength asymmetry noted between hands — Right [R]%, Left [L]% of age-matched normative values. Non-dominant hand expected to be approximately 10% lower. Asymmetry documented for employer awareness.\')">Asymmetry noted</div>' +
+        '</div></div>' +
+      '</div></div>');
+  }
+
+  // ── Postural tolerance (PEMA cards + FCE sitting/standing observed row) ──
+  if (on('postural_tolerances')) {
+    html += pefaSectionShell('pefa-ptol', 'Postural Tolerance', '2-minute sustained postures. Sitting and standing are observed throughout the assessment rather than timed.',
+      '<div class="clin-card" style="margin-bottom:12px"><div class="clin-card-header"><h3>Sitting &amp; Standing</h3></div><div class="clin-card-body">' +
+        '<label style="display:flex;align-items:center;gap:10px;cursor:pointer;margin-bottom:10px"><input type="checkbox" id="pefa-ptol-observed" onchange="onPefaPtolObserved(this)"> Observed throughout assessment</label>' +
+        '<textarea class="smart-textarea" id="pefa-ptol-observed-comments" placeholder="Sitting / standing observations..."></textarea>' +
+      '</div></div>' +
+      '<div class="clin-card"><div class="clin-card-header"><h3>2-Minute Postural Tests</h3></div><div class="clin-card-body"><div class="postural-grid">' +
+      posturalTests.map(function(t, i) {
+        return '<div class="postural-test-card"><div class="postural-test-name">' + escFce(t) + '</div>' +
+          '<div class="fce-chips" style="display:flex;gap:6px;margin-bottom:10px">' +
+            '<button class="option-chip" onclick="selectPefaChip(this,\'pefa-pt-' + i + '\',0);togglePefaUnable(' + i + ',false)">Able</button>' +
+            '<button class="option-chip" onclick="selectPefaChip(this,\'pefa-pt-' + i + '\',1);togglePefaUnable(' + i + ',true)">Unable</button>' +
+          '</div>' +
+          '<div class="postural-field"><label>Time Achieved</label><input id="pefa-pt-' + i + '-time" placeholder="2:00"></div>' +
+          '<div class="postural-field"><label>Pain (0–10)</label><input id="pefa-pt-' + i + '-pain" placeholder="0"></div>' +
+          '<div class="postural-field"><label>RPE (0–10)</label><input id="pefa-pt-' + i + '-rpe" placeholder="0"></div>' +
+          '<div class="postural-field"><label>Peak HR (bpm)</label><input id="pefa-pt-' + i + '-hr" placeholder="—" data-pefa-hr="1"></div>' +
+          '<div id="pefa-pt-' + i + '-unable" style="display:none;margin-top:8px;padding:8px;background:var(--olive-ultra);border-radius:6px;border:1px solid var(--border)">' +
+            '<label style="font-size:10px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.04em;display:block;margin-bottom:6px">Reason Unable</label>' +
+            pefaChips('pefa-pt-' + i + '-reason', ['Pain', 'Fatigue', 'HR Limit', 'Safety — Technique', 'Other']) +
+            '<input id="pefa-pt-' + i + '-reason-detail" style="width:100%;margin-top:6px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px" placeholder="Body area affected / additional details...">' +
+          '</div></div>';
+      }).join('') + '</div></div></div>');
+  }
+
+  // ── Step test (PEMA format, incl. reference table and 1-min-post) ──
+  if (on('step_test')) {
+    html += pefaSectionShell('pefa-steptest', '3-Minute Step Test', '300mm step. Metronome at 96 bpm, Up-Up-Down-Down pattern. Lead legs can alternate. Cease if HR limit exceeded.',
+      '<div style="overflow-x:auto;margin-bottom:16px"><table style="width:100%;border-collapse:collapse;font-size:11.5px">' +
+        '<thead><tr><th style="background:var(--charcoal);color:white;padding:6px 8px;text-align:left">Fitness Level</th><th style="background:var(--charcoal);color:white;padding:6px 8px;text-align:center">Male (bpm)</th><th style="background:var(--charcoal);color:white;padding:6px 8px;text-align:center">Female (bpm)</th><th style="background:var(--charcoal);color:white;padding:6px 8px;text-align:center">Percentile</th></tr></thead>' +
+        '<tbody>' +
+        [['Excellent', '<71', '<97', '90th'], ['Good', '71–102', '97–127', '75th'], ['Average', '103–117', '128–142', '50th'], ['Fair', '118–147', '143–171', '25th'], ['Poor', '148+', '172+', '10th']].map(function(row, ri) {
+          return '<tr' + (ri % 2 === 0 ? ' style="background:var(--olive-ultra)"' : '') + '>' + row.map(function(c, ci) {
+            return '<td style="padding:5px 8px;border-bottom:1px solid var(--border)' + (ci ? ';text-align:center' : '') + '">' + c + '</td>';
+          }).join('') + '</tr>';
+        }).join('') + '</tbody></table>' +
+        '<div style="font-size:10px;color:var(--mid);margin-top:4px;font-style:italic">⚠ Results unreliable if applicant is on beta-blocker medication (HR response blunted)</div></div>' +
+      '<div class="clin-card"><div class="clin-card-header"><h3>Step Test Results</h3></div><div class="clin-card-body">' +
+        '<div class="vitals-grid">' +
+          '<div class="vital-item"><div class="vital-label">Max HR for Test</div><div class="vital-input" id="pefa-st-maxhr">—</div><div class="vital-unit">bpm</div></div>' +
+          '<div class="vital-item"><div class="vital-label">Baseline HR</div><input class="vital-input" id="pefa-st-base" placeholder="72"><div class="vital-unit">bpm</div></div>' +
+          '<div class="vital-item"><div class="vital-label">3-Minute HR</div><input class="vital-input" id="pefa-st-3min" data-pefa-hr="1" placeholder="—"><div class="vital-unit">bpm</div></div>' +
+          '<div class="vital-item"><div class="vital-label">1-Min Post HR</div><input class="vital-input" id="pefa-st-post" data-pefa-hr="1" placeholder="—"><div class="vital-unit">bpm</div></div>' +
+          '<div class="vital-item"><div class="vital-label">Pain Rating</div><input class="vital-input" id="pefa-st-pain" placeholder="0"><div class="vital-unit">/10</div></div>' +
+          '<div class="vital-item"><div class="vital-label">RPE</div><input class="vital-input" id="pefa-st-rpe" placeholder="0"><div class="vital-unit">/10</div></div>' +
+        '</div>' +
+        '<div style="margin-top:16px"><label style="font-size:12px;font-weight:700;color:var(--charcoal);text-transform:uppercase;display:block;margin-bottom:8px">Result</label>' +
+        pefaChips('pefa-st-result', ['Excellent', 'Good', 'Average', 'Fair', 'Poor', 'Not completed']) + '</div>' +
+        '<div class="smart-field" style="margin-top:14px"><textarea class="smart-textarea" id="pefa-st-comments" placeholder="Step test comments..."></textarea>' +
+          '<div class="prompt-chips">' +
+          pefaPromptChip('3-minute step test completed without difficulty. Heart rate response appropriate. Good cardiovascular fitness demonstrated.', 'Completed — good fitness') +
+          pefaPromptChip('Step test completed. Heart rate approached but did not exceed testing limit. Average cardiovascular fitness for age.', 'Average fitness') +
+          pefaPromptChip('Step test ceased early due to HR limit being reached. Cardiovascular fitness below expected range. Employer to be advised.', 'Ceased — HR limit') +
+          '</div></div>' +
+      '</div></div>');
+  }
+
+  // ── Manual handling (PEMA cards, classification-capped weights) ──
+  if (on('manual_handling')) {
+    var mhTests = [
+      { name: 'Lifting: Floor to Bench (800mm)', occ: w.occ, freq: w.freq },
+      { name: 'Lifting: Bench (800mm) to Overhead', occ: w.occ, freq: w.freq },
+      { name: 'Carrying (5m bilateral, from 800mm bench)', occ: w.occ, freq: w.freq },
+      { name: 'Pulling (resistance band, 2× length, controlled return)', occ: '14kg', freq: '10kg' }
+    ];
+    html += pefaSectionShell('pefa-manual', 'Manual Handling', 'Top-Down Protocol: Phase 1 — 1 rep at occasional weight. Phase 2 — 5 reps within 1 min at frequent weight. Constant capacity inferred if Phase 2 complete with 0/10 pain, good technique, HR within limits.',
+      (maxKg ? '<div class="alert alert-info"><div><strong>' + escFce(cfg.classification || '') + ' Classification:</strong> Occasional ≤' + w.occ + ' · Frequent ~' + w.freq + ' · Constant ~' + w.cons + '. Do not exceed occasional weight regardless of demonstrated capacity.</div></div>' : '') +
+      mhTests.map(function(t, i) {
+        var techChips = getTechChips(t.name);
+        var tn = 0;
+        techChips = techChips.replace(/onclick="this\.classList\.toggle\('selected-normal'\)"/g, function() {
+          return 'onclick="togglePefaTech(this,\'pefa-mh-' + i + '-' + (tn++) + '\')"';
+        });
+        return '<div class="clin-card" style="margin-bottom:14px"><div class="clin-card-header"><h3>' + escFce(t.name) + '</h3></div><div class="clin-card-body">' +
+          [['p1', 'Phase 1 — Capacity (Occasional demand)', t.occ + ' · 1 rep', ['Max Weight Achieved (kg)', 'weight', t.occ]],
+           ['p2', 'Phase 2 — Endurance (Frequent demand)', t.freq + ' · 5 reps in 1 min', ['Reps completed', 'reps', '5']]].map(function(ph) {
+            var p = 'pefa-mh-' + i + '-' + ph[0];
+            return '<div class="mh-phase"><div class="mh-phase-header"><div class="mh-phase-title">' + ph[1] + '</div><div class="mh-phase-weight">' + escFce(ph[2]) + '</div></div>' +
+              '<div class="mh-grid">' +
+              '<div class="mh-field"><label>Result</label><select id="' + p + '-result"><option value=""></option><option>Demonstrated</option><option>Not demonstrated</option></select></div>' +
+              '<div class="mh-field"><label>' + ph[3][0] + '</label><input id="' + p + '-' + ph[3][1] + '" placeholder="' + ph[3][2] + '"></div>' +
+              '<div class="mh-field"><label>Pain (0–10)</label><input id="' + p + '-pain" placeholder="0"></div>' +
+              '<div class="mh-field"><label>Peak HR (bpm)</label><input id="' + p + '-hr" placeholder="—" data-pefa-hr="1"></div>' +
+              '</div></div>';
+          }).join('') +
+          '<div style="margin-bottom:12px">' + pefaLabel('Technique Observations <span style="font-weight:300;font-size:10px">(select all that apply)</span>') +
+            '<div style="display:flex;flex-wrap:wrap;gap:6px" class="mh-tech-chips">' + techChips + '</div></div>' +
+          '<div class="smart-field">' + pefaLabel('Notes') +
+            '<textarea class="smart-textarea" id="pefa-mh-' + i + '-notes" style="min-height:60px" placeholder="Assessment notes..."></textarea>' +
+            '<div class="prompt-chips">' +
+            pefaPromptChip('Capacity demonstrated at occasional and frequent demand levels. 0/10 pain throughout. Technique within normal limits. Constant demand inferred.', 'Full capacity — all tiers') +
+            pefaPromptChip('Occasional demand demonstrated. Frequent demand not fully achieved — reps limited by pain response. Employer advised.', 'Occasional only') +
+            pefaPromptChip('Testing ceased. Pain exceeded 0/10 threshold during Phase 1. Capacity at this demand level not demonstrated.', 'Ceased — pain') +
+            pefaPromptChip('Testing ceased. Heart rate exceeded testing maximum during Phase 2. Cardiovascular response noted. Employer advised.', 'Ceased — HR limit') +
+            '</div></div>' +
+        '</div></div>';
+      }).join(''));
+  }
+
+  // ── Climbing / stepping (PEMA format) ──
+  if (on('climbing')) {
+    html += pefaSectionShell('pefa-climbing', 'Climbing / Stepping', 'Step-up testing at 500mm height. Ladder protocol: 3-point contact maintained throughout ascent and descent. Applicant may use hands for balance on step-up.',
+      '<div class="clin-card" style="margin-bottom:14px"><div class="clin-card-header"><h3>Step-Up — 500mm</h3></div><div class="clin-card-body">' +
+        '<div class="mh-grid" style="margin-bottom:14px">' +
+          '<div class="mh-field"><label>Occasional (1 rep)</label><select id="pefa-stepup-occ"><option value=""></option><option>Able</option><option>Unable</option></select></div>' +
+          '<div class="mh-field"><label>Frequent (5 in 1 min)</label><select id="pefa-stepup-freq"><option value=""></option><option>Able</option><option>Unable</option></select></div>' +
+          '<div class="mh-field"><label>Pain (0–10)</label><input id="pefa-stepup-pain" placeholder="0"></div>' +
+          '<div class="mh-field"><label>Peak HR (bpm)</label><input id="pefa-stepup-hr" placeholder="—" data-pefa-hr="1"></div>' +
+          '<div class="mh-field"><label>Knee Control</label><select id="pefa-stepup-knee"><option value=""></option><option>Controlled</option><option>Mild valgus</option><option>Significant valgus</option></select></div>' +
+          '<div class="mh-field"><label>Movement Pattern</label><select id="pefa-stepup-pattern"><option value=""></option><option>Correct</option><option>Compensatory</option></select></div>' +
+        '</div>' +
+        '<div class="smart-field">' + pefaLabel('Step-Up Notes') +
+          '<textarea class="smart-textarea" id="pefa-stepup-notes" placeholder="Step-up assessment notes..."></textarea>' +
+          '<div class="prompt-chips">' +
+          pefaPromptChip('Step-up completed without difficulty. Correct technique maintained. Knee control within normal limits throughout. 0/10 pain.', 'Completed — correct technique') +
+          pefaPromptChip('Step-up completed. Mild knee valgus noted on step-down phase but within functional limits. 0/10 pain.', 'Mild valgus — functional') +
+          '</div></div>' +
+      '</div></div>' +
+      '<div class="clin-card"><div class="clin-card-header"><h3>Ladder Climbing — Endurance Protocol</h3></div><div class="clin-card-body">' +
+        '<div class="alert alert-info" style="margin-bottom:12px">Continuous ascent/descent of 2 steps maintaining 3-point contact. Target for this classification: ' + ladderReps + ' continuous reps.</div>' +
+        '<div class="mh-grid" style="margin-bottom:14px">' +
+          '<div class="mh-field"><label>Constant reps completed (target ' + ladderReps + ')</label><input id="pefa-ladder-const" placeholder="e.g. ' + ladderReps + '"></div>' +
+          '<div class="mh-field"><label>Pain (0–10)</label><input id="pefa-ladder-pain" placeholder="0"></div>' +
+          '<div class="mh-field"><label>Peak HR (bpm)</label><input id="pefa-ladder-hr" placeholder="—" data-pefa-hr="1"></div>' +
+          '<div class="mh-field"><label>RPE (0–10)</label><input id="pefa-ladder-rpe" placeholder="0"></div>' +
+          '<div class="mh-field"><label>3-Point Contact</label><select id="pefa-ladder-contact"><option value=""></option><option>Maintained throughout</option><option>Occasional breaks — noted</option><option>Not maintained</option></select></div>' +
+          '<div class="mh-field"><label>Movement Pattern</label><select id="pefa-ladder-pattern"><option value=""></option><option>Correct</option><option>Compensatory</option></select></div>' +
+          '<div class="mh-field"><label>Result</label><select id="pefa-ladder-result"><option value=""></option><option>Target reps achieved</option><option>Partial — reps noted above</option><option>Unable to complete</option></select></div>' +
+        '</div>' +
+        '<div class="smart-field">' + pefaLabel('Ladder Notes') +
+          '<textarea class="smart-textarea" id="pefa-ladder-notes" placeholder="Ladder assessment notes..."></textarea>' +
+          '<div class="prompt-chips">' +
+          pefaPromptChip('Ladder climbing completed across all demand levels. 3-point contact maintained throughout. Correct movement patterns demonstrated. 0/10 pain.', 'Full capacity — correct technique') +
+          pefaPromptChip('Ladder climbing completed. Occasional 3-point contact break noted but within acceptable limits. 0/10 pain. Employer advised.', 'Minor technique note') +
+          '</div></div>' +
+      '</div></div>');
+  }
+
+  // ── Fitness outcome (PEMA outcomes page — format and wording) ──
+  html += pefaSectionShell('pefa-outcome', 'Fitness for Capacity Outcome', 'Select the outcome that best reflects the assessment findings. The employer determines suitability for employment — this assessment provides objective capacity information only.',
+    '<div class="alert alert-info">This assessment provides objective capacity data. Absolute Injury Management does not make employment decisions. The determination of suitability for employment remains the responsibility of the employer.</div>' +
+    '<div class="clin-card"><div class="clin-card-header"><h3>In the opinion of the assessor, the applicant has:</h3></div><div class="clin-card-body">' +
+      '<div class="outcome-options" id="pefa-outcome-options">' +
+      PEFA_OUTCOMES.map(function(o) {
+        return '<label class="outcome-option" onclick="selectPefaOutcome(this,\'' + o.code + '\')">' +
+          '<input type="radio" name="pefa-outcome-radio" value="' + o.code + '">' +
+          '<div class="outcome-title">' + escFce(o.title) + '</div>' +
+          '<div class="outcome-desc">' + escFce(o.desc) + '</div></label>';
+      }).join('') + '</div>' +
+      '<input type="hidden" id="pefa-outcome-code">' +
+      '<div class="smart-field" style="margin-top:20px">' + pefaLabel('Recommendations / Restrictions (if applicable)') +
+        '<textarea class="smart-textarea" id="pefa-outcome-recs" style="min-height:100px" placeholder="Detail any specific recommendations or restrictions here..."></textarea>' +
+        '<div class="prompt-chips">' +
+        pefaPromptChip('No restrictions or recommendations applicable. Full functional capacity demonstrated across all assessed parameters.', 'No restrictions') +
+        pefaPromptChip('Recommendation: Employer to be aware of pre-existing history as documented. No current functional limitation identified. Review recommended at 12 months.', 'Pre-existing history — monitor') +
+        pefaPromptChip('Restriction: Avoid sustained heavy lifting above [X]kg until review with treating practitioner. Employer to determine suitability for role.', 'Lifting restriction') +
+        pefaPromptChip('Referral recommended: GP review for [condition] prior to commencement. Employer to confirm medical clearance before placing in role.', 'GP referral recommended') +
+        '</div></div>' +
+    '</div></div>');
+
+  // ── Assessor declaration & signature (PEMA format) ──
+  html += pefaSectionShell('pefa-signoff', 'Assessor Declaration & Signature', 'Complete all fields below.',
+    '<div class="clin-card"><div class="clin-card-header"><h3>Assessor Details</h3></div><div class="clin-card-body">' +
+      '<div class="form-row">' +
+        '<div class="form-group"><label>Assessor Name</label><input class="form-control" id="pefa-assessor-name" placeholder="Full name"></div>' +
+        '<div class="form-group"><label>Qualification</label><input class="form-control" id="pefa-assessor-qual" placeholder="e.g. Physiotherapist"></div>' +
+      '</div>' +
+      '<div class="form-row">' +
+        '<div class="form-group"><label>Provider Number</label><input class="form-control" id="pefa-assessor-ahpra" placeholder="PHY0012345"></div>' +
+        '<div class="form-group"><label>Assessment Date</label><input class="form-control" type="date" id="pefa-assessor-date"></div>' +
+      '</div>' +
+      '<div class="form-row">' +
+        '<div class="form-group"><label>Clinic Name</label><input class="form-control" id="pefa-assessor-clinic" placeholder="Absolute Injury Management"></div>' +
+        '<div class="form-group"><label>Clinic Phone</label><input class="form-control" id="pefa-assessor-phone" placeholder="07 XXXX XXXX"></div>' +
+      '</div>' +
+      '<div class="q-card" style="margin-top:16px"><div class="q-label" style="margin-bottom:10px">Assessor Signature</div>' +
+        '<div class="sig-wrap"><canvas class="sig-canvas" id="pefa-sig-assessor"></canvas>' +
+        '<div class="sig-placeholder" id="pefa-sig-assessor-ph">Sign here</div></div>' +
+        '<div class="sig-actions"><button class="sig-clear" onclick="clearSig(\'pefa-sig-assessor\',\'pefa-sig-assessor-ph\')">Clear</button></div>' +
+      '</div>' +
+    '</div></div>');
+
+  document.getElementById('pefa-content').innerHTML = html;
+
+  setTimeout(function() {
+    ['pefa-sig-consent', 'pefa-sig-assessor'].forEach(function(id) { initSig(id, id + '-ph'); });
+  }, 60);
+  var today = new Date().toISOString().split('T')[0];
+  ['pefa-consent-date', 'pefa-assessor-date'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el && !el.value) el.value = today;
+  });
+  function setVal(id, v) { var el = document.getElementById(id); if (el && v) el.value = v; }
+  setVal('pefa-firstname', appt.patient_first_name);
+  setVal('pefa-surname', appt.patient_last_name);
+  setVal('pefa-job', appt.position_applied_for);
+  setVal('pefa-site', appt.site);
+  setVal('pefa-date', appt.appointment_date);
+  setVal('pefa-time', appt.appointment_time);
+  var sess = getAuthSession();
+  if (sess && sess.email) {
+    setVal('pefa-assessor-name', sess.email.split('@')[0].replace(/[._-]+/g, ' ').replace(/\b\w/g, function(c) { return c.toUpperCase(); }));
+  }
+  calcPefaMaxHR();
+}
+
+// ─── PEFA interactivity (adapted copies of the FCE handlers, PEFA-scoped) ────
+function showPefaSection(id, navItem) {
+  savePefaDataToStorage();
+  document.querySelectorAll('#screen-pefa .clinician-section').forEach(function(s) { s.classList.remove('active'); });
+  document.querySelectorAll('#screen-pefa .clinician-nav-item').forEach(function(n) { n.classList.remove('active'); });
+  var target = document.getElementById(id);
+  if (target) target.classList.add('active');
+  if (navItem) navItem.classList.add('active');
+  else {
+    var nav = Array.from(document.querySelectorAll('#screen-pefa .clinician-nav-item')).find(function(n) {
+      return (n.getAttribute('onclick') || '').indexOf("'" + id + "'") >= 0;
+    });
+    if (nav) nav.classList.add('active');
+  }
+  window.scrollTo(0, 0);
+}
+
+function selectPefaChip(el) {
+  var container = el.closest('.fce-chips');
+  if (container) container.querySelectorAll('.option-chip').forEach(function(c) { c.classList.remove('selected-normal'); });
+  el.classList.add('selected-normal');
+  savePefaDataDebounced();
+}
+
+function getPefaChipText(group) {
+  var chip = Array.from(document.querySelectorAll('#screen-pefa .option-chip.selected-normal')).find(function(c) {
+    return (c.getAttribute('onclick') || '').indexOf("'" + group + "'") >= 0;
+  });
+  return chip ? chip.textContent.trim() : '';
+}
+
+// ROM: Pain and Limited independent; Normal exclusive; Pain reveals the /10 row
+function selectPefaRomChip(el, group) {
+  var container = el.closest('.fce-chips');
+  if (!container) return;
+  var label = el.textContent.trim();
+  if (label === 'Normal') {
+    container.querySelectorAll('.option-chip').forEach(function(c) { c.classList.remove('selected-normal'); });
+    el.classList.add('selected-normal');
+  } else {
+    el.classList.toggle('selected-normal');
+    container.querySelectorAll('.option-chip').forEach(function(c) {
+      if (c.textContent.trim() === 'Normal') c.classList.remove('selected-normal');
+    });
+  }
+  var i = (group.match(/pefa-rom-(\d+)/) || [])[1];
+  if (i !== undefined) {
+    var painOn = Array.from(container.querySelectorAll('.option-chip.selected-normal')).some(function(c) { return c.textContent.trim() === 'Pain'; });
+    var painRow = document.getElementById('pefa-rom-' + i + '-painrow');
+    if (painRow) painRow.style.display = painOn ? 'block' : 'none';
+  }
+  savePefaDataDebounced();
+}
+
+function getPefaRomState(i) {
+  var state = { normal: false, pain: false, limited: false };
+  document.querySelectorAll('#screen-pefa .option-chip.selected-normal').forEach(function(c) {
+    if ((c.getAttribute('onclick') || '').indexOf("'pefa-rom-" + i + "'") < 0) return;
+    var t = c.textContent.trim();
+    if (t === 'Normal') state.normal = true;
+    else if (t === 'Pain') state.pain = true;
+    else if (t === 'Limited') state.limited = true;
+  });
+  return state;
+}
+
+// SLR: port of PEMA's side-aware selection logic (bilateral vs per-side)
+function selectPefaSLR(btn) {
+  var card = btn.closest('.clin-card');
+  if (!card) return;
+  var chips = Array.from(card.querySelectorAll('.option-chip'));
+  var label = btn.textContent.trim();
+  function isBilat(t) { return /bilateral/i.test(t); }
+  function isLeft(t) { return /Left/.test(t) && !isBilat(t); }
+  function isRight(t) { return /Right/.test(t) && !isBilat(t); }
+  if (label === 'Bilateral 60–90° (normal range)') {
+    chips.forEach(function(c) { c.classList.remove('selected-normal'); });
+    chips.forEach(function(c) {
+      var t = c.textContent.trim();
+      if (t === 'Left 60–90° (normal range)' || t === 'Right 60–90° (normal range)') c.classList.add('selected-normal');
+    });
+  } else if (isBilat(label)) {
+    chips.forEach(function(c) { c.classList.remove('selected-normal'); });
+    btn.classList.add('selected-normal');
+  } else {
+    chips.forEach(function(c) {
+      var t = c.textContent.trim();
+      if (isBilat(t) || (isLeft(label) && isLeft(t)) || (isRight(label) && isRight(t))) c.classList.remove('selected-normal');
+    });
+    btn.classList.add('selected-normal');
+  }
+  savePefaDataDebounced();
+}
+
+function togglePefaYN(btn, key, val) {
+  var group = btn.parentElement;
+  group.querySelectorAll('.yn-btn').forEach(function(b) { b.className = 'yn-btn'; });
+  btn.classList.add(val === 'yes' ? 'selected-yes' : 'selected-no');
+  var hidden = document.getElementById(key);
+  if (hidden) hidden.value = val;
+  var detail = document.getElementById(key + '-detail');
+  if (detail) detail.classList.toggle('visible', val === 'yes');
+  savePefaDataDebounced();
+}
+
+function togglePefaTech(el) {
+  el.classList.toggle('selected-normal');
+  savePefaDataDebounced();
+}
+
+function togglePefaUnable(i, show) {
+  var block = document.getElementById('pefa-pt-' + i + '-unable');
+  if (block) block.style.display = show ? 'block' : 'none';
+  var timeInput = document.getElementById('pefa-pt-' + i + '-time');
+  if (timeInput) {
+    if (!show && !timeInput.value) timeInput.value = '2:00';
+    if (show) timeInput.value = '';
+  }
+}
+
+function onPefaPtolObserved(cb) {
+  var ta = document.getElementById('pefa-ptol-observed-comments');
+  if (ta && cb.checked && !ta.value.trim()) ta.value = FCE_PTOL_OBSERVED_TEXT;
+  savePefaDataDebounced();
+}
+
+function selectPefaOutcome(el, code) {
+  document.querySelectorAll('#pefa-outcome-options .outcome-option').forEach(function(o) { o.classList.remove('selected'); });
+  el.classList.add('selected');
+  var radio = el.querySelector('input[type="radio"]');
+  if (radio) radio.checked = true;
+  var hidden = document.getElementById('pefa-outcome-code');
+  if (hidden) hidden.value = code;
+  savePefaDataDebounced();
+}
+
+// ─── PEFA baseline calcs (PEMA formulas, PEFA state) ─────────────────────────
+function calcPefaBMI() {
+  var h = parseFloat((document.getElementById('pefa-height') || {}).value);
+  var wgt = parseFloat((document.getElementById('pefa-weight') || {}).value);
+  if (h > 0 && wgt > 0) {
+    var bmi = (wgt / (h * h)).toFixed(1);
+    var cat = bmi < 18.5 ? 'Underweight' : bmi < 25 ? 'Healthy' : bmi < 30 ? 'Overweight' : 'Obese';
+    var el = document.getElementById('pefa-bmi'); if (el) el.textContent = bmi;
+    var catEl = document.getElementById('pefa-bmi-cat'); if (catEl) catEl.textContent = cat;
+    var mhEl = document.getElementById('pefa-maxmh'); if (mhEl) mhEl.textContent = (wgt * 0.6).toFixed(1) + ' kg';
+  }
+}
+
+function calcPefaMaxHR() {
+  var dob = (document.getElementById('pefa-dob') || {}).value;
+  var age = 35;
+  if (dob) { age = Math.floor((Date.now() - new Date(dob)) / (1000 * 60 * 60 * 24 * 365.25)); }
+  var max100 = 220 - age;
+  var max85 = Math.round(max100 * 0.85);
+  window._pefaMaxHR = max100;
+  window._pefaMaxHR85 = max85;
+  var v100 = document.getElementById('pefa-maxhr'); if (v100) v100.textContent = max100 + ' bpm';
+  var v85 = document.getElementById('pefa-maxhr85'); if (v85) v85.textContent = max85 + ' bpm';
+  var stEl = document.getElementById('pefa-st-maxhr'); if (stEl) stEl.textContent = max100 + ' bpm';
+}
+
+function checkPefaBP() {
+  var sys = parseInt((document.getElementById('pefa-bp-sys') || {}).value);
+  var dia = parseInt((document.getElementById('pefa-bp-dia') || {}).value);
+  var warn = document.getElementById('pefa-bp-warning');
+  if (!warn) return;
+  if (sys > 160 || dia > 100) {
+    warn.textContent = '⚠ Medical clearance required — functional testing locked';
+    warn.style.color = 'var(--error)';
+    window._pefaBpElevated = true;
+    lockPefaFunctionalSections(true);
+  } else if (sys > 0) {
+    warn.textContent = '✓ Within limits — functional testing cleared';
+    warn.style.color = 'var(--success)';
+    window._pefaBpElevated = false;
+    if (!window._pefaBpOverridden) lockPefaFunctionalSections(false);
+  }
+}
+
+function lockPefaFunctionalSections(lock) {
+  ['pefa-ptol', 'pefa-steptest', 'pefa-manual', 'pefa-climbing'].forEach(function(id) {
+    var sec = document.getElementById(id);
+    if (!sec) return;
+    var overlay = sec.querySelector('.bp-lock-overlay');
+    if (lock) {
+      if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.className = 'bp-lock-overlay';
+        overlay.style.cssText = 'position:absolute;inset:0;background:rgba(247,247,244,0.92);z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:8px;padding:32px;text-align:center';
+        overlay.innerHTML =
+          '<div style="font-size:16px;font-weight:700;color:#8b3a2f;margin-bottom:8px">Functional Testing Locked</div>' +
+          '<div style="font-size:13px;color:#6b6b65;margin-bottom:16px;line-height:1.6">Blood pressure exceeds 160/100 mmHg. Functional testing cannot proceed until medical clearance is obtained from the applicant\'s treating GP.</div>' +
+          '<button onclick="pefaBpBypass()" style="background:#6d6f57;color:white;border:none;padding:10px 20px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">GP Clearance Provided — Unlock</button>';
+        sec.style.position = 'relative';
+        sec.appendChild(overlay);
+      }
+      overlay.style.display = 'flex';
+    } else if (overlay) {
+      overlay.style.display = 'none';
+    }
+  });
+}
+
+function pefaBpBypass() {
+  if (!confirm('Confirm that a GP clearance certificate has been sighted and the applicant is approved to proceed with functional testing despite elevated blood pressure.\n\nThis override will be documented in the report.')) return;
+  window._pefaBpOverridden = true;
+  lockPefaFunctionalSections(false);
+  var ta = document.getElementById('pefa-outcome-recs');
+  if (ta && ta.value.indexOf('clearance') < 0) {
+    var noteTxt = 'Note: Blood pressure was recorded above 160/100 mmHg. GP clearance certificate sighted prior to commencement of functional testing. Assessment proceeded with medical approval.';
+    ta.value = (ta.value ? ta.value + '\n\n' : '') + noteTxt;
+  }
+}
+
+function calcPefaGrip(side) {
+  var t1 = parseFloat((document.getElementById('pefa-grip-' + side + '1') || {}).value) || 0;
+  var t2 = parseFloat((document.getElementById('pefa-grip-' + side + '2') || {}).value) || 0;
+  var t3 = parseFloat((document.getElementById('pefa-grip-' + side + '3') || {}).value) || 0;
+  var count = [t1, t2, t3].filter(function(v) { return v > 0; }).length;
+  if (!count) return;
+  var avg = ((t1 + t2 + t3) / count).toFixed(1);
+  var avgEl = document.getElementById('pefa-grip-' + side + '-avg');
+  if (avgEl) avgEl.value = avg;
+  if (count === 3) {
+    var mean = (t1 + t2 + t3) / 3;
+    var sd = Math.sqrt([t1, t2, t3].reduce(function(s, v) { return s + (v - mean) * (v - mean); }, 0) / 3);
+    var cv = Math.round(sd / mean * 100);
+    var cvEl = document.getElementById('pefa-grip-' + side + '-cv');
+    if (cvEl) { cvEl.value = cv + '%'; cvEl.style.color = cv > 15 ? 'var(--error)' : 'var(--success)'; }
+  }
+  var dob = (document.getElementById('pefa-dob') || {}).value;
+  var normEl = document.getElementById('pefa-grip-' + side + '-norm');
+  if (!dob) { if (normEl && !normEl.value) normEl.placeholder = 'Enter DOB + gender for normative %'; return; }
+  var age = Math.floor((Date.now() - new Date(dob)) / (1000 * 60 * 60 * 24 * 365.25));
+  var gender = getPefaChipText('pefa-gender');
+  var isMale = gender.toLowerCase().indexOf('male') === 0;
+  var norms = isMale ? GRIP_NORMS.male : GRIP_NORMS.female;
+  if (isNaN(age) || age < 15) return;
+  var isLeftHanded = getPefaChipText('pefa-dominant').toLowerCase().indexOf('l') === 0;
+  var useDominantColumn = isLeftHanded ? (side === 'l') : (side === 'r');
+  var norm = null;
+  for (var i = 0; i < norms.length; i++) {
+    if (age >= norms[i][0] && age <= norms[i][1]) { norm = useDominantColumn ? norms[i][2] : norms[i][3]; break; }
+  }
+  if (!norm) { var last = norms[norms.length - 1]; norm = useDominantColumn ? last[2] : last[3]; }
+  if (norm > 0 && normEl) normEl.value = Math.round(parseFloat(avg) / norm * 100) + '% (norm: ' + norm + 'kg)';
+}
+
+function insertPefaGripPrompt(chip, text) {
+  var rNorm = (document.getElementById('pefa-grip-r-norm') || {}).value || '';
+  var lNorm = (document.getElementById('pefa-grip-l-norm') || {}).value || '';
+  var rPct = rNorm ? rNorm.split('%')[0].trim() + '%' : '—';
+  var lPct = lNorm ? lNorm.split('%')[0].trim() + '%' : '—';
+  insertPrompt(chip, text.replace(/\[R\]%/g, rPct).replace(/\[L\]%/g, lPct));
+}
+
+// 85% max HR breach — PEFA copy of the FCE machinery (data-pefa-hr fields)
+function checkPefaHRBreach(inputEl) {
+  var val = parseFloat(inputEl.value);
+  var max85 = window._pefaMaxHR85 || 0;
+  var breachId = getHRBreachId(inputEl);
+  var existing = document.getElementById(breachId);
+  var breachActive = max85 > 0 && inputEl.value.trim() !== '' && val > max85;
+  if (!breachActive) {
+    if (existing) {
+      existing.remove();
+      var taOld = findHRLinkedTextarea(inputEl);
+      if (taOld && taOld.dataset.hrAutoText) {
+        if (taOld.value === taOld.dataset.hrAutoText) taOld.value = '';
+        else if (taOld.value.indexOf(taOld.dataset.hrAutoText + '\n') === 0) taOld.value = taOld.value.slice(taOld.dataset.hrAutoText.length + 1);
+        delete taOld.dataset.hrAutoText;
+      }
+    }
+    return;
+  }
+  var sentence = '85% max HR exceeded — peak HR ' + val + ' bpm (85% max: ' + max85 + ' bpm).';
+  var ta = findHRLinkedTextarea(inputEl);
+  if (ta) {
+    if (!ta.value.trim() || ta.value === ta.dataset.hrAutoText) { ta.value = sentence; ta.dataset.hrAutoText = sentence; }
+    else if (ta.dataset.hrAutoText && ta.value.indexOf(ta.dataset.hrAutoText) === 0) { ta.value = sentence + ta.value.slice(ta.dataset.hrAutoText.length); ta.dataset.hrAutoText = sentence; }
+  }
+  if (existing) return;
+  var chipsDiv = document.createElement('div');
+  chipsDiv.id = breachId;
+  chipsDiv.className = 'hr-exertion-chips';
+  chipsDiv.style.marginTop = '8px';
+  chipsDiv.innerHTML =
+    '<div style="font-size:11px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px">Signs of Exertion Observed</div>' +
+    '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+      '<div class="prompt-chip" onclick="selectPefaExertion(this,\'nil signs of exertion noted\')">Nil signs</div>' +
+      '<div class="prompt-chip" onclick="selectPefaExertion(this,\'mild signs of exertion noted (mild perspiration)\')">Mild</div>' +
+      '<div class="prompt-chip" onclick="selectPefaExertion(this,\'moderate signs of exertion noted (perspiration, shortness of breath)\')">Moderate</div>' +
+      '<div class="prompt-chip" onclick="selectPefaExertion(this,\'significant signs of exertion noted (heavy perspiration, marked shortness of breath, pallor)\')">Significant</div>' +
+    '</div>';
+  var insertAfter = findHRChipsInsertPoint(inputEl);
+  if (insertAfter && insertAfter.parentElement) insertAfter.parentElement.insertBefore(chipsDiv, insertAfter.nextSibling);
+  savePefaDataDebounced();
+}
+
+function selectPefaExertion(chip, text) {
+  var exertionDiv = chip.closest('.hr-exertion-chips');
+  if (!exertionDiv) return;
+  exertionDiv.querySelectorAll('.prompt-chip').forEach(function(c) { c.classList.remove('selected'); });
+  chip.classList.add('selected');
+  var peakInput = exertionDiv.id ? document.querySelector('[data-hr-breach-id="' + exertionDiv.id + '"]') : null;
+  var ta = peakInput ? findHRLinkedTextarea(peakInput) : null;
+  if (!ta) {
+    var container = exertionDiv.closest('.clin-card, .clinician-section');
+    ta = container ? container.querySelector('.smart-textarea') : null;
+  }
+  if (ta) {
+    var max85 = window._pefaMaxHR85 || 0;
+    var peakVal = peakInput ? parseFloat(peakInput.value) : NaN;
+    var breachLine = (max85 > 0 && !isNaN(peakVal) && peakVal > max85)
+      ? '85% max HR exceeded — peak HR ' + peakVal + ' bpm (85% max: ' + max85 + ' bpm).' : '';
+    var kept = ta.value.split('\n').filter(function(l) {
+      var t = l.trim();
+      return !/^85% max HR exceeded/.test(t) && !/^Signs of exertion observed:/.test(t);
+    }).join('\n').trim();
+    var parts = [];
+    if (breachLine) parts.push(breachLine);
+    if (kept) parts.push(kept);
+    parts.push('Signs of exertion observed: ' + text + '.');
+    ta.value = parts.join('\n');
+    if (breachLine) ta.dataset.hrAutoText = breachLine;
+  }
+  savePefaDataDebounced();
+}
+
+// ─── PEFA autosave (aim_pefa_data + clinician_progress, _type:'pefa') ────────
+function savePefaDataToStorage() {
+  if (!window._currentPefaToken) return;
+  var data = {};
+  document.querySelectorAll('#screen-pefa input, #screen-pefa select, #screen-pefa textarea').forEach(function(el) {
+    if (!el.id) return;
+    data[el.id] = (el.type === 'checkbox' || el.type === 'radio') ? (el.checked ? '1' : '') : el.value;
+  });
+  document.querySelectorAll('#screen-pefa .option-chip.selected-normal').forEach(function(chip) {
+    var oc = chip.getAttribute('onclick') || '';
+    if (oc) data['pchip_' + oc] = '1';
+  });
+  ['pefa-sig-consent', 'pefa-sig-assessor'].forEach(function(id) {
+    var sig = getSigGlobal(id);
+    if (sig) data['sig_' + id] = sig;
+  });
+  data['_token'] = window._currentPefaToken;
+  data['_type'] = 'pefa';
+  try {
+    localStorage.setItem('aim_pefa_data', JSON.stringify(data));
+    localStorage.setItem('aim_pefa_timestamp', new Date().toISOString());
+  } catch(e) {}
+  syncFceDataToSupabase(window._currentPefaToken, data); // generic (token, data) uploader
+}
+
+var _pefaSaveTimer = null;
+function savePefaDataDebounced() {
+  clearTimeout(_pefaSaveTimer);
+  _pefaSaveTimer = setTimeout(savePefaDataToStorage, 300);
+}
+
+function restorePefaData(data) {
+  Object.keys(data).forEach(function(key) {
+    if (key.charAt(0) === '_' || key.indexOf('pchip_') === 0 || key.indexOf('sig_') === 0) return;
+    var el = document.getElementById(key);
+    if (!el || data[key] === undefined) return;
+    if (el.type === 'checkbox' || el.type === 'radio') el.checked = data[key] === '1';
+    else el.value = data[key];
+  });
+  Object.keys(data).forEach(function(key) {
+    if (key.indexOf('pchip_') !== 0) return;
+    var oc = key.slice(6);
+    var chip = Array.from(document.querySelectorAll('#screen-pefa .option-chip')).find(function(c) {
+      return (c.getAttribute('onclick') || '') === oc;
+    });
+    if (chip) chip.classList.add('selected-normal');
+  });
+  ['pefa-sig-consent', 'pefa-sig-assessor'].forEach(function(id) {
+    setTimeout(function() { drawFceSig(id, data['sig_' + id]); }, 150);
+  });
+  refreshPefaDerived();
+}
+
+function refreshPefaDerived() {
+  document.querySelectorAll('#screen-pefa .pefa-yn-state').forEach(function(hidden) {
+    var v = hidden.value;
+    if (!v) return;
+    var card = hidden.closest('.q-card');
+    if (card) card.querySelectorAll('.yn-btn').forEach(function(b) {
+      b.className = 'yn-btn';
+      var isYes = b.textContent.trim() === 'Yes';
+      if ((v === 'yes' && isYes) || (v === 'no' && !isYes)) b.classList.add(v === 'yes' ? 'selected-yes' : 'selected-no');
+    });
+    var detail = document.getElementById(hidden.id + '-detail');
+    if (detail) detail.classList.toggle('visible', v === 'yes');
+  });
+  // Outcome highlight
+  var oc = (document.getElementById('pefa-outcome-code') || {}).value;
+  if (oc) {
+    var codes = PEFA_OUTCOMES.map(function(o) { return o.code; });
+    var opt = document.querySelectorAll('#pefa-outcome-options .outcome-option')[codes.indexOf(oc)];
+    if (opt) { opt.classList.add('selected'); var rd = opt.querySelector('input[type="radio"]'); if (rd) rd.checked = true; }
+  }
+  // ROM pain rows + ptol unable blocks follow restored chip state
+  romJoints.forEach(function(_, i) {
+    var painRow = document.getElementById('pefa-rom-' + i + '-painrow');
+    if (painRow) painRow.style.display = getPefaRomState(i).pain ? 'block' : 'none';
+  });
+  posturalTests.forEach(function(_, i) {
+    var block = document.getElementById('pefa-pt-' + i + '-unable');
+    if (block) block.style.display = getPefaChipText('pefa-pt-' + i) === 'Unable' ? 'block' : 'none';
+  });
+  calcPefaMaxHR();
+  calcPefaBMI();
+  checkPefaBP();
+  calcPefaGrip('r');
+  calcPefaGrip('l');
+  document.querySelectorAll('#screen-pefa input[data-pefa-hr]').forEach(function(inp) {
+    if (inp.value.trim() !== '') checkPefaHRBreach(inp);
+  });
+}
+
+var _pefaAutoSaveTimer = null;
+function wirePefaAutoSave() {
+  var screen = document.getElementById('screen-pefa');
+  if (!screen) return;
+  screen.addEventListener('input', function(e) {
+    if (e.target.dataset && e.target.dataset.pefaHr) checkPefaHRBreach(e.target);
+    clearTimeout(_pefaAutoSaveTimer);
+    var delay = (e.target.tagName === 'TEXTAREA' || e.target.type === 'text' || e.target.type === 'number') ? 800 : 0;
+    _pefaAutoSaveTimer = setTimeout(savePefaDataToStorage, delay);
+  });
+  screen.addEventListener('change', function() {
+    clearTimeout(_pefaAutoSaveTimer);
+    _pefaAutoSaveTimer = setTimeout(savePefaDataToStorage, 100);
+  });
+  ['mouseup', 'touchend'].forEach(function(evt) {
+    screen.addEventListener(evt, function(e) {
+      if (e.target && e.target.classList && e.target.classList.contains('sig-canvas')) setTimeout(savePefaDataToStorage, 150);
+    });
+  });
+}
+
+// ─── Start PEFA ──────────────────────────────────────────────────────────────
+async function startPEFA(btnEl, token) {
+  if (btnEl) { btnEl.textContent = 'Loading…'; btnEl.disabled = true; }
+  try {
+    var rows = await sbSelect('appointments', 'token=eq.' + token + '&select=*');
+    if (!rows || !rows.length) throw new Error('Appointment not found — it may have been removed.');
+    var appt = rows[0];
+    window._pefaAppointment = appt;
+    window._currentPefaToken = token;
+    window._currentFceToken = null; // one clinician assessment active at a time
+    window._pefaBpElevated = false;
+    window._pefaBpOverridden = false;
+
+    var match = getClients().find(function(c) { return c.name === appt.client_name; });
+    if (match) applyClientToAssessment(match.id);
+
+    renderPefaScreen(appt);
+
+    var amendBtn = document.getElementById('pefa-amend-btn');
+    if (amendBtn) amendBtn.style.display = (appt.status === 'finalised' || appt.status === 'exported') ? '' : 'none';
+
+    var restored = false;
+    try {
+      var prog = await sbSelect('clinician_progress', 'token=eq.' + token + '&select=progress_data');
+      if (prog && prog.length && prog[0].progress_data && prog[0].progress_data._type === 'pefa') {
+        setTimeout(function() { restorePefaData(prog[0].progress_data); }, 120);
+        restored = true;
+        showToast('In-progress PEFA restored from cloud.');
+      }
+    } catch(e) { console.warn('[PEFA] cloud progress fetch failed:', e); }
+    if (!restored) {
+      try {
+        var local = JSON.parse(localStorage.getItem('aim_pefa_data') || 'null');
+        if (local && local._token === token) {
+          setTimeout(function() { restorePefaData(local); }, 120);
+          showToast('In-progress PEFA restored from this device.');
+        }
+      } catch(e) {}
+    }
+
+    showScreen('screen-pefa');
+    showPefaSection('pefa-emp');
+  } catch(e) {
+    alert('Failed to load PEFA appointment: ' + e.message);
+  } finally {
+    if (btnEl) { btnEl.textContent = 'Start PEFA →'; btnEl.disabled = false; }
+  }
+}
+
+// ─── Finalise PEFA ───────────────────────────────────────────────────────────
+// PEMA parity: PEMA applies no blocking validation at finalise, so neither
+// does the PEFA — the report renders whatever is recorded.
+function finalisePEFA() {
+  var btn = document.querySelector('#screen-pefa [onclick="finalisePEFA()"]');
+  var origText = btn ? btn.textContent : '';
+  function restoreBtn() { if (btn) { btn.textContent = origText; btn.disabled = false; } }
+  if (btn) { btn.textContent = 'Finalising…'; btn.disabled = true; }
+  function tryBuild() {
+    finalisePEFAAsync().then(restoreBtn).catch(function(e) {
+      restoreBtn(); console.error('PEFA finalise error:', e); alert('Finalise error: ' + e.message);
+    });
+  }
+  if (window.jspdf && window.jspdf.jsPDF) tryBuild();
+  else {
+    var s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+    s.onload = function() { setTimeout(tryBuild, 100); };
+    s.onerror = function() { restoreBtn(); alert('Could not load PDF library. Check internet connection.'); };
+    document.head.appendChild(s);
+  }
+}
+
+async function finalisePEFAAsync() {
+  savePefaDataToStorage();
+  var out = buildPEFAPDF();
+  if (!out || !out.doc) throw new Error('PDF could not be generated.');
+  var blob = out.doc.output('blob');
+  var token = window._currentPefaToken;
+  var path = (token || 'pefa-manual-' + new Date().toISOString().split('T')[0]) + '/' + out.filename;
+  var prevPdf = (window._pefaAppointment && window._pefaAppointment.pdf_path) || null;
+  try {
+    await sbStorageUpload(path, blob);
+  } catch(e) {
+    out.doc.save(out.filename);
+    throw new Error('Upload to the report store failed, so the PDF was downloaded locally instead.\n\n' + e.message);
+  }
+  if (token) {
+    try {
+      await sbUpdate('appointments', 'token=eq.' + token, { status: 'finalised', pdf_path: path, finalised_at: new Date().toISOString() });
+    } catch(e) {
+      console.warn('[PEFA] finalise status update failed:', e);
+      out.doc.save(out.filename);
+      alert('The PDF was uploaded, but the appointment record could not be updated (' + e.message + ').\n\nA local copy has been downloaded so the report is not lost.');
+    }
+    if (prevPdf && prevPdf !== path) {
+      try { await sbStorageDelete(prevPdf); } catch(e) { console.warn('[PEFA] superseded PDF cleanup failed:', e); }
+    }
+    if (window._pefaAppointment) { window._pefaAppointment.status = 'finalised'; window._pefaAppointment.pdf_path = path; }
+    // clinician_progress kept for Amend; purged by the 30-day retention sweep
+  }
+  localStorage.removeItem('aim_pefa_data');
+  localStorage.removeItem('aim_pefa_timestamp');
+  window._currentPefaToken = null;
+  showToast('PEFA finalised — export the PDF from the dashboard.');
+  showScreen('screen-portal');
+  loadUpcomingAppointments();
+}
+
+// ─── PEFA PDF — follows the PEMA report's construction and olive branding ────
+function buildPEFAPDF() {
+  var jsPDF = window.jspdf.jsPDF;
+  var doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  var appt = window._pefaAppointment || {};
+  var cfg = appt.pefa_config || {};
+  var sections = cfg.sections || {};
+  var enabled = function(key, domId) { return sections[key] !== false && !!document.getElementById(domId); };
+  var classification = cfg.classification || appt.client_classification || '';
+  var maxKg = cfg.max_weight_kg || null;
+  var w = pefaMhWeights(maxKg);
+
+  var OLIVE = [109, 111, 87], BLACK = [26, 26, 24], CHARCOAL = [46, 46, 42], MID = [107, 107, 101],
+      LIGHT_BG = [247, 247, 244], BORDER_COL = [221, 221, 213], WHITE = [255, 255, 255];
+  var PW = 210, PH = 297, ML = 14, MR = 14, CW = PW - ML - MR;
+  var TOTAL = '{tp}';
+  var y = 0;
+
+  function val(id) { var el = document.getElementById(id); if (!el) return ''; return el.value || el.textContent || ''; }
+  function isChecked(id) { var el = document.getElementById(id); return !!(el && el.checked); }
+
+  function drawFooter() {
+    var p = doc.internal.getCurrentPageInfo().pageNumber;
+    doc.setDrawColor.apply(doc, BORDER_COL); doc.setLineWidth(0.3); doc.line(ML, PH - 12, PW - MR, PH - 12);
+    doc.setFontSize(7); doc.setTextColor.apply(doc, MID); doc.setFont('helvetica', 'normal');
+    doc.text('Absolute Injury Management', ML, PH - 7);
+    doc.setFont('helvetica', 'bold'); doc.setTextColor.apply(doc, OLIVE);
+    doc.text('CONFIDENTIAL', PW / 2, PH - 7, { align: 'center' });
+    doc.setFont('helvetica', 'normal'); doc.setTextColor.apply(doc, MID);
+    doc.text('Page ' + p + ' of ' + TOTAL, PW - MR, PH - 7, { align: 'right' });
+  }
+  function newPage() { doc.addPage(); y = 14; drawFooter(); }
+  function checkY(n) { if (y + (n || 16) > PH - 18) newPage(); }
+  function secHeader(title) {
+    checkY(14);
+    doc.setFillColor.apply(doc, OLIVE); doc.roundedRect(ML, y, CW, 9, 1, 1, 'F');
+    doc.setFontSize(9); doc.setFont('helvetica', 'bold'); doc.setTextColor.apply(doc, WHITE);
+    doc.text(String(title).toUpperCase(), ML + 4, y + 6); y += 13;
+  }
+  function subHdr(title) {
+    checkY(11);
+    doc.setFillColor.apply(doc, LIGHT_BG); doc.setDrawColor.apply(doc, BORDER_COL); doc.setLineWidth(0.3);
+    doc.roundedRect(ML, y, CW, 7, 0.5, 0.5, 'FD');
+    doc.setFontSize(8.5); doc.setFont('helvetica', 'bold'); doc.setTextColor.apply(doc, CHARCOAL);
+    doc.text(title, ML + 3, y + 5); y += 10;
+  }
+  function lv(label, value, x, wdt) {
+    doc.setFontSize(7.5); doc.setFont('helvetica', 'bold'); doc.setTextColor.apply(doc, MID);
+    doc.text(String(label).toUpperCase(), x, y);
+    doc.setFont('helvetica', 'normal'); doc.setTextColor.apply(doc, BLACK); doc.setFontSize(8.5);
+    var lines = doc.splitTextToSize(String(value || '—'), wdt - 2);
+    doc.text(lines, x, y + 4);
+    return lines.length * 4.5 + 4;
+  }
+  function fieldRow(pairs) {
+    checkY(14);
+    var wdt = CW / pairs.length, h = 0;
+    pairs.forEach(function(p, i) { h = Math.max(h, lv(p[0], p[1], ML + i * wdt, wdt - 4)); });
+    y += h + 4;
+  }
+  function txtBlock(text) {
+    doc.setFontSize(8.5); doc.setFont('helvetica', 'normal'); doc.setTextColor.apply(doc, CHARCOAL);
+    var lines = doc.splitTextToSize((text && text.trim()) ? text.trim() : '—', CW - 2);
+    var i = 0;
+    while (i < lines.length) {
+      checkY(10);
+      var avail = Math.max(1, Math.floor((PH - 18 - y) / 4.5));
+      var chunk = lines.slice(i, i + avail);
+      doc.setFontSize(8.5); doc.setFont('helvetica', 'normal'); doc.setTextColor.apply(doc, CHARCOAL);
+      doc.text(chunk, ML, y);
+      y += chunk.length * 4.5;
+      i += chunk.length;
+    }
+    y += 3;
+  }
+  function tickBox(x, cy, ticked) {
+    doc.setDrawColor.apply(doc, CHARCOAL); doc.setLineWidth(0.3);
+    doc.rect(x, cy, 3.4, 3.4, 'S');
+    if (ticked) {
+      doc.setDrawColor.apply(doc, OLIVE); doc.setLineWidth(0.7);
+      doc.line(x + 0.6, cy + 1.9, x + 1.4, cy + 2.8);
+      doc.line(x + 1.4, cy + 2.8, x + 2.9, cy + 0.7);
+    }
+  }
+  function ynRows(prefix, questions) {
+    questions.forEach(function(q, i) {
+      var ans = val(prefix + '-' + i);
+      var details = (val(prefix + '-' + i + '-detail-text') || '').trim();
+      var qLines = doc.splitTextToSize(q, CW - 44);
+      var dLines = details ? doc.splitTextToSize('Details: ' + details, CW - 16) : [];
+      var rowH = qLines.length * 3.8 + 3 + (dLines.length ? dLines.length * 3.4 + 1.5 : 0);
+      checkY(rowH + 2);
+      if (i % 2 === 0) { doc.setFillColor.apply(doc, LIGHT_BG); doc.rect(ML, y - 1.5, CW, rowH + 2.5, 'F'); }
+      doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.setTextColor.apply(doc, CHARCOAL);
+      doc.text(qLines, ML + 2, y + 2.5);
+      doc.setFontSize(7); doc.setTextColor.apply(doc, MID);
+      tickBox(PW - MR - 34, y, ans === 'yes'); doc.text('YES', PW - MR - 29.5, y + 2.8);
+      tickBox(PW - MR - 17, y, ans === 'no'); doc.text('NO', PW - MR - 12.5, y + 2.8);
+      if (dLines.length) {
+        doc.setFontSize(7.5); doc.setTextColor.apply(doc, MID);
+        doc.text(dLines, ML + 6, y + qLines.length * 3.8 + 3);
+      }
+      y += rowH + 2;
+    });
+    y += 2;
+  }
+  function selectorRow(name, opts, selectedText, detail) {
+    var dLines = (detail && detail.trim()) ? doc.splitTextToSize('Details: ' + detail.trim(), CW - 52) : [];
+    var rowH = 6.5 + (dLines.length ? dLines.length * 3.4 + 1 : 0);
+    checkY(rowH + 2);
+    doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.setTextColor.apply(doc, CHARCOAL);
+    doc.text(doc.splitTextToSize(name, 46), ML + 1, y + 2.8);
+    var x = ML + 50;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7.2);
+    opts.forEach(function(o) {
+      tickBox(x, y, Array.isArray(selectedText) ? selectedText.indexOf(o) >= 0 : o === selectedText);
+      doc.setTextColor.apply(doc, CHARCOAL);
+      doc.text(o, x + 4.4, y + 2.7);
+      x += 4.4 + doc.getTextWidth(o) + 6;
+    });
+    if (dLines.length) { doc.setFontSize(7.5); doc.setTextColor.apply(doc, MID); doc.text(dLines, ML + 50, y + 6.2); }
+    doc.setDrawColor.apply(doc, BORDER_COL); doc.setLineWidth(0.15);
+    doc.line(ML, y + rowH, PW - MR, y + rowH);
+    y += rowH + 2;
+  }
+  function sigBlock(label, sigData, dateVal) {
+    checkY(33);
+    doc.setFontSize(7); doc.setFont('helvetica', 'bold'); doc.setTextColor.apply(doc, MID);
+    doc.text(String(label).toUpperCase(), ML, y);
+    doc.setDrawColor.apply(doc, BORDER_COL); doc.setLineWidth(0.3);
+    doc.rect(ML, y + 2, 80, 22, 'S');
+    if (sigData) { try { doc.addImage(sigData, 'PNG', ML + 2, y + 3, 76, 20); } catch(e) {} }
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor.apply(doc, BLACK);
+    doc.text('Date: ' + (dateVal || '—'), ML + 90, y + 14);
+    y += 30;
+  }
+
+  // ── Cover header (PEMA style, page 1) ──
+  doc.setFillColor.apply(doc, BLACK); doc.rect(0, 0, PW, 42, 'F');
+  doc.setFillColor.apply(doc, OLIVE); doc.rect(0, 42, PW, 2, 'F');
+  var logoW = 0;
+  try { doc.addImage(AIM_LOGO_EMBEDDED, 'PNG', ML, 5, 28, 28); logoW = 32; } catch(e) {}
+  doc.setFontSize(13); doc.setFont('helvetica', 'bold'); doc.setTextColor.apply(doc, WHITE);
+  doc.text('ABSOLUTE INJURY MANAGEMENT', ML + logoW, 16);
+  doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.setTextColor(180, 181, 165);
+  doc.text('Pre-Employment Functional Assessment', ML + logoW, 24);
+  doc.setFillColor.apply(doc, OLIVE); doc.roundedRect(PW - MR - 54, 8, 54, 14, 2, 2, 'F');
+  doc.setFontSize(7.5); doc.setFont('helvetica', 'bold'); doc.setTextColor.apply(doc, WHITE);
+  doc.text(((classification || '—') + ' Classification').toUpperCase(), PW - MR - 3, 14, { align: 'right' });
+  doc.setFontSize(6.5); doc.setFont('helvetica', 'normal');
+  doc.text('Physical Demand Rating', PW - MR - 3, 19, { align: 'right' });
+  var clientLogo = getLogoDataUrl('client');
+  if (clientLogo) {
+    var fmt = /^data:image\/jpe?g/i.test(clientLogo) ? 'JPEG' : 'PNG';
+    try { doc.addImage(clientLogo, fmt, PW - MR - 40, 24, 0, 14); } catch(e) {}
+  }
+  drawFooter();
+  y = 52;
+
+  // ── Applicant details ──
+  secHeader('Applicant Details');
+  fieldRow([['Name', (val('pefa-firstname') + ' ' + val('pefa-surname')).trim()], ['Date of Birth', val('pefa-dob')], ['Gender', getPefaChipText('pefa-gender')]]);
+  fieldRow([['Position Applied For', val('pefa-job')], ['Site / Location', val('pefa-site')], ['Client', appt.client_name || '']]);
+  fieldRow([['Assessment Date', val('pefa-date')], ['Time', val('pefa-time')], ['Classification', classification]]);
+
+  // ── Authority & consent (PEMA texts + signature) ──
+  secHeader('Authority & Consent');
+  subHdr('Authority to Obtain and Release Medical Information');
+  txtBlock(PEFA_AUTHORITY_TEXT);
+  subHdr('Consent to Proceed with Assessment');
+  txtBlock(PEFA_CONSENT_TEXT);
+  txtBlock(PEFA_DECLARATION_TEXT.replace(/<[^>]+>/g, ''));
+  sigBlock('Applicant Consent Signature', getSigGlobal('pefa-sig-consent'), val('pefa-consent-date'));
+
+  // ── History questionnaire ──
+  secHeader('Medical History');
+  ynRows('pefa-hm', FCE_MED_HISTORY);
+  secHeader('Injury History');
+  ynRows('pefa-hi', FCE_INJURY_HISTORY);
+  secHeader('Functional Status');
+  ynRows('pefa-hf', FCE_FUNCTIONAL_STATUS);
+  if ((val('pefa-hfs-comments') || '').trim()) { subHdr('Additional Comments'); txtBlock(val('pefa-hfs-comments')); }
+
+  // ── Vitals & baseline ──
+  secHeader('Vitals & Baseline Measurements');
+  fieldRow([['Blood Pressure', (val('pefa-bp-sys') && val('pefa-bp-dia')) ? val('pefa-bp-sys') + '/' + val('pefa-bp-dia') + ' mmHg' : ''], ['Resting HR', val('pefa-resthr') ? val('pefa-resthr') + ' bpm' : ''], ['Height', val('pefa-height') ? val('pefa-height') + ' m' : ''], ['Weight', val('pefa-weight') ? val('pefa-weight') + ' kg' : '']]);
+  fieldRow([['BMI', val('pefa-bmi') + (val('pefa-bmi-cat') ? ' (' + val('pefa-bmi-cat') + ')' : '')], ['Max HR (220-age)', val('pefa-maxhr')], ['85% Max HR', val('pefa-maxhr85')], ['Max MH Test Weight', val('pefa-maxmh')]]);
+
+  // ── ROM (dual ticks) ──
+  if (enabled('rom', 'pefa-rom')) {
+    secHeader('Range of Motion');
+    romJoints.forEach(function(joint, i) {
+      var rom = getPefaRomState(i);
+      var sel = [];
+      if (rom.normal) sel.push('Normal');
+      if (rom.pain) sel.push('Pain');
+      if (rom.limited) sel.push('Limited');
+      var detail = val('pefa-rom-' + i + '-detail');
+      var pain = val('pefa-rom-' + i + '-painscore');
+      if (pain) detail = (detail ? detail + ' — ' : '') + 'pain ' + pain + '/10';
+      selectorRow(joint, ['Normal', 'Pain', 'Limited'], sel, detail);
+    });
+    y += 2;
+  }
+
+  // ── Postural analysis ──
+  if (enabled('postural_analysis', 'pefa-postural')) {
+    secHeader('Postural Analysis');
+    posturalRegions.forEach(function(reg, i) {
+      selectorRow(reg, ['Normal', 'Abnormal'], getPefaChipText('pefa-post-' + i), val('pefa-post-' + i + '-detail'));
+    });
+    y += 2;
+  }
+
+  // ── Special MSK tests ──
+  if (enabled('special_msk', 'pefa-msk')) {
+    secHeader('Special MSK Tests');
+    mskTests.forEach(function(t, i) {
+      var sel;
+      if (t.name === 'Straight Leg Raise') {
+        sel = [];
+        var mskCard = document.querySelectorAll('#pefa-msk .clin-card')[i];
+        if (mskCard) mskCard.querySelectorAll('.option-chip.selected-normal').forEach(function(c) { sel.push(c.textContent.trim()); });
+      } else {
+        sel = getPefaChipText('pefa-msk-' + i);
+      }
+      var detail = val('pefa-msk-' + i + '-detail');
+      if (i === 0) {
+        var slb = ['eo-l', 'eo-r', 'ec-l', 'ec-r'].map(function(k) { return val('pefa-slb-' + k); });
+        if (slb.some(function(v) { return v; })) detail = ('EO L/R: ' + (slb[0] || '—') + '/' + (slb[1] || '—') + ' sec · EC L/R: ' + (slb[2] || '—') + '/' + (slb[3] || '—') + ' sec') + (detail ? ' — ' + detail : '');
+      }
+      var shortOpts = t.opts.length > 4 ? [] : t.opts; // long option sets render as text
+      if (shortOpts.length) selectorRow(t.name, shortOpts, sel, detail);
+      else {
+        var selText = Array.isArray(sel) ? sel.join('; ') : sel;
+        selectorRow(t.name, [], null, (selText ? selText : '—') + (detail ? ' — ' + detail : ''));
+      }
+    });
+    y += 2;
+  }
+
+  // ── Grip strength ──
+  if (enabled('grip_strength', 'pefa-grip')) {
+    secHeader('Grip Strength');
+    fieldRow([['Right — Trials', [val('pefa-grip-r1'), val('pefa-grip-r2'), val('pefa-grip-r3')].filter(Boolean).join(' / ')], ['Average', val('pefa-grip-r-avg')], ['% Normative', val('pefa-grip-r-norm')], ['CV', val('pefa-grip-r-cv')]]);
+    fieldRow([['Left — Trials', [val('pefa-grip-l1'), val('pefa-grip-l2'), val('pefa-grip-l3')].filter(Boolean).join(' / ')], ['Average', val('pefa-grip-l-avg')], ['% Normative', val('pefa-grip-l-norm')], ['CV', val('pefa-grip-l-cv')]]);
+    if ((val('pefa-grip-comments') || '').trim()) { subHdr('Interpretation'); txtBlock(val('pefa-grip-comments')); }
+  }
+
+  // ── Postural tolerance ──
+  if (enabled('postural_tolerances', 'pefa-ptol')) {
+    secHeader('Postural Tolerance');
+    checkY(9);
+    doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.setTextColor.apply(doc, CHARCOAL);
+    doc.text('Sitting & Standing', ML + 1, y + 2.8);
+    tickBox(ML + 50, y, isChecked('pefa-ptol-observed'));
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7.2);
+    doc.text('Observed throughout assessment', ML + 55, y + 2.7);
+    y += 6;
+    if ((val('pefa-ptol-observed-comments') || '').trim()) txtBlock(val('pefa-ptol-observed-comments'));
+    posturalTests.forEach(function(t, i) {
+      var able = getPefaChipText('pefa-pt-' + i);
+      var bits = [];
+      if (val('pefa-pt-' + i + '-time')) bits.push('Time ' + val('pefa-pt-' + i + '-time'));
+      if (val('pefa-pt-' + i + '-pain')) bits.push('Pain ' + val('pefa-pt-' + i + '-pain') + '/10');
+      if (val('pefa-pt-' + i + '-rpe')) bits.push('RPE ' + val('pefa-pt-' + i + '-rpe') + '/10');
+      if (val('pefa-pt-' + i + '-hr')) bits.push('Peak HR ' + val('pefa-pt-' + i + '-hr'));
+      if (able === 'Unable') {
+        var reason = getPefaChipText('pefa-pt-' + i + '-reason');
+        bits.push('Unable' + (reason ? ' — ' + reason : '') + (val('pefa-pt-' + i + '-reason-detail') ? ' (' + val('pefa-pt-' + i + '-reason-detail') + ')' : ''));
+      }
+      selectorRow(t, ['Able', 'Unable'], able, bits.join(' · '));
+    });
+    y += 2;
+  }
+
+  // ── Step test ──
+  if (enabled('step_test', 'pefa-steptest')) {
+    secHeader('3-Minute Step Test');
+    fieldRow([['Max HR for Test', val('pefa-st-maxhr')], ['Baseline HR', val('pefa-st-base')], ['3-Minute HR', val('pefa-st-3min')], ['1-Min Post HR', val('pefa-st-post')]]);
+    fieldRow([['Pain Rating', val('pefa-st-pain') ? val('pefa-st-pain') + '/10' : ''], ['RPE', val('pefa-st-rpe') ? val('pefa-st-rpe') + '/10' : ''], ['Result', getPefaChipText('pefa-st-result')]]);
+    if ((val('pefa-st-comments') || '').trim()) txtBlock(val('pefa-st-comments'));
+  }
+
+  // ── Manual handling ──
+  if (enabled('manual_handling', 'pefa-manual')) {
+    secHeader('Manual Handling');
+    if (maxKg) {
+      doc.setFontSize(7.5); doc.setFont('helvetica', 'italic'); doc.setTextColor.apply(doc, MID);
+      var capLines = doc.splitTextToSize(classification + ' Classification: Occasional ≤' + w.occ + ' · Frequent ~' + w.freq + ' · Constant ~' + w.cons + '. Do not exceed occasional weight regardless of demonstrated capacity.', CW);
+      checkY(capLines.length * 3.6 + 3);
+      doc.text(capLines, ML, y); y += capLines.length * 3.6 + 3;
+    }
+    [['Lifting: Floor to Bench (800mm)', w.occ, w.freq], ['Lifting: Bench (800mm) to Overhead', w.occ, w.freq], ['Carrying (5m bilateral, from 800mm bench)', w.occ, w.freq], ['Pulling (resistance band)', '14kg', '10kg']].forEach(function(t, i) {
+      var p = 'pefa-mh-' + i;
+      var notes = val(p + '-notes');
+      checkY(30);
+      subHdr(t[0]);
+      fieldRow([['P1 Result (' + t[1] + ' · 1 rep)', val(p + '-p1-result')], ['Max Weight (kg)', val(p + '-p1-weight')], ['Pain', val(p + '-p1-pain')], ['Peak HR', val(p + '-p1-hr')]]);
+      fieldRow([['P2 Result (' + t[2] + ' · 5 reps/1 min)', val(p + '-p2-result')], ['Reps Completed', val(p + '-p2-reps')], ['Pain', val(p + '-p2-pain')], ['Peak HR', val(p + '-p2-hr')]]);
+      var techSel = [];
+      var mhCards = document.querySelectorAll('#pefa-manual .clin-card');
+      if (mhCards[i]) mhCards[i].querySelectorAll('.mh-tech-chips .option-chip.selected-normal').forEach(function(c) { techSel.push(c.textContent.trim()); });
+      if (techSel.length) {
+        checkY(6);
+        doc.setFontSize(7.5); doc.setFont('helvetica', 'normal'); doc.setTextColor.apply(doc, MID);
+        var techLines = doc.splitTextToSize('Technique: ' + techSel.join(' · '), CW - 2);
+        doc.text(techLines, ML + 1, y); y += techLines.length * 3.6 + 2;
+      }
+      if ((notes || '').trim()) txtBlock(notes);
+    });
+  }
+
+  // ── Climbing ──
+  if (enabled('climbing', 'pefa-climbing')) {
+    secHeader('Climbing / Stepping');
+    subHdr('Step-Up — 500mm');
+    fieldRow([['Occasional (1 rep)', val('pefa-stepup-occ')], ['Frequent (5 in 1 min)', val('pefa-stepup-freq')], ['Pain', val('pefa-stepup-pain')], ['Peak HR', val('pefa-stepup-hr')]]);
+    fieldRow([['Knee Control', val('pefa-stepup-knee')], ['Movement Pattern', val('pefa-stepup-pattern')]]);
+    if ((val('pefa-stepup-notes') || '').trim()) txtBlock(val('pefa-stepup-notes'));
+    subHdr('Ladder Climbing — Endurance Protocol');
+    fieldRow([['Constant Reps', val('pefa-ladder-const')], ['Pain', val('pefa-ladder-pain')], ['Peak HR', val('pefa-ladder-hr')], ['RPE', val('pefa-ladder-rpe')]]);
+    fieldRow([['3-Point Contact', val('pefa-ladder-contact')], ['Movement Pattern', val('pefa-ladder-pattern')], ['Result', val('pefa-ladder-result')]]);
+    if ((val('pefa-ladder-notes') || '').trim()) txtBlock(val('pefa-ladder-notes'));
+  }
+
+  // ── Fitness outcome (PEMA outcomes page) ──
+  secHeader('Fitness for Capacity Outcome');
+  var selCode = val('pefa-outcome-code');
+  var outcome = PEFA_OUTCOMES.find(function(o) { return o.code === selCode; });
+  var outcomeText = outcome ? outcome.title : 'Outcome not yet selected — assessor to confirm fitness for capacity tier.';
+  checkY(8);
+  doc.setFontSize(8.5); doc.setFont('helvetica', 'bold'); doc.setTextColor.apply(doc, CHARCOAL);
+  doc.text('In the opinion of the assessor, the applicant has:', ML, y); y += 6;
+  var outLines = doc.splitTextToSize(outcomeText, CW - 16);
+  var boxH = Math.max(14, outLines.length * 5 + 8);
+  checkY(boxH + 4);
+  doc.setFillColor.apply(doc, OLIVE); doc.roundedRect(ML, y, 4, boxH, 0.5, 0.5, 'F');
+  doc.setFillColor.apply(doc, LIGHT_BG); doc.setDrawColor.apply(doc, BORDER_COL); doc.setLineWidth(0.3);
+  doc.roundedRect(ML + 5, y, CW - 5, boxH, 0.5, 0.5, 'FD');
+  doc.setFontSize(9); doc.setFont('helvetica', 'bold'); doc.setTextColor.apply(doc, OLIVE);
+  doc.text(outLines, ML + 9, y + 6); y += boxH + 4;
+  if (outcome) {
+    doc.setFontSize(7.8); doc.setFont('helvetica', 'normal'); doc.setTextColor.apply(doc, MID);
+    var descLines = doc.splitTextToSize(outcome.desc, CW - 4);
+    checkY(descLines.length * 3.8 + 3);
+    doc.text(descLines, ML + 2, y); y += descLines.length * 3.8 + 4;
+  }
+  subHdr('Recommendations / Restrictions');
+  txtBlock(val('pefa-outcome-recs'));
+
+  // ── Assessor declaration ──
+  secHeader('Assessor Declaration');
+  fieldRow([['Assessor Name', val('pefa-assessor-name')], ['Qualification', val('pefa-assessor-qual')], ['Provider Number', val('pefa-assessor-ahpra')]]);
+  fieldRow([['Assessment Date', val('pefa-assessor-date')], ['Clinic', val('pefa-assessor-clinic')], ['Phone', val('pefa-assessor-phone')]]);
+  sigBlock('Assessor Signature', getSigGlobal('pefa-sig-assessor'), val('pefa-assessor-date'));
+
+  if (typeof doc.putTotalPages === 'function') doc.putTotalPages(TOTAL);
+
+  var surname = (val('pefa-surname') || appt.patient_last_name || 'UNKNOWN').toUpperCase().replace(/[^A-Z ]/g, '').trim();
+  var firstInitial = ((val('pefa-firstname') || appt.patient_first_name || '').charAt(0) || '').toUpperCase();
+  var clientPart = (appt.client_name || '').toUpperCase().replace(/[^A-Z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+  var classPart = (classification || '').toUpperCase().replace(/[^A-Z0-9 ]/g, '').trim();
+  var now = new Date();
+  function p2(n) { return (n < 10 ? '0' : '') + n; }
+  var ddmmyy = p2(now.getDate()) + p2(now.getMonth() + 1) + String(now.getFullYear()).slice(2);
+  var filename = [surname, firstInitial, 'PEFA', clientPart, classPart, ddmmyy].filter(Boolean).join(' ') + '.pdf';
+  return { doc: doc, filename: filename };
 }
 
 function copyApptLink(btnEl, token) {
@@ -11437,6 +12930,7 @@ document.addEventListener('DOMContentLoaded', () => {
   wireClinicianAutoSave();
   checkAndShowClinicianRecoveryBanner();
   wireFceAutoSave();
+  wirePefaAutoSave();
   populateApptClientDropdown();
   var _isTokenUrl = isPatientTokenUrl();
   var _isPatientMode = new URLSearchParams(window.location.search).get('mode') === 'patient';
