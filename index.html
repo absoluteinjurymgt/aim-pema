@@ -3401,6 +3401,26 @@ function sbInsert(table, data)     { return sbQuery(table, '', 'POST', data); }
 function sbUpdate(table, qs, data) { return sbQuery(table, qs, 'PATCH', data); }
 function sbDelete(table, qs)       { return sbQuery(table, qs, 'DELETE'); }
 
+// RPC call with the anon key — used by the patient token flow, whose entire
+// database surface is two SECURITY DEFINER functions (see supabase/rls_lockdown.sql)
+async function sbRpc(fn, args) {
+  var res = await fetch(SUPABASE_URL + '/rest/v1/rpc/' + fn, {
+    method: 'POST',
+    headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify(args || {})
+  });
+  if (!res.ok) {
+    var t = await res.text();
+    var err = new Error('Supabase RPC ' + res.status + ': ' + t);
+    // PGRST202 = function does not exist — lets callers fall back to the
+    // legacy direct-table path until rls_lockdown.sql has been run
+    err.rpcMissing = res.status === 404 || t.indexOf('PGRST202') !== -1;
+    throw err;
+  }
+  if (res.status === 204) return null;
+  return res.json();
+}
+
 // ─── SUPABASE AUTH (REST — no SDK) ──────────────────────────────────────────
 // Patients on ?token=/q/ URLs never log in; the portal requires a clinician session.
 function isPatientTokenUrl() {
@@ -8846,10 +8866,18 @@ async function initTokenMode() {
   if (screen) screen.appendChild(loadDiv);
 
   try {
-    var rows = await sbSelect('appointments', 'token=eq.' + token + '&select=*');
-    if (!rows || rows.length === 0) { showTokenError('This link has expired or is invalid. Please contact the clinic.'); return true; }
-
-    var appt = rows[0];
+    // Patient reads go through a SECURITY DEFINER RPC (token validated
+    // server-side, questionnaire columns only). Falls back to the legacy
+    // direct query until rls_lockdown.sql has been run.
+    var appt = null;
+    try {
+      appt = await sbRpc('patient_get_appointment', { p_token: token });
+    } catch(rpcErr) {
+      if (!rpcErr.rpcMissing) throw rpcErr;
+      var rows = await sbSelect('appointments', 'token=eq.' + token + '&select=*');
+      appt = (rows && rows.length) ? rows[0] : null;
+    }
+    if (!appt) { showTokenError('This link has expired or is invalid. Please contact the clinic.'); return true; }
     if (appt.expires_at && new Date(appt.expires_at) < new Date()) { showTokenError('This link has expired. Please contact the clinic.'); return true; }
     if (appt.status === 'complete' || appt.status === 'exported') { showTokenError('Your questionnaire has already been submitted. See you at your appointment!'); return true; }
 
@@ -8949,8 +8977,16 @@ async function submitTokenQuestionnaire() {
 
   try {
     var data = collectPatientFormData();
-    await sbInsert('questionnaire_responses', { token: token, response_data: data });
-    await sbUpdate('appointments', 'token=eq.' + token, { status: 'complete' });
+    // One-shot submit via SECURITY DEFINER RPC (stores response + sets
+    // status='complete' atomically). Legacy direct writes remain as a
+    // fallback until rls_lockdown.sql has been run.
+    try {
+      await sbRpc('patient_submit_questionnaire', { p_token: token, p_response: data });
+    } catch(rpcErr) {
+      if (!rpcErr.rpcMissing) throw rpcErr;
+      await sbInsert('questionnaire_responses', { token: token, response_data: data });
+      await sbUpdate('appointments', 'token=eq.' + token, { status: 'complete' });
+    }
     clearPatientSession();
 
     var firstName = data['pt-firstname'] || 'there';
