@@ -94,6 +94,7 @@ grant execute on function public.patient_submit_questionnaire(text, jsonb) to an
 
 
 -- ─── 2. Drop every existing permissive / temporary policy (exact names) ──────
+-- Names verified against live pg_policies on 2026-08-31.
 -- Original PEMA build ("using (true)" for role public = anon AND authenticated):
 drop policy if exists "anon access" on public.appointments;
 drop policy if exists "anon access" on public.questionnaire_responses;
@@ -101,13 +102,22 @@ drop policy if exists "anon access" on public.clinician_progress;
 -- FCE Phase 1 temporary policies:
 drop policy if exists "clients_authenticated_all_TEMP" on public.clients;
 drop policy if exists "fce_tasks_authenticated_all_TEMP" on public.fce_tasks;
--- In case the July interim lockdown block was ever partially applied:
+-- The half-applied token-header lockdown (checks request.headers x-pema-token;
+-- superseded by the patient RPCs — dead once this file runs):
 drop policy if exists "authenticated full access" on public.appointments;
 drop policy if exists "authenticated full access" on public.questionnaire_responses;
 drop policy if exists "authenticated full access" on public.clinician_progress;
 drop policy if exists "anon select own appointment by token" on public.appointments;
 drop policy if exists "anon update own appointment by token" on public.appointments;
 drop policy if exists "anon insert own response by token" on public.questionnaire_responses;
+-- The 2026-08-31 emergency permissive layer (added to restore service after
+-- the half-applied lockdown broke the patient flow — the reason the patient
+-- tables are currently wide open):
+drop policy if exists "anon_select_appointments" on public.appointments;
+drop policy if exists "anon_update_appointments" on public.appointments;
+drop policy if exists "anon_insert_questionnaire" on public.questionnaire_responses;
+drop policy if exists "anon_select_questionnaire" on public.questionnaire_responses;
+drop policy if exists "anon_update_questionnaire" on public.questionnaire_responses;
 
 
 -- ─── 3. Enable RLS everywhere (no-op where already enabled) ──────────────────
