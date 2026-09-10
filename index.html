@@ -390,6 +390,12 @@
     letter-spacing: 0.05em;
     text-transform: uppercase;
   }
+  .patient-header .clinic-contact {
+    color: rgba(255,255,255,0.7);
+    font-size: 11.5px;
+    font-weight: 300;
+    margin-top: 6px;
+  }
   .patient-header .client-tag {
     display: inline-block;
     background: rgba(255,255,255,0.15);
@@ -960,6 +966,14 @@
   .option-chip.selected-normal { background: #eaf2ed; border-color: var(--success); color: var(--success); }
   .option-chip.selected-pain { background: #fdf0ee; border-color: var(--error); color: var(--error); }
   .option-chip.selected-limited { background: #fef6e8; border-color: var(--warning); color: var(--warning); }
+  /* Step test fitness rating: auto-selected from the 1-min recovery HR vs.
+     manually overridden by the clinician. Pseudo-elements only, so the chip's
+     textContent (read by the chip getters and the PDF builders) is unchanged. */
+  /* Otoscopy: 13 findings per ear in a half-width column, so slightly tighter. */
+  .option-chip.oto-chip { padding: 5px 10px; font-size: 11px; }
+  .option-chip.fit-auto::after { content: ' · auto'; font-size: 10px; font-weight: 400; opacity: 0.65; }
+  .option-chip.fit-override { background: #fef6e8; border-color: var(--warning); color: var(--warning); }
+  .option-chip.fit-override::after { content: ' · manual'; font-size: 10px; font-weight: 400; opacity: 0.65; }
 
 
   .smart-field {
@@ -1470,7 +1484,7 @@
   <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px">
     <div style="width:100%;max-width:380px;background:white;border:1px solid var(--border);border-radius:14px;padding:34px 30px;box-shadow:0 4px 24px rgba(0,0,0,0.08)">
       <div style="font-family:'DM Serif Display',serif;color:var(--black);font-size:26px;margin-bottom:6px;text-align:center">Clinician Sign In</div>
-      <div style="color:var(--mid);font-size:13px;text-align:center;margin-bottom:26px">Absolute Injury Management — PEMA Portal</div>
+      <div style="color:var(--mid);font-size:13px;text-align:center;margin-bottom:26px"><span data-clinic="name"></span> — PEMA Portal</div>
       <label style="display:block;font-size:11px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">Email</label>
       <input id="login-email" type="email" autocomplete="username" style="width:100%;padding:12px 14px;background:white;border:1px solid var(--border);border-radius:8px;color:var(--black);font-size:15px;font-family:'DM Sans',sans-serif;outline:none;margin-bottom:16px" placeholder="you@absoluteim.com.au">
       <label style="display:block;font-size:11px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">Password</label>
@@ -1486,7 +1500,7 @@
   <div class="portal-logo" style="background:none;width:auto;height:auto;border-radius:0">
     <img id="portal-aim-logo" src="" style="height:80px;width:auto;object-fit:contain;display:block">
   </div>
-  <div class="portal-heading">Absolute Injury Management</div>
+  <div class="portal-heading" data-clinic="name"></div>
   <div class="portal-sub">Pre-Employment Medical Assessment System</div>
   <div class="portal-cards">
     <div class="portal-card" onclick="showScreen('screen-patient')">
@@ -1840,7 +1854,7 @@
             <label class="toggle"><input type="checkbox" checked><span class="toggle-slider"></span></label>
           </div>
           <div class="toggle-row">
-            <div class="toggle-info"><h4>Spirometry</h4><p>FEV1, FVC, PEFR with predicted values</p></div>
+            <div class="toggle-info"><h4>Spirometry</h4><p>FEV1, FVC, PEF with predicted values</p></div>
             <label class="toggle"><input type="checkbox" checked><span class="toggle-slider"></span></label>
           </div>
           <div class="toggle-row">
@@ -1900,8 +1914,9 @@
 
 <div id="screen-patient" class="screen">
   <div class="patient-header">
-    <div class="clinic-name">Absolute Injury Management</div>
+    <div class="clinic-name" data-clinic="name"></div>
     <div class="form-title">Pre-Employment Medical Assessment — Patient Questionnaire</div>
+    <div class="clinic-contact"><span data-clinic="address"></span> · <span data-clinic="phone"></span></div>
     <div class="client-tag" id="patient-client-tag">your prospective employer</div>
   </div>
 
@@ -2008,7 +2023,7 @@
     <div class="q-card" style="margin-top:16px">
       <div class="q-label" style="margin-bottom:6px">Patient Consent Signature</div>
       <div style="font-size:13px;color:var(--charcoal);line-height:1.7;margin-bottom:16px;padding:12px;background:var(--olive-ultra);border-radius:8px;border-left:3px solid var(--olive);">
-        <strong>I declare that:</strong> The information I have provided is true and complete to the best of my knowledge. I authorise Absolute Injury Management to obtain and release my medical information to my prospective employer for the purpose of this assessment only. I consent to proceed with the assessment and confirm there are no reasons I cannot safely participate. I am aware that failure to disclose relevant health information may affect my employment application.
+        <strong>I declare that:</strong> The information I have provided is true and complete to the best of my knowledge. I authorise <span data-clinic="name"></span> to obtain and release my medical information to my prospective employer for the purpose of this assessment only. I consent to proceed with the assessment and confirm there are no reasons I cannot safely participate. I am aware that failure to disclose relevant health information may affect my employment application.
       </div>
       <div class="sig-wrap">
         <canvas class="sig-canvas" id="sig-consent"></canvas>
@@ -2725,10 +2740,25 @@
             <div style="font-size:11px;color:var(--mid);margin-top:6px;font-style:italic">
               AS/NZS 1269.4 screening classification — PTA at 500, 1000, 2000, 4000 Hz. Normal ≤25 dB | Mild 26–40 dB | Moderate 41–60 dB | Marked &gt;60 dB. Formal % loss assessment (NAL Report 118) requires audiologist evaluation.
             </div>
-            <div class="form-row" style="margin-top:12px;margin-bottom:4px">
-              <div class="form-group">
-                <label>Otoscopy / Auriscope Findings</label>
-                <input class="form-control" id="audio-otoscopy" placeholder="e.g. TM clear bilaterally, wax present right, discharge noted...">
+            <div style="margin-top:14px;margin-bottom:4px">
+              <label style="font-size:11px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.04em;display:block;margin-bottom:8px">Otoscopy / Auriscope Findings <span style="font-weight:300;font-size:10px;text-transform:none">(recorded per ear · select all that apply)</span></label>
+              <!-- Buttons are populated from OTOSCOPY_FINDINGS on load; the hidden
+                   inputs below hold the selected keys and are the source of truth. -->
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+                <div>
+                  <div style="font-size:11px;font-weight:700;color:var(--charcoal);margin-bottom:6px">Left Ear</div>
+                  <div id="oto-left-chips" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+                  <input type="hidden" id="oto-left">
+                </div>
+                <div>
+                  <div style="font-size:11px;font-weight:700;color:var(--charcoal);margin-bottom:6px">Right Ear</div>
+                  <div id="oto-right-chips" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+                  <input type="hidden" id="oto-right">
+                </div>
+              </div>
+              <div class="form-group" style="margin-top:12px">
+                <label>Other otoscopy findings (free text)</label>
+                <input class="form-control" id="audio-otoscopy" placeholder="Anything not covered by the buttons above...">
               </div>
             </div>
             <div class="smart-field" style="margin-top:4px">
@@ -2768,6 +2798,17 @@
                     <button class="yn-btn" id="ats-no" onclick="toggleATSBlows('no')">No</button>
                   </div>
                   <input type="hidden" id="spiro-blows">
+                  <!-- Secondary question: only when ATS is answered No. This is a
+                       screening assessment, so failing full ATS/ERS criteria does
+                       not by itself void the result. -->
+                  <div id="spiro-usable-wrap" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+                    <label>Readings usable for screening purposes?</label>
+                    <div style="display:flex;gap:8px;align-items:center;margin-top:4px">
+                      <button class="yn-btn" id="spiro-usable-yes" onclick="toggleSpiroUsable('yes')">Yes</button>
+                      <button class="yn-btn" id="spiro-usable-no" onclick="toggleSpiroUsable('no')">No</button>
+                    </div>
+                    <input type="hidden" id="spiro-usable">
+                  </div>
                 </div>
                 <div class="form-group" id="broncho-agent-wrap" style="display:none">
                   <label>Bronchodilator used</label>
@@ -2775,7 +2816,7 @@
                 </div>
               </div>
               <div style="font-size:11px;color:var(--mid);margin-bottom:8px;font-style:italic">
-                FEV1 and FVC in litres (L) · PEFR in L/min · FEV1/FVC as ratio · Enter predicted values from your spirometry software
+                FEV1 and FVC in litres (L) · PEF in L/sec · FEV1/FVC as ratio · Enter predicted values from your spirometry software, in these same units
               </div>
               <table class="spiro-table" id="spiro-table" >
                 <thead>
@@ -2809,9 +2850,11 @@
                     <td class="postbroncho-col" style="display:none"><input id="spiro-ratio-post"></td>
                     <td class="postbroncho-col" style="display:none"><input></td>
                     <td class="postbroncho-col" style="display:none"><input></td></tr>
-                  <tr><td><strong>PEFR</strong> <span style="font-size:10px;color:var(--mid)">L/min</span></td>
-                    <td><input id="spiro-pefr-meas" oninput="calcSpiroPct()"></td>
-                    <td><input id="spiro-pefr-pred" oninput="calcSpiroPct()"></td>
+                  <!-- Element ids stay spiro-pefr-* so saved assessments keep restoring;
+                       only the displayed label and unit change. -->
+                  <tr><td><strong>PEF</strong> <span style="font-size:10px;color:var(--mid)">L/sec</span></td>
+                    <td><input id="spiro-pefr-meas" placeholder="L/sec" oninput="calcSpiroPct()"></td>
+                    <td><input id="spiro-pefr-pred" placeholder="L/sec" oninput="calcSpiroPct()"></td>
                     <td><input id="spiro-pefr-pct"></td>
                     <td class="postbroncho-col" style="display:none"><input id="spiro-pefr-post" oninput="calcSpiroPct()"></td>
                     <td class="postbroncho-col" style="display:none"><input id="spiro-pefr-post-pct"></td>
@@ -3091,23 +3134,8 @@
         <div class="section-title" style="margin-bottom:4px">3-Minute Step Test</div>
         <div class="section-desc">300mm step. Metronome at 96 bpm, Up-Up-Down-Down pattern. Lead legs can alternate. Cease if HR limit exceeded.</div>
         <div style="overflow-x:auto;margin-bottom:16px">
-          <table style="width:100%;border-collapse:collapse;font-size:11.5px">
-            <thead>
-              <tr>
-                <th style="background:var(--charcoal);color:white;padding:6px 8px;text-align:left">Fitness Level</th>
-                <th style="background:var(--charcoal);color:white;padding:6px 8px;text-align:center">Male (bpm)</th>
-                <th style="background:var(--charcoal);color:white;padding:6px 8px;text-align:center">Female (bpm)</th>
-                <th style="background:var(--charcoal);color:white;padding:6px 8px;text-align:center">Percentile</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr style="background:var(--olive-ultra)"><td style="padding:5px 8px;border-bottom:1px solid var(--border)">Excellent</td><td style="text-align:center;padding:5px 8px;border-bottom:1px solid var(--border)">&lt;71</td><td style="text-align:center;padding:5px 8px;border-bottom:1px solid var(--border)">&lt;97</td><td style="text-align:center;padding:5px 8px;border-bottom:1px solid var(--border)">90th</td></tr>
-              <tr><td style="padding:5px 8px;border-bottom:1px solid var(--border)">Good</td><td style="text-align:center;padding:5px 8px;border-bottom:1px solid var(--border)">71–102</td><td style="text-align:center;padding:5px 8px;border-bottom:1px solid var(--border)">97–127</td><td style="text-align:center;padding:5px 8px;border-bottom:1px solid var(--border)">75th</td></tr>
-              <tr style="background:var(--olive-ultra)"><td style="padding:5px 8px;border-bottom:1px solid var(--border)">Average</td><td style="text-align:center;padding:5px 8px;border-bottom:1px solid var(--border)">103–117</td><td style="text-align:center;padding:5px 8px;border-bottom:1px solid var(--border)">128–142</td><td style="text-align:center;padding:5px 8px;border-bottom:1px solid var(--border)">50th</td></tr>
-              <tr><td style="padding:5px 8px;border-bottom:1px solid var(--border)">Fair</td><td style="text-align:center;padding:5px 8px;border-bottom:1px solid var(--border)">118–147</td><td style="text-align:center;padding:5px 8px;border-bottom:1px solid var(--border)">143–171</td><td style="text-align:center;padding:5px 8px;border-bottom:1px solid var(--border)">25th</td></tr>
-              <tr style="background:var(--olive-ultra)"><td style="padding:5px 8px">Poor</td><td style="text-align:center;padding:5px 8px">148+</td><td style="text-align:center;padding:5px 8px">172+</td><td style="text-align:center;padding:5px 8px">10th</td></tr>
-            </tbody>
-          </table>
+          <!-- Populated from the shared FITNESS_RATINGS table on load -->
+          <table id="pema-fitness-table" style="width:100%;border-collapse:collapse;font-size:11.5px"></table>
           <div style="font-size:10px;color:var(--mid);margin-top:4px;font-style:italic">⚠ Results unreliable if patient is on beta-blocker medication (HR response blunted)</div>
         </div>
         <div class="clin-card">
@@ -3115,22 +3143,16 @@
           <div class="clin-card-body">
             <div class="vitals-grid">
               <div class="vital-item"><div class="vital-label">Max HR for Test</div><div class="vital-input" id="st-maxhr">—</div><div class="vital-unit">bpm</div></div>
-              <div class="vital-item"><div class="vital-label">Baseline HR</div><input class="vital-input" placeholder="72"><div class="vital-unit">bpm</div></div>
-              <div class="vital-item"><div class="vital-label">3-Minute HR</div><input class="vital-input" data-hr-field="peak" placeholder="—"><div class="vital-unit">bpm</div></div>
-              <div class="vital-item"><div class="vital-label">1-Min Post HR</div><input class="vital-input" data-hr-field="peak" placeholder="—"><div class="vital-unit">bpm</div></div>
-              <div class="vital-item"><div class="vital-label">Pain Rating</div><input class="vital-input" placeholder="0"><div class="vital-unit">/10</div></div>
-              <div class="vital-item"><div class="vital-label">RPE</div><input class="vital-input" placeholder="0"><div class="vital-unit">/10</div></div>
+              <div class="vital-item"><div class="vital-label">Baseline HR</div><input class="vital-input" id="st-base" placeholder="72"><div class="vital-unit">bpm</div></div>
+              <div class="vital-item"><div class="vital-label">3-Minute HR</div><input class="vital-input" id="st-3min" data-hr-field="peak" placeholder="—"><div class="vital-unit">bpm</div></div>
+              <div class="vital-item"><div class="vital-label">1-Min Post HR</div><input class="vital-input" id="st-post" data-hr-field="peak" placeholder="—"><div class="vital-unit">bpm</div></div>
+              <div class="vital-item"><div class="vital-label">Pain Rating</div><input class="vital-input" id="st-pain" placeholder="0"><div class="vital-unit">/10</div></div>
+              <div class="vital-item"><div class="vital-label">RPE</div><input class="vital-input" id="st-rpe" placeholder="0"><div class="vital-unit">/10</div></div>
             </div>
             <div style="margin-top:16px">
               <label style="font-size:12px;font-weight:700;color:var(--charcoal);text-transform:uppercase;display:block;margin-bottom:8px">Result</label>
-              <div style="display:flex;gap:8px;flex-wrap:wrap">
-                <button class="option-chip" onclick="selectChip(this,'step-result')">Excellent</button>
-                <button class="option-chip" onclick="selectChip(this,'step-result')">Good</button>
-                <button class="option-chip" onclick="selectChip(this,'step-result')">Average</button>
-                <button class="option-chip" onclick="selectChip(this,'step-result')">Fair</button>
-                <button class="option-chip" onclick="selectChip(this,'step-result')">Poor</button>
-                <button class="option-chip" onclick="selectChip(this,'step-result')">Not completed</button>
-              </div>
+              <!-- Populated from the shared FITNESS_RATINGS labels on load -->
+              <div id="pema-fitness-chips" style="display:flex;gap:8px;flex-wrap:wrap"></div>
             </div>
             <div class="smart-field" style="margin-top:14px">
               <textarea class="smart-textarea" placeholder="Step test comments..."></textarea>
@@ -3247,7 +3269,7 @@
         <div class="section-desc">Select the outcome that best reflects the assessment findings. The employer determines suitability for employment — this assessment provides objective capacity information only.</div>
         <div class="alert alert-info">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
-          This assessment provides objective capacity data. Absolute Injury Management does not make employment decisions. The determination of suitability for employment remains the responsibility of the employer.
+          This assessment provides objective capacity data. <span data-clinic="name"></span> does not make employment decisions. The determination of suitability for employment remains the responsibility of the employer.
         </div>
         <div class="clin-card">
           <div class="clin-card-header"><h3>In the opinion of the assessor, the applicant has:</h3></div>
@@ -3319,7 +3341,7 @@
             <div class="form-row">
               <div class="form-group">
                 <label>Clinic Name</label>
-                <input class="form-control" id="assessor-clinic" placeholder="Absolute Injury Management">
+                <input class="form-control" id="assessor-clinic" data-clinic-ph="name">
               </div>
               <div class="form-group">
                 <label>Clinic Address</label>
@@ -3380,6 +3402,332 @@
 // ─── SUPABASE CONFIG ────────────────────────────────────────────────────────
 const SUPABASE_URL = 'https://zxabeeyvoapuiiuszhct.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp4YWJlZXl2b2FwdWlpdXN6aGN0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk3NzEyNTIsImV4cCI6MjA5NTM0NzI1Mn0.WKYTmPdgXb_NYmBKiOyFZhrUeolT2Tey_4NkLLgs8xs';
+
+// ─── SHARED: CLINIC DETAILS ─────────────────────────────────────────────────
+// Single source of truth for the clinic's identity. Referenced by all three PDF
+// builders, the on-screen headers and every report footer. These strings must
+// not be repeated anywhere else — in markup, use data-clinic / data-clinic-ph
+// and let hydrateClinicDetails() fill them in.
+var CLINIC = {
+  name: 'Absolute Injury Management',
+  phone: '(03) 5174 7250',
+  address: '15 Breed Street, Traralgon',
+  web: 'absoluteim.com.au'
+};
+// Second footer line on every report: address · phone · website.
+CLINIC.contactLine = CLINIC.address + '  ·  ' + CLINIC.phone + '  ·  ' + CLINIC.web;
+
+// Fills static markup from CLINIC. data-clinic="name" sets an element's text;
+// data-clinic-ph="name" sets an input's placeholder. Prose keeps the clinic
+// name as an inline <span data-clinic="name"></span> so the copy stays readable.
+function hydrateClinicDetails(root) {
+  var scope = root || document;
+  scope.querySelectorAll('[data-clinic]').forEach(function(el) {
+    var v = CLINIC[el.getAttribute('data-clinic')];
+    if (v != null) el.textContent = v;
+  });
+  scope.querySelectorAll('[data-clinic-ph]').forEach(function(el) {
+    var v = CLINIC[el.getAttribute('data-clinic-ph')];
+    if (v != null) el.placeholder = v;
+  });
+}
+
+// ─── SHARED: 3-MINUTE STEP TEST FITNESS RATINGS ─────────────────────────────
+// Single source of truth for the step test cardiovascular fitness bands, used
+// by PEMA, FCE and PEFA alike: the on-screen reference table, the rating
+// buttons, the auto-selection from the 1-minute recovery HR, and the comment
+// sentence each rating prefills. Bands are stratified by sex, not by age, and
+// are read against the 1-minute post-test recovery HR.
+var FITNESS_RATINGS = [
+  { label: 'Excellent', male: [0, 70],         female: [0, 96],          percentile: '90th' },
+  { label: 'Good',      male: [71, 102],       female: [97, 127],        percentile: '75th' },
+  { label: 'Average',   male: [103, 117],      female: [128, 142],       percentile: '50th' },
+  { label: 'Fair',      male: [118, 147],      female: [143, 171],       percentile: '25th' },
+  { label: 'Poor',      male: [148, Infinity], female: [172, Infinity],  percentile: '10th' }
+];
+
+// Built from the band labels above so the selected rating and the report wording
+// can never drift apart. These are clinical findings only — they say nothing
+// about the role, the job demands or capacity for duties. 'Not completed' is not
+// a band, so it has no entry and therefore no sentence.
+function fitnessCommentFor(label) {
+  var w = String(label).toLowerCase();
+  return 'Results indicate ' + (/^[aeiou]/.test(w) ? 'an' : 'a') + ' ' + w + ' level of cardiovascular fitness.';
+}
+var FITNESS_COMMENTS = FITNESS_RATINGS.reduce(function(acc, r) {
+  acc[r.label] = fitnessCommentFor(r.label);
+  return acc;
+}, {});
+var FITNESS_LINE_RE = /^Results indicate an? .+ level of cardiovascular fitness\.$/;
+var FITNESS_TABLE_HEADERS = ['Fitness Level', 'Male (bpm)', 'Female (bpm)', 'Percentile'];
+
+function fitnessBandText(band, dash) {
+  if (band[0] === 0) return '<' + (band[1] + 1);
+  if (band[1] === Infinity) return band[0] + '+';
+  return band[0] + (dash || '-') + band[1];
+}
+
+// Reference table rows, in the order the three renderers expect:
+// [Fitness Level, Male (bpm), Female (bpm), Percentile]. `dash` lets the PDF
+// builder use a hyphen where the HTML views use an en dash.
+function fitnessTableRows(dash) {
+  return FITNESS_RATINGS.map(function(r) {
+    return [r.label, fitnessBandText(r.male, dash), fitnessBandText(r.female, dash), r.percentile];
+  });
+}
+
+// Inner markup for the on-screen reference table, shared by the PEMA and PEFA
+// screens. The FCE PDF builder draws its own table from fitnessTableRows().
+function fitnessTableHTML(dash) {
+  var rows = fitnessTableRows(dash);
+  return '<thead><tr>' + FITNESS_TABLE_HEADERS.map(function(h, i) {
+      return '<th style="background:var(--charcoal);color:white;padding:6px 8px;text-align:' + (i ? 'center' : 'left') + '">' + h + '</th>';
+    }).join('') + '</tr></thead><tbody>' +
+    rows.map(function(row, ri) {
+      var last = ri === rows.length - 1;
+      return '<tr' + (ri % 2 === 0 ? ' style="background:var(--olive-ultra)"' : '') + '>' + row.map(function(c, ci) {
+        return '<td style="padding:5px 8px' + (ci ? ';text-align:center' : '') +
+          (last ? '' : ';border-bottom:1px solid var(--border)') + '">' + String(c).replace(/</g, '&lt;') + '</td>';
+      }).join('') + '</tr>';
+    }).join('') + '</tbody>';
+}
+
+// Labels for the rating buttons. 'Not completed' is an outcome rather than a
+// fitness band, so it carries no comment sentence.
+function fitnessRatingLabels(includeNotCompleted) {
+  var labels = FITNESS_RATINGS.map(function(r) { return r.label; });
+  return includeNotCompleted ? labels.concat('Not completed') : labels;
+}
+
+// Band lookup against the 1-minute recovery HR. Returns null when the reading
+// or the recorded sex cannot resolve a band — blank and 'Prefer not to say'
+// included — in which case the clinician selects the rating manually.
+function lookupFitnessRating(hr, gender) {
+  var v = parseFloat(hr);
+  if (!isFinite(v) || v <= 0) return null;
+  var g = (gender || '').toLowerCase().trim();
+  var col = g.indexOf('female') === 0 ? 'female' : (g.indexOf('male') === 0 ? 'male' : null);
+  if (!col) return null;
+  for (var i = 0; i < FITNESS_RATINGS.length; i++) {
+    var band = FITNESS_RATINGS[i][col];
+    if (v >= band[0] && v <= band[1]) return FITNESS_RATINGS[i].label;
+  }
+  return null;
+}
+
+// Appends the rating sentence to the step test comments, after whatever the
+// 85% HR breach line and the exertion chips have already written. Never
+// replaces them; strips only its own previous sentence so that re-selecting a
+// rating cannot double up.
+function applyFitnessComment(ta, label) {
+  if (!ta) return;
+  var sentence = FITNESS_COMMENTS[label] || '';
+  var kept = (ta.value || '').split('\n').filter(function(l) {
+    return !FITNESS_LINE_RE.test(l.trim());
+  }).join('\n').replace(/\s+$/, '');
+  ta.value = sentence ? (kept ? kept + '\n' + sentence : sentence) : kept;
+}
+
+// Per-assessment-type glue: where the rating buttons, the 1-minute recovery HR
+// field, the recorded sex and the comments box live on each screen.
+var STEP_FITNESS = {
+  pema: {
+    chipSel: '#clin-steptest [onclick*="step-result"]',
+    post: 'st-post',
+    gender: function() { var el = document.getElementById('pt-gender'); return el ? el.value : ''; },
+    ta: function() { var s = document.getElementById('clin-steptest'); return s ? s.querySelector('.smart-textarea') : null; }
+  },
+  fce: {
+    chipSel: '#screen-fce [onclick*="fce-st-result"]',
+    post: 'fce-st-post',
+    gender: function() { return getFceChipText('fce-gender'); },
+    ta: function() { return document.getElementById('fce-st-comments'); }
+  },
+  pefa: {
+    chipSel: '#screen-pefa [onclick*="pefa-st-result"]',
+    post: 'pefa-st-post',
+    gender: function() { return getPefaChipText('pefa-gender'); },
+    ta: function() { return document.getElementById('pefa-st-comments'); }
+  }
+};
+
+// PEMA's step test markup is static HTML, so its reference table and rating
+// buttons are filled from the shared definitions once the DOM is ready. The
+// onclick string is kept byte-identical to the markup it replaces, because
+// saved chip selections are keyed on it.
+function renderPemaFitnessUI() {
+  var table = document.getElementById('pema-fitness-table');
+  if (table) table.innerHTML = fitnessTableHTML('–');
+  var chips = document.getElementById('pema-fitness-chips');
+  if (chips) chips.innerHTML = fitnessRatingLabels(true).map(function(l) {
+    return '<button class="option-chip" onclick="selectChip(this,\'step-result\')">' + l + '</button>';
+  }).join('');
+}
+
+function stepFitnessChips(type) {
+  return Array.prototype.slice.call(document.querySelectorAll(STEP_FITNESS[type].chipSel));
+}
+
+// Writes the sentence for whichever rating is currently selected.
+function applyStepFitnessComment(type) {
+  var sel = stepFitnessChips(type).find(function(c) { return c.classList.contains('selected-normal'); });
+  applyFitnessComment(STEP_FITNESS[type].ta(), sel ? sel.textContent.trim() : '');
+}
+
+// Auto-selects the band matching the 1-minute recovery HR. It only ever
+// replaces its own earlier auto-selection or fills an empty slot: a clinician
+// override stands (readings are sometimes compromised), and so does a rating
+// restored from a saved assessment.
+function autoSelectStepFitness(type) {
+  var cfg = STEP_FITNESS[type];
+  var chips = stepFitnessChips(type);
+  if (!chips.length) return;
+  var current = chips.find(function(c) { return c.classList.contains('selected-normal'); });
+  if (current && !current.classList.contains('fit-auto')) return;
+  var postEl = document.getElementById(cfg.post);
+  var label = lookupFitnessRating(postEl ? postEl.value : '', cfg.gender());
+  if (!label) return;
+  var hit = chips.find(function(c) { return c.textContent.trim() === label; });
+  if (!hit) return;
+  chips.forEach(function(c) { c.classList.remove('selected-normal', 'fit-auto', 'fit-override'); });
+  hit.classList.add('selected-normal', 'fit-auto');
+  applyStepFitnessComment(type);
+}
+
+// Flags a rating the clinician picked by hand, so it reads differently from an
+// auto-selection and is left alone by later HR edits.
+function markStepFitnessOverride(type, el) {
+  stepFitnessChips(type).forEach(function(c) { c.classList.remove('fit-auto', 'fit-override'); });
+  if (el) el.classList.add('fit-override');
+}
+
+// ─── OTOSCOPY FINDINGS (PEMA audiometry) ────────────────────────────────────
+// Recorded per ear. `key` is the persisted identifier and is deliberately
+// independent of both position and label: selections are stored as a
+// comma-separated list of these keys in the hidden oto-left / oto-right inputs,
+// so buttons can be reordered, reworded or inserted without orphaning saved
+// assessments. `notable` findings flag into key findings; `validity` marks the
+// ones that can interfere with audiometric thresholds.
+var OTOSCOPY_FINDINGS = [
+  { key: 'normal',        label: 'Normal' },
+  { key: 'wax-partial',   label: 'Wax, partial (view adequate)' },
+  { key: 'wax-occluding', label: 'Wax, occluding (view obscured)', notable: true, validity: true },
+  { key: 'discharge',     label: 'Discharge / otorrhoea',           notable: true, validity: true },
+  { key: 'canal-inflam',  label: 'Canal inflammation',              notable: true },
+  { key: 'tm-perf',       label: 'Tympanic membrane perforation',   notable: true, validity: true },
+  { key: 'tm-retraction', label: 'Tympanic membrane retraction' },
+  { key: 'tympanoscl',    label: 'Tympanosclerosis / scarring' },
+  { key: 'effusion',      label: 'Middle ear effusion',             notable: true, validity: true },
+  { key: 'grommet',       label: 'Grommet in situ',                 notable: true, validity: true },
+  { key: 'exostoses',     label: 'Exostoses / canal narrowing' },
+  { key: 'foreign-body',  label: 'Foreign body' },
+  { key: 'unable',        label: 'Unable to visualise',             notable: true, validity: true }
+];
+var OTOSCOPY_EARS = [{ side: 'left', label: 'Left Ear' }, { side: 'right', label: 'Right Ear' }];
+
+function otoFinding(key) {
+  return OTOSCOPY_FINDINGS.find(function(f) { return f.key === key; }) || null;
+}
+
+// Selected keys for one ear, in table order so wording is stable.
+function otoSelectedKeys(side) {
+  var el = document.getElementById('oto-' + side);
+  if (!el || !el.value) return [];
+  var set = el.value.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+  return OTOSCOPY_FINDINGS.filter(function(f) { return set.indexOf(f.key) >= 0; })
+    .map(function(f) { return f.key; });
+}
+
+function otoLabels(side) {
+  return otoSelectedKeys(side).map(function(k) { return otoFinding(k).label; });
+}
+
+// Lower-cased for mid-sentence use, but leave any leading acronym alone.
+function otoPhrase(side) {
+  return otoLabels(side).map(function(l) {
+    return /^(TM|Tympanic|Tympanosclerosis)/.test(l) ? l.charAt(0).toLowerCase() + l.slice(1) : l.toLowerCase();
+  }).join(', ');
+}
+
+function otoRender() {
+  OTOSCOPY_EARS.forEach(function(ear) {
+    var host = document.getElementById('oto-' + ear.side + '-chips');
+    if (!host) return;
+    host.innerHTML = OTOSCOPY_FINDINGS.map(function(f) {
+      return '<button type="button" class="option-chip oto-chip" data-oto-key="' + f.key +
+        '" onclick="otoToggle(\'' + ear.side + '\',\'' + f.key + '\')">' + f.label + '</button>';
+    }).join('');
+  });
+  otoSyncButtons();
+}
+
+// Paints button state from the hidden inputs — the single source of truth, so
+// this doubles as the restore path.
+function otoSyncButtons() {
+  OTOSCOPY_EARS.forEach(function(ear) {
+    var keys = otoSelectedKeys(ear.side);
+    var host = document.getElementById('oto-' + ear.side + '-chips');
+    if (!host) return;
+    host.querySelectorAll('.oto-chip').forEach(function(btn) {
+      btn.classList.toggle('selected-normal', keys.indexOf(btn.getAttribute('data-oto-key')) >= 0);
+    });
+  });
+}
+
+function otoToggle(side, key) {
+  var el = document.getElementById('oto-' + side);
+  if (!el) return;
+  var keys = otoSelectedKeys(side);
+  var has = keys.indexOf(key) >= 0;
+  if (key === 'normal') {
+    keys = has ? [] : ['normal'];                       // Normal is exclusive
+  } else {
+    keys = keys.filter(function(k) { return k !== 'normal' && k !== key; });
+    if (!has) keys.push(key);
+  }
+  el.value = OTOSCOPY_FINDINGS.filter(function(f) { return keys.indexOf(f.key) >= 0; })
+    .map(function(f) { return f.key; }).join(',');
+  otoSyncButtons();
+  if (typeof preFillAudiometry === 'function') preFillAudiometry();
+  if (typeof saveClinicianDataToStorage === 'function') saveClinicianDataToStorage();
+}
+
+// One sentence describing both ears, plus a validity caveat when the findings
+// could interfere with the thresholds. Returns '' when nothing is recorded.
+function otoSummary() {
+  var l = otoLabels('left'), r = otoLabels('right');
+  if (!l.length && !r.length) return '';
+  var sentence;
+  if (l.length && r.length && l.join('|') === r.join('|')) {
+    sentence = 'Otoscopy: ' + otoPhrase('left') + ' bilaterally.';
+  } else {
+    var parts = [];
+    if (l.length) parts.push('left — ' + otoPhrase('left'));
+    if (r.length) parts.push('right — ' + otoPhrase('right'));
+    sentence = 'Otoscopy: ' + parts.join('; ') + '.';
+  }
+  var affected = OTOSCOPY_EARS.filter(function(ear) {
+    return otoSelectedKeys(ear.side).some(function(k) { return (otoFinding(k) || {}).validity; });
+  }).map(function(ear) { return ear.side; });
+  if (affected.length) {
+    sentence += ' Audiometric thresholds in the ' + affected.join(' and ') + ' ear' +
+      (affected.length > 1 ? 's' : '') +
+      ' may be affected by these findings and should be interpreted with caution.';
+  }
+  return sentence;
+}
+
+// Notable findings, as {side, label, validity} — used for key findings.
+function otoNotable() {
+  var out = [];
+  OTOSCOPY_EARS.forEach(function(ear) {
+    otoSelectedKeys(ear.side).forEach(function(k) {
+      var f = otoFinding(k);
+      if (f && f.notable) out.push({ side: ear.side, label: f.label, validity: !!f.validity });
+    });
+  });
+  return out;
+}
 
 // ─── SUPABASE REST HELPERS ──────────────────────────────────────────────────
 async function sbQuery(table, qs, method, body) {
@@ -4054,7 +4402,7 @@ const MED_CATEGORY_INFO = {
     colour: '#8b3a2f',
     bg: '#fdf0ee',
     body: 'Patient has disclosed medication associated with potential sedation, cognitive impairment, or CNS effects. GP confirmation of fitness is recommended prior to placement in roles involving any of the following: operation of heavy machinery or plant, driving vehicles, working at heights, work in confined spaces, safety-critical tasks.',
-    note: 'This flag is an occupational health observation only. Absolute Injury Management does not provide advice on the patient\'s medication. The treating GP is best placed to confirm fitness for specific work demands.'
+    note: 'This flag is an occupational health observation only. ' + CLINIC.name + ' does not provide advice on the patient\'s medication. The treating GP is best placed to confirm fitness for specific work demands.'
   },
   cardiovascular: {
     title: 'Medication Flag — Cardiovascular Medication',
@@ -4749,10 +5097,14 @@ function selectChip(el, group) {
       ta.classList.remove('prefilled');
     }
   }
+  // A step test rating clicked by hand is an override: flag it before prefill
+  // runs, so the auto-selection inside preFillStepTest leaves it alone.
+  if (group === 'step-result') markStepFitnessOverride('pema', el);
   const section = el.closest('.clinician-section');
   if (section) {
     preFillSection(section.id);
   }
+  if (group === 'step-result') applyStepFitnessComment('pema');
 }
 
 function toggleUnableReason(detailId, show) {
@@ -4905,23 +5257,26 @@ function calcSpiroPredicted() {
 
   const isMale = gender.toLowerCase().includes('male') && !gender.toLowerCase().includes('female');
 
-  let fev1Pred, fvcPred, pefrPred;
+  let fev1Pred, fvcPred, pefPred;
   if (isMale) {
     fev1Pred = 0.0395 * heightCm - 0.025 * age - 2.60;   // L
     fvcPred  = 0.0576 * heightCm - 0.026 * age - 4.34;    // L
-    pefrPred = 0.144 * heightCm - 1.58 * age + 155;       // L/min
+    pefPred = (0.144 * heightCm - 1.58 * age + 155) / 60; // L/sec (regression is L/min)
   } else {
     fev1Pred = 0.0278 * heightCm - 0.027 * age - 0.74;    // L
     fvcPred  = 0.0421 * heightCm - 0.025 * age - 2.76;    // L
-    pefrPred = 0.091 * heightCm - 0.93 * age + 110;       // L/min
+    pefPred = (0.091 * heightCm - 0.93 * age + 110) / 60; // L/sec (regression is L/min)
   }
 
   const ratioPred = isMale ? (0.872 - 0.0018 * age) : (0.903 - 0.0021 * age);
 
+  // Every value is returned in the same unit the matching input is entered in —
+  // FEV1/FVC in litres, PEF in L/sec, ratio dimensionless — so % predicted stays
+  // valid whichever way these are consumed.
   return {
     fev1: Math.max(0.5, fev1Pred).toFixed(2),
     fvc:  Math.max(0.5, fvcPred).toFixed(2),
-    pefr: Math.max(100, pefrPred).toFixed(0),
+    pef:  Math.max(1.67, pefPred).toFixed(2),
     ratio: ratioPred.toFixed(2)
   };
 }
@@ -6081,7 +6436,12 @@ function preFillAudiometry() {
 
   var L = window._audioClassLeft;
   var R = window._audioClassRight;
-  if (!L && !R) return;
+  var otoText = otoSummary();
+  // Otoscopy can be recorded before (or without) any thresholds being entered.
+  if (!L && !R) {
+    if (otoText) { ta.value = otoText; ta.classList.add('prefilled'); }
+    return;
+  }
 
   window._findingFlags = window._findingFlags || [];
   var text = '';
@@ -6112,6 +6472,10 @@ function preFillAudiometry() {
       window._findingFlags.push({section:'Audiometry', finding:side.charAt(0).toUpperCase()+side.slice(1)+' ear: '+lr.cls+' hearing loss (PTA '+lr.pta+' dB)', rec:'Hearing PPE required. Audiometric surveillance recommended.'});
     }
   }
+  // Otoscopy sits alongside the threshold result, carrying its own validity
+  // caveat. Its key-findings entries are raised in generateAbnormalFindings(),
+  // which is the live path for this section.
+  if (otoText) text = text ? text + ' ' + otoText : otoText;
   if (text) { ta.value = text; ta.classList.add('prefilled'); }
 }
 
@@ -6122,7 +6486,34 @@ function toggleATSBlows(val) {
   if (noBtn)  { noBtn.classList.toggle('selected-no',  val === 'no');  noBtn.classList.remove('selected-yes'); }
   var hidden = document.getElementById('spiro-blows');
   if (hidden) hidden.value = val;
+  // Answering Yes retires the secondary question and clears any stale answer.
+  if (val === 'yes') {
+    var u = document.getElementById('spiro-usable');
+    if (u) u.value = '';
+  }
+  syncSpiroUsable();
   preFillSpirometry();
+}
+
+// Shows the secondary question only when ATS is 'no', and paints its buttons.
+// Also the restore path, since visibility is derived rather than stored.
+function syncSpiroUsable() {
+  var atsNo = (document.getElementById('spiro-blows')?.value || '') === 'no';
+  var wrap = document.getElementById('spiro-usable-wrap');
+  if (wrap) wrap.style.display = atsNo ? 'block' : 'none';
+  var val = document.getElementById('spiro-usable')?.value || '';
+  var yes = document.getElementById('spiro-usable-yes');
+  var no  = document.getElementById('spiro-usable-no');
+  if (yes) { yes.classList.toggle('selected-yes', val === 'yes'); yes.classList.remove('selected-no'); }
+  if (no)  { no.classList.toggle('selected-no',  val === 'no');  no.classList.remove('selected-yes'); }
+}
+
+function toggleSpiroUsable(val) {
+  var hidden = document.getElementById('spiro-usable');
+  if (hidden) hidden.value = val;
+  syncSpiroUsable();
+  preFillSpirometry();
+  if (typeof saveClinicianDataToStorage === 'function') saveClinicianDataToStorage();
 }
 
 function preFillSpirometry() {
@@ -6159,7 +6550,22 @@ function preFillSpirometry() {
     window._findingFlags.push({section:'Spirometry', finding:'Mixed pattern', rec:'GP referral recommended for respiratory review.'});
   }
   const atsNo = document.getElementById('ats-no')?.classList.contains('selected-no');
-  if (atsNo && text) text += ' ATS/ERS acceptability criteria not met — results interpreted with caution.';
+  if (atsNo) {
+    const usable = document.getElementById('spiro-usable')?.value || '';
+    if (usable === 'yes') {
+      text += (text ? ' ' : '') + 'ATS/ERS acceptability criteria were not fully met; however the tracings were of sufficient quality to inform screening interpretation.';
+    } else if (usable === 'no') {
+      // Replaces the pattern narrative rather than trailing it: reading a
+      // pattern out of readings just declared uninterpretable contradicts
+      // itself. The selected pattern chip still prints in its own PDF field,
+      // so nothing the clinician recorded is lost.
+      text = 'Results are not interpretable. Repeat testing recommended.';
+      window._findingFlags.push({section:'Spirometry', finding:'Spirometry not interpretable — ATS/ERS criteria not met and readings not usable for screening', rec:'Repeat spirometry required before a respiratory opinion can be given.'});
+    } else if (text) {
+      // Secondary question not yet answered — prior wording stands.
+      text += ' ATS/ERS acceptability criteria not met — results interpreted with caution.';
+    }
+  }
   if (text) { ta.value = text; ta.classList.add('prefilled'); }
 }
 
@@ -6601,18 +7007,23 @@ function preFillStepTest() {
   const ta = sec.querySelector('.smart-textarea');
   if (!ta) return;
 
+  // Pick the fitness band from the 1-minute recovery HR before reading the
+  // result, so an auto-selection feeds the rest of this prefill.
+  autoSelectStepFitness('pema');
+
   const result = getChipSelected('step-result');
   if (!result || result === '—') return;
 
   const notCompleted = result === 'Not completed';
   // Check if HR exceeded limits during testing
   const maxHR = window._maxHR || 0;
-  const maxHR85 = window._maxHR85 || 0;
-  const stHR = parseInt(document.getElementById('st-3min-hr')?.value || document.querySelector('#clin-steptest input[placeholder="bpm"]')?.value) || 0;
+  const stHR = parseInt(document.getElementById('st-3min')?.value) || 0;
+  // Only the 100% case is stated here. The 85% breach already has its own line,
+  // written by checkHRBreach() via the data-hr-field inputs, which also spawns
+  // the exertion chips — repeating it here would say the same thing twice.
   let hrNote = '';
-  if (maxHR && stHR) {
-    if (stHR >= maxHR) hrNote = ' Note: heart rate reached 100% maximum (' + stHR + '/' + maxHR + ' bpm) — test was ceased per protocol.';
-    else if (stHR >= maxHR85) hrNote = ' Note: heart rate reached 85% maximum threshold (' + stHR + '/' + maxHR85 + ' bpm 85% max).';
+  if (maxHR && stHR && stHR >= maxHR) {
+    hrNote = ' Note: heart rate reached 100% maximum (' + stHR + '/' + maxHR + ' bpm) — test was ceased per protocol.';
   }
   const betaBlockerNote = window._hasBetaBlocker
     ? ' Note: patient has disclosed beta-blocker medication — heart rate response and fitness classification are pharmacologically blunted and should be interpreted with caution.'
@@ -6630,7 +7041,20 @@ function preFillStepTest() {
     window._findingFlags = window._findingFlags || [];
     window._findingFlags.push({section:'Step Test', finding:'Below-average cardiovascular fitness — ' + result, rec:'Employer to consider cardiovascular fitness requirements of the role. Fitness improvement recommended prior to commencement.'});
   }
-  if (text && canOverwrite(ta)) { ta.value = text; ta.classList.add('prefilled'); }
+  if (text && canOverwrite(ta)) {
+    // The 85% breach line and the exertion line are owned by checkHRBreach()
+    // and selectExertion(). Overwriting the textarea wholesale used to erase
+    // them, so carry them across instead — front and back respectively, which
+    // is the order selectExertion() rebuilds them in.
+    const lines = (ta.value || '').split('\n');
+    const breach   = lines.filter(l => /^85% max HR exceeded/.test(l.trim()));
+    const exertion = lines.filter(l => /^Signs of exertion observed:/.test(l.trim()));
+    ta.value = breach.concat(text).concat(exertion).join('\n');
+    ta.classList.add('prefilled');
+  }
+  // Appended last, so it sits after the prefill, the 85% HR breach line and
+  // whatever the exertion chips have written.
+  applyStepFitnessComment('pema');
 }
 
 function preFillManualHandling(containerId) {
@@ -6752,6 +7176,12 @@ function generateAbnormalFindings() {
     if (clsR && clsR.cls !== 'Normal') add('AUDIOMETRY', clsR.cls + ' right ear hearing loss identified — baseline documented', clsR.cls === 'Mild' ? 'medium' : 'high');
   }
 
+  // OTOSCOPY — notable findings, with the validity caveat where it applies
+  otoNotable().forEach(function(f) {
+    add('OTOSCOPY', f.label + ' — ' + f.side + ' ear' +
+      (f.validity ? '; audiometric thresholds for this ear may be affected' : ''), 'medium');
+  });
+
   // SPIROMETRY — one summary line
   var spiroPattern = (document.querySelector('#spiro-pattern-chips .option-chip.selected-normal')?.textContent || '').trim();
   var fev1Pct = parseFloat(document.getElementById('spiro-fev1-pct')?.value || '');
@@ -6759,6 +7189,11 @@ function generateAbnormalFindings() {
     add('SPIROMETRY', 'Spirometry below predicted values — ' + spiroPattern.toLowerCase() + ' pattern, GP review recommended', spiroPattern.toLowerCase().includes('obstruct') ? 'high' : 'medium');
   } else if (!isNaN(fev1Pct) && fev1Pct < 80) {
     add('SPIROMETRY', 'Spirometry below predicted values — GP review recommended', 'medium');
+  }
+  // ATS criteria not met AND the clinician judged the readings unusable
+  if ((document.getElementById('spiro-blows')?.value || '') === 'no' &&
+      (document.getElementById('spiro-usable')?.value || '') === 'no') {
+    add('SPIROMETRY', 'Spirometry not interpretable — ATS/ERS criteria not met and readings not usable for screening; repeat testing recommended', 'high');
   }
 
   // URINALYSIS — from _findingFlags
@@ -7661,11 +8096,12 @@ function buildPDF() {
     const p=doc.internal.getCurrentPageInfo().pageNumber;
     doc.setDrawColor(...BORDER_COL); doc.setLineWidth(0.3); doc.line(ML,PH-12,PW-MR,PH-12);
     doc.setFontSize(7); doc.setTextColor(...MID); doc.setFont('helvetica','normal');
-    doc.text('Absolute Injury Management',ML,PH-7);
+    doc.text(CLINIC.name,ML,PH-7);
     doc.setFont('helvetica','bold'); doc.setTextColor(...OLIVE);
     doc.text('CONFIDENTIAL',PW/2,PH-7,{align:'center'});
     doc.setFont('helvetica','normal'); doc.setTextColor(...MID);
     doc.text('Page '+p,PW-MR,PH-7,{align:'right'});
+    doc.setFontSize(6); doc.text(CLINIC.contactLine,ML,PH-3.2);
   }
 
   function secHeader(title){
@@ -7831,7 +8267,7 @@ function buildPDF() {
   doc.setFillColor(...LIGHT_BG); doc.setDrawColor(...BORDER_COL); doc.setLineWidth(0.2);
   doc.roundedRect(ML,y,CW,14,1,1,'FD');
   doc.setFontSize(7.5); doc.setFont('helvetica','italic'); doc.setTextColor(...MID);
-  const disc='This assessment provides objective functional capacity information to assist the employer in making an informed placement decision. The determination of suitability for employment remains the responsibility of the employer. Absolute Injury Management does not make employment decisions.';
+  const disc='This assessment provides objective functional capacity information to assist the employer in making an informed placement decision. The determination of suitability for employment remains the responsibility of the employer. ' + CLINIC.name + ' does not make employment decisions.';
   doc.text(doc.splitTextToSize(disc,CW-8),ML+4,y+5);
   y+=18;
   drawFooter();
@@ -8119,28 +8555,56 @@ function buildPDF() {
   secHeader('Audiometry');
   const freqs=['500','1000','1500','2000','3000','4000','6000','8000'];
   const aW=[22,21,21,21,21,21,21,21,21];
+  // The audiometry inputs carry no ids (they are persisted by row/column
+  // position), so they are read positionally here — row 0 left, row 1 right,
+  // matching the on-screen table and the audiogram.
+  const audioRow=idx=>{
+    const tr=document.querySelectorAll('.audio-table tbody tr')[idx];
+    if(!tr) return Array(8).fill('—');
+    const ins=Array.from(tr.querySelectorAll('input')).slice(0,8);
+    // A recorded 0 dB is a real threshold, so only a blank becomes an em-dash.
+    return freqs.map((_,i)=>{const v=(ins[i]?.value||'').trim();return v===''?'—':v;});
+  };
   tblRow(['Ear',...freqs.map(f=>f+'Hz')],aW,true);
-  tblRow(['Left',...Array(8).fill('—')],aW,false,false);
-  tblRow(['Right',...Array(8).fill('—')],aW,false,true);
-  y+=4; fullRow('Interpretation',getSmart('clin-audiometry','Not recorded'));
+  tblRow(['Left',...audioRow(0)],aW,false,false);
+  tblRow(['Right',...audioRow(1)],aW,false,true);
+  y+=4;
+  const otoFree=(document.getElementById('audio-otoscopy')?.value||'').trim();
+  twoCol('Otoscopy — Left',otoLabels('left').join(', ')||'Not recorded',
+         'Otoscopy — Right',otoLabels('right').join(', ')||'Not recorded');
+  if(otoFree) fullRow('Otoscopy — Other',otoFree);
+  fullRow('Interpretation',getSmart('clin-audiometry','Not recorded'));
 
   secHeader('Spirometry');
   const spW=[28,27,27,27,27,27,27];
+  // Blank stays an em-dash so an unrecorded test never reads as a zero result.
+  const spV=id=>{const el=document.getElementById(id);const v=(el?.value||'').trim();return v===''?'—':v;};
+  const spRow=(label,base)=>[label,spV(base+'-meas'),spV(base+'-pred'),spV(base+'-pct'),
+                             spV(base+'-post'),spV(base+'-post-pct'),spV(base+'-chg')];
   tblRow(['Measure','Measured','Predicted','% Predicted','Post Broncho.','% Predicted','% Change'],spW,true);
-  tblRow(['FEV1','—','—','—','—','—','—'],spW,false,false);
-  tblRow(['FEV1/FVC','—','—','—','—','—','—'],spW,false,true);
-  tblRow(['PEFR','—','—','—','—','—','—'],spW,false,false);
+  tblRow(spRow('FEV1','spiro-fev1'),spW,false,false);
+  tblRow(spRow('FVC','spiro-fvc'),spW,false,true);
+  // The ratio row has no post-bronchodilator %-predicted or %-change field
+  // on screen, so those two cells resolve to em-dashes.
+  tblRow(spRow('FEV1/FVC','spiro-ratio'),spW,false,false);
+  tblRow(spRow('PEF','spiro-pefr'),spW,false,true);
   y+=4; twoCol('Pattern',getChip('spiro-pattern','—'),'Interpretation',getSmart('clin-spirometry','Not recorded'));
 
   secHeader('Urinalysis');
-  threeCol('Blood','—','Protein','—','Glucose','—');
+  threeCol('Blood',getChip('urine-blood','—'),'Protein',getChip('urine-protein','—'),'Glucose',getChip('urine-glucose','—'));
   fullRow('Comments',getSmart('clin-urinalysis','All parameters within normal limits'));
 
   secHeader('Vision & Colour Vision');
   const vW=[30,27,27,27,27,27,27];
   tblRow(['Distance','Unaided R','Unaided L','Unaided Both','Aided R','Aided L','Aided Both'],vW,true);
-  tblRow(['Distance (6/)','6/','6/','6/','6/','6/','6/'],vW,false,false);
-  tblRow(['Near 40cm (N)','N','N','N','N','N','N'],vW,false,true);
+  // The clinician types the full acuity (e.g. "6/6", "N6"), so the value is
+  // printed as entered; the aided columns stay em-dashed when no glasses or
+  // lenses were worn.
+  const vV=id=>{const el=document.getElementById(id);const v=(el?.value||'').trim();return v===''?'—':v;};
+  tblRow(['Distance (6/)',vV('vis-dist-ua-r'),vV('vis-dist-ua-l'),vV('vis-dist-ua-b'),
+                          vV('vis-dist-a-r'),vV('vis-dist-a-l'),vV('vis-dist-a-b')],vW,false,false);
+  tblRow(['Near 40cm (N)',vV('vis-near-ua-r'),vV('vis-near-ua-l'),vV('vis-near-ua-b'),
+                          vV('vis-near-a-r'),vV('vis-near-a-l'),vV('vis-near-a-b')],vW,false,true);
   y+=4; fullRow('Colour Vision',getSmart('clin-vision','Not recorded'));
 
   newPage();
@@ -8273,8 +8737,11 @@ function buildPDF() {
   secHeader('3-Minute Step Test');
   doc.setFontSize(7.5); doc.setFont('helvetica','italic'); doc.setTextColor(...MID);
   doc.text('300mm step · Metronome 96 bpm · Up-Up-Down-Down',ML,y); y+=7;
-  threeCol('Baseline HR','—','3-Minute HR','—','1-Min Post HR','—');
-  threeCol('Result',getChip('step-result','—'),'Pain Rating','—','RPE','—');
+  const stV=id=>val(id).trim()||'—';
+  const stScore=id=>{const v=val(id).trim();return v?v+'/10':'—';};
+  threeCol('Max HR for Test',stV('st-maxhr'),'Baseline HR',stV('st-base'),'3-Minute HR',stV('st-3min'));
+  threeCol('1-Min Post HR',stV('st-post'),'Pain Rating',stScore('st-pain'),'RPE',stScore('st-rpe'));
+  fullRow('Result',getChip('step-result','—'));
   fullRow('Notes',getSmart('clin-steptest','Not recorded'));
 
   newPage();
@@ -8314,7 +8781,7 @@ function buildPDF() {
   doc.setFillColor(...LIGHT_BG); doc.setDrawColor(...BORDER_COL); doc.setLineWidth(0.3);
   doc.roundedRect(ML,y,CW,16,1,1,'FD');
   doc.setFontSize(7.5); doc.setFont('helvetica','italic'); doc.setTextColor(...MID);
-  const disc2='This assessment provides objective information regarding the applicant\'s demonstrated functional capacity. The findings and recommendations are provided to assist the employer in making an informed placement decision. The determination of suitability for employment remains the responsibility of the employer. Absolute Injury Management does not make employment decisions and accepts no responsibility for placement outcomes.';
+  const disc2='This assessment provides objective information regarding the applicant\'s demonstrated functional capacity. The findings and recommendations are provided to assist the employer in making an informed placement decision. The determination of suitability for employment remains the responsibility of the employer. ' + CLINIC.name + ' does not make employment decisions and accepts no responsibility for placement outcomes.';
   doc.text(doc.splitTextToSize(disc2,CW-8),ML+4,y+5); y+=20;
 
   secHeader('Assessor Declaration');
@@ -8322,7 +8789,7 @@ function buildPDF() {
   const aName=document.getElementById('assessor-name')?.value || assessorSec?.querySelectorAll('input')[0]?.value||'—';
   const assessorQual=document.getElementById('assessor-qual')?.value||'Physiotherapist';
   const assessorAHPRA=document.getElementById('assessor-ahpra')?.value||'—';
-  const assessorClinic=document.getElementById('assessor-clinic')?.value||'Absolute Injury Management';
+  const assessorClinic=document.getElementById('assessor-clinic')?.value||CLINIC.name;
   const assessorAddress=document.getElementById('assessor-address')?.value||'';
   const assessorPhone=document.getElementById('assessor-phone')?.value||'';
   const assessorEmail=document.getElementById('assessor-email')?.value||'';
@@ -8352,7 +8819,7 @@ function buildPDF() {
   checkY(14);
   doc.setFillColor(...BLACK); doc.rect(ML,y,CW,12,'F');
   doc.setFontSize(7.5); doc.setFont('helvetica','normal'); doc.setTextColor(180,181,165);
-  doc.text('Absolute Injury Management  ·  absoluteim.com.au',ML+4,y+5);
+  doc.text(CLINIC.name + '  ·  ' + CLINIC.address + '  ·  ' + CLINIC.phone,ML+4,y+5);
   doc.text('Generated: '+new Date().toLocaleString('en-AU'),PW-MR,y+5,{align:'right'});
   doc.setTextColor(...OLIVE_DARK); doc.setFont('helvetica','bold');
   doc.text('CONFIDENTIAL MEDICAL DOCUMENT',PW/2,y+10,{align:'center'});
@@ -9121,8 +9588,13 @@ function renderApptFceConfig() {
     });
     pHtml += '<div style="color:var(--mid);font-size:11px;margin-top:6px">Histories, baseline, ROM, postural analysis, manual handling and determination are always included.</div>';
     // PEFA MH weights come from the pre-employment form tables, not classification_config
-    var pTable = pefaMhTable((document.getElementById('appt-classification') || {}).value);
-    pHtml += '<div style="color:var(--olive-light);font-size:11px;margin-top:8px">Manual handling occasional maxima: floor lift / carry <strong>' + pTable[0].occ + '</strong> · ' + pTable[2].name.replace('Lifting: ', '') + ' <strong>' + pTable[2].occ + '</strong> · pulling <strong>' + pTable[3].occ + '</strong></div>';
+    var pClass = (document.getElementById('appt-classification') || {}).value || '';
+    var pTable = pefaMhTable(pClass);
+    if (pTable) {
+      pHtml += '<div style="color:var(--olive-light);font-size:11px;margin-top:8px">Manual handling occasional maxima: floor lift / carry <strong>' + pTable[0].occ + '</strong> · ' + pTable[2].name.replace('Lifting: ', '') + ' <strong>' + pTable[2].occ + '</strong> · pulling <strong>' + pTable[3].occ + '</strong></div>';
+    } else {
+      pHtml += '<div style="color:#e05252;font-size:11px;margin-top:8px;font-weight:600">No PEFA manual handling weight table exists for the classification &ldquo;' + escFce(pClass || '(none)') + '&rdquo;. PEFA supports Medium and Heavy only &mdash; this appointment cannot be created with this classification.</div>';
+    }
     body.innerHTML = pHtml;
     return;
   }
@@ -9174,14 +9646,12 @@ function collectApptFceConfig() {
   return cfg;
 }
 
-// PEFA: only the classification weight applies — FCE task overrides are ignored
+// PEFA: classification + section toggles only. MH weights are resolved from
+// PEFA_MH_TABLES at render/PDF time — the FCE classification_config maxima
+// (max_weight_kg) must never be stored on or read by a PEFA.
 function collectApptPefaConfig() {
-  var clientId = (document.getElementById('appt-client') || {}).value || '';
-  var client = getClients().find(function(c) { return c.id === clientId; });
-  var classCfg = getApptClassCfg(client);
   var cfg = {
     classification: (document.getElementById('appt-classification') || {}).value || '',
-    max_weight_kg: (classCfg && classCfg.max_weight_kg) || null,
     sections: {}
   };
   document.querySelectorAll('#appt-fce-config-body [data-pefa-section]').forEach(function(cb) {
@@ -9211,6 +9681,16 @@ async function createAppointment() {
   var client = clients.find(function(c) { return c.id === clientId; }) || clients[0];
   var token = generateToken8();
   var assessmentType = getApptAssessmentType();
+
+  // PEFA weights come only from PEFA_MH_TABLES — a classification without a
+  // table entry must block the booking, never fall back to a default weight
+  if (assessmentType === 'pefa') {
+    var pefaClass = (document.getElementById('appt-classification') || {}).value || '';
+    if (!pefaMhTable(pefaClass)) {
+      alert('Cannot create this PEFA appointment.\n\nNo PEFA manual handling weight table exists for the classification "' + (pefaClass || '(none)') + '". PEFA supports Medium and Heavy only — choose one of those, or book an FCE for other classifications.');
+      return;
+    }
+  }
 
   if (btn) { btn.textContent = 'Creating...'; btn.disabled = true; }
 
@@ -9247,7 +9727,7 @@ async function createAppointment() {
     var dateStr = d.toLocaleDateString('en-AU', { day: 'numeric', month: 'long' });
     var timeStr = apptTime ? formatApptTime(apptTime) : '';
 
-    var sms = 'Hi ' + firstName + ', your pre-employment medical assessment with Absolute Injury Management is on ' + dayStr + ' ' + dateStr + ' at ' + timeStr + '. Please complete your health questionnaire before your appointment — it takes about 10 minutes on your phone:\n\npema.absoluteim.com.au/q/' + token + '\n\nPlease complete this before your appointment. See you soon — AIM Team';
+    var sms = 'Hi ' + firstName + ', your pre-employment medical assessment with ' + CLINIC.name + ' is on ' + dayStr + ' ' + dateStr + ' at ' + timeStr + '. Please complete your health questionnaire before your appointment — it takes about 10 minutes on your phone:\n\npema.absoluteim.com.au/q/' + token + '\n\nPlease complete this before your appointment. See you soon — AIM Team';
 
     window._lastApptSMS = sms;
 
@@ -10103,7 +10583,9 @@ function renderFceScreen(appt) {
           '<div class="vital-item"><div class="vital-label">RPE</div><input class="vital-input" id="fce-st-rpe" placeholder="0"><div class="vital-unit">/10</div></div>' +
         '</div>' +
         '<div style="margin-top:16px"><label style="font-size:12px;font-weight:700;color:var(--charcoal);text-transform:uppercase;display:block;margin-bottom:8px">Result</label>' +
-        fceChips('fce-st-result', ['Poor', 'Fair', 'Average', 'Good', 'Excellent']) + '</div>' +
+        // Worst-to-best, matching the tick row in the FCE PDF. Order is load-bearing:
+        // saved chip selections are keyed on the onclick string, index included.
+        fceChips('fce-st-result', fitnessRatingLabels().slice().reverse()) + '</div>' +
         '<div style="margin-top:14px"><label style="font-size:11px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.04em;display:block;margin-bottom:6px">Additional Comments</label>' +
         fceSmartField('fce-st-comments', 'Step test comments...') + '</div>' +
       '</div></div>');
@@ -10259,6 +10741,10 @@ function selectFceChip(el, group) {
   var container = el.closest('.fce-chips');
   if (container) container.querySelectorAll('.option-chip').forEach(function(c) { c.classList.remove('selected-normal'); });
   el.classList.add('selected-normal');
+  if (group === 'fce-st-result') {
+    markStepFitnessOverride('fce', el);
+    applyStepFitnessComment('fce');
+  }
   saveFceDataDebounced();
 }
 
@@ -10801,6 +11287,7 @@ function wireFceAutoSave() {
   if (!screen) return;
   screen.addEventListener('input', function(e) {
     if (e.target.dataset && e.target.dataset.fceHr) checkFceHRBreach(e.target);
+    if (e.target.id === 'fce-st-post') autoSelectStepFitness('fce');
     clearTimeout(_fceAutoSaveTimer);
     var delay = (e.target.tagName === 'TEXTAREA' || e.target.type === 'text' || e.target.type === 'number') ? 800 : 0;
     _fceAutoSaveTimer = setTimeout(saveFceDataToStorage, delay);
@@ -10908,14 +11395,15 @@ function buildFCEPDF() {
     doc.text('FUNCTIONAL CAPACITY EVALUATION', PW - MR, 13, { align: 'right' });
     doc.setFontSize(8.5); doc.setFont('helvetica', 'normal');
     doc.setTextColor(180, 181, 165);
-    doc.text(classification ? classification + ' Classification' : 'Absolute Injury Management', PW - MR, 20, { align: 'right' });
+    doc.text(classification ? classification + ' Classification' : CLINIC.name, PW - MR, 20, { align: 'right' });
   }
   function drawFooter() {
     var p = doc.internal.getCurrentPageInfo().pageNumber;
     doc.setDrawColor.apply(doc, BORDER_COL); doc.setLineWidth(0.3); doc.line(ML, PH - 12, PW - MR, PH - 12);
     doc.setFontSize(7); doc.setTextColor.apply(doc, MID); doc.setFont('helvetica', 'normal');
-    doc.text('www.absoluteim.com.au', ML, PH - 7);
+    doc.text(CLINIC.name, ML, PH - 7);
     doc.text('Page ' + p + ' of ' + TOTAL, PW - MR, PH - 7, { align: 'right' });
+    doc.setFontSize(6); doc.text(CLINIC.contactLine, ML, PH - 3.2);
   }
   function newPage() { doc.addPage(); pageHeader(); drawFooter(); y = 34; }
   function checkY(n) { if (y + (n || 16) > PH - 18) newPage(); }
@@ -11100,11 +11588,22 @@ function buildFCEPDF() {
   // ════ PAGE 1 — Employee Details / Authority / Consent ════
   pageHeader(); drawFooter(); y = 34;
 
-  // Client logo, top-right of page 1 content (skipped gracefully when absent)
+  // Client logo, top-right of page 1 content (skipped gracefully when absent).
+  // Scaled to fit a 34×12mm box preserving aspect, right-aligned to the
+  // margin and vertically centred in the 32–44mm band, so no aspect ratio
+  // can cross the right margin. The first section bar is full-width and
+  // painted after the logo, so page-1 content starts below the band (y=46)
+  // whenever a logo is drawn — the bar would otherwise cover it.
   var clientLogo = getLogoDataUrl('client');
   if (clientLogo) {
-    var fmt = /^data:image\/jpe?g/i.test(clientLogo) ? 'JPEG' : 'PNG';
-    try { doc.addImage(clientLogo, fmt, PW - MR - 34, y - 2, 0, 12); } catch(e) {}
+    try {
+      var lProps = doc.getImageProperties(clientLogo);
+      var lScale = Math.min(34 / lProps.width, 12 / lProps.height);
+      var lw = lProps.width * lScale, lh = lProps.height * lScale;
+      var fmt = /^data:image\/jpe?g/i.test(clientLogo) ? 'JPEG' : 'PNG';
+      doc.addImage(clientLogo, fmt, PW - MR - lw, 32 + (12 - lh) / 2, lw, lh);
+      y = 46;
+    } catch(e) {}
   }
 
   secBar('Employee Details');
@@ -11241,15 +11740,13 @@ function buildFCEPDF() {
     note('300mm Step. Metronome @ 96 beats per minute in an Up-Up-Down-Down pattern. Lead legs can be alternated at the discretion of the applicant. Prompt applicant to maintain pace and cease testing should HR limit be exceeded.');
     fieldRow([['Max HR for Test', val('fce-st-maxhr')], ['Baseline HR', val('fce-st-base')], ['3-Minute HR', val('fce-st-3min')], ['1-Min Post HR', val('fce-st-post')]]);
     fieldRow([['Pain Rating', val('fce-st-pain') ? val('fce-st-pain') + '/10' : ''], ['RPE', val('fce-st-rpe') ? val('fce-st-rpe') + '/10' : '']]);
-    refTable(['Fitness Level', 'Male (bpm)', 'Female (bpm)', 'Percentile'],
-      [['Excellent', '<71', '<97', '90th'], ['Good', '71-102', '97-127', '75th'], ['Average', '103-117', '128-142', '50th'], ['Fair', '118-147', '143-171', '25th'], ['Poor', '148+', '172+', '10th']],
-      [CW - 3 * 36, 36, 36, 36]);
+    refTable(FITNESS_TABLE_HEADERS, fitnessTableRows('-'), [CW - 3 * 36, 36, 36, 36]);
     checkY(8);
     var stx = ML + 1, stSel = chipText('fce-st-result');
     doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.setTextColor.apply(doc, CHARCOAL);
     doc.text('Result:', stx, y + 2.8); stx += 14;
     doc.setFont('helvetica', 'normal'); doc.setFontSize(7.2);
-    ['Poor', 'Fair', 'Average', 'Good', 'Excellent'].forEach(function(o) {
+    fitnessRatingLabels().slice().reverse().forEach(function(o) {
       tickBox(stx, y, o === stSel);
       doc.text(o, stx + 4.4, y + 2.7);
       stx += 4.4 + doc.getTextWidth(o) + 7;
@@ -11621,7 +12118,7 @@ async function startFCE(btnEl, token) {
 
 const PEFA_AUTHORITY_TEXT = 'For the purpose of this Pre-Employment Medical Assessment, you are required to disclose any previous or pre-existing injuries or conditions of which you are aware. This includes conditions that might affect or be affected by your proposed employment. The information obtained will be used only for the purpose of your application for employment and will not be provided to any other party without your prior consent.';
 const PEFA_CONSENT_TEXT = 'This assessment is a test of your capacity to complete the inherent requirements of the position you are applying for. You will be expected to set your own limits and will not be asked to undertake any task you feel you cannot perform safely. The assessor will cease the assessment at any stage if in their opinion it is unsafe to proceed. Each task will be explained to you in full before testing.';
-const PEFA_DECLARATION_TEXT = '<strong>I declare that:</strong> The information I have provided is true and complete to the best of my knowledge. I authorise Absolute Injury Management to obtain and release my medical information to my prospective employer for the purpose of this assessment only. I consent to proceed with the assessment and confirm there are no reasons I cannot safely participate. I am aware that failure to disclose relevant health information may affect my employment application.';
+const PEFA_DECLARATION_TEXT = '<strong>I declare that:</strong> The information I have provided is true and complete to the best of my knowledge. I authorise ' + CLINIC.name + ' to obtain and release my medical information to my prospective employer for the purpose of this assessment only. I consent to proceed with the assessment and confirm there are no reasons I cannot safely participate. I am aware that failure to disclose relevant health information may affect my employment application.';
 const PEFA_OUTCOMES = [
   { code: 'A', title: 'Demonstrated functional capacity consistent with the role — No restrictions or recommendations', desc: 'All tasks completed with 0/10 pain, technique within normal limits, and HR within testing parameters throughout.' },
   { code: 'B', title: 'Demonstrated functional capacity consistent with the role — With recommendations for employer consideration', desc: 'Capacity demonstrated. The following recommendations are provided for the employer\'s awareness and consideration in placement planning.' },
@@ -11652,8 +12149,17 @@ const PEFA_MH_TABLES = {
     { name: 'Pulling (resistance band, 2× length, controlled return)', occ: '24kg', freq: '18kg' }
   ]
 };
+// Returns null for any classification without a PEFA_MH_TABLES entry —
+// callers must fail loudly (visible error at booking or assessment time)
+// rather than fall back to a default. A wrong weight printed in a report is
+// worse than a blocked booking. Accepts "Medium"/"Heavy" with an optional
+// trailing parenthetical (e.g. "Medium (9–23 kg occasional)"); "Very Heavy",
+// "Light", "Sedentary" etc. deliberately do NOT match.
 function pefaMhTable(classification) {
-  return PEFA_MH_TABLES[/heavy/i.test(classification || '') ? 'Heavy' : 'Medium'];
+  var m = String(classification || '').trim().match(/^(medium|heavy)\s*(\(.*)?$/i);
+  if (!m) return null;
+  var key = m[1].charAt(0).toUpperCase() + m[1].slice(1).toLowerCase();
+  return PEFA_MH_TABLES[key] || null;
 }
 
 function pefaSectionShell(id, title, desc, bodyHtml) {
@@ -11697,8 +12203,10 @@ function renderPefaScreen(appt) {
   var cfg = appt.pefa_config || {};
   var sections = cfg.sections || {};
   var on = function(key) { return sections[key] !== false; };
-  var maxKg = cfg.max_weight_kg || null;
-  var mhTable = pefaMhTable(cfg.classification);
+  var mhTable = pefaMhTable(cfg.classification || appt.client_classification);
+  if (!mhTable) {
+    throw new Error('No PEFA manual handling weight table exists for the classification "' + (cfg.classification || appt.client_classification || '(none)') + '". PEFA supports Medium and Heavy only — re-book this appointment with a supported classification.');
+  }
   var ladderReps = /very heavy/i.test(cfg.classification || '') ? 30 : /heavy/i.test(cfg.classification || '') ? 25 : 20;
 
   document.getElementById('pefa-bar-name').textContent = ((appt.patient_first_name || '') + ' ' + (appt.patient_last_name || '')).trim() || '—';
@@ -11893,13 +12401,7 @@ function renderPefaScreen(appt) {
   if (on('step_test')) {
     html += pefaSectionShell('pefa-steptest', '3-Minute Step Test', '300mm step. Metronome at 96 bpm, Up-Up-Down-Down pattern. Lead legs can alternate. Cease if HR limit exceeded.',
       '<div style="overflow-x:auto;margin-bottom:16px"><table style="width:100%;border-collapse:collapse;font-size:11.5px">' +
-        '<thead><tr><th style="background:var(--charcoal);color:white;padding:6px 8px;text-align:left">Fitness Level</th><th style="background:var(--charcoal);color:white;padding:6px 8px;text-align:center">Male (bpm)</th><th style="background:var(--charcoal);color:white;padding:6px 8px;text-align:center">Female (bpm)</th><th style="background:var(--charcoal);color:white;padding:6px 8px;text-align:center">Percentile</th></tr></thead>' +
-        '<tbody>' +
-        [['Excellent', '<71', '<97', '90th'], ['Good', '71–102', '97–127', '75th'], ['Average', '103–117', '128–142', '50th'], ['Fair', '118–147', '143–171', '25th'], ['Poor', '148+', '172+', '10th']].map(function(row, ri) {
-          return '<tr' + (ri % 2 === 0 ? ' style="background:var(--olive-ultra)"' : '') + '>' + row.map(function(c, ci) {
-            return '<td style="padding:5px 8px;border-bottom:1px solid var(--border)' + (ci ? ';text-align:center' : '') + '">' + c + '</td>';
-          }).join('') + '</tr>';
-        }).join('') + '</tbody></table>' +
+        fitnessTableHTML('–') + '</table>' +
         '<div style="font-size:10px;color:var(--mid);margin-top:4px;font-style:italic">⚠ Results unreliable if applicant is on beta-blocker medication (HR response blunted)</div></div>' +
       '<div class="clin-card"><div class="clin-card-header"><h3>Step Test Results</h3></div><div class="clin-card-body">' +
         '<div class="vitals-grid">' +
@@ -11911,7 +12413,7 @@ function renderPefaScreen(appt) {
           '<div class="vital-item"><div class="vital-label">RPE</div><input class="vital-input" id="pefa-st-rpe" placeholder="0"><div class="vital-unit">/10</div></div>' +
         '</div>' +
         '<div style="margin-top:16px"><label style="font-size:12px;font-weight:700;color:var(--charcoal);text-transform:uppercase;display:block;margin-bottom:8px">Result</label>' +
-        pefaChips('pefa-st-result', ['Excellent', 'Good', 'Average', 'Fair', 'Poor', 'Not completed']) + '</div>' +
+        pefaChips('pefa-st-result', fitnessRatingLabels(true)) + '</div>' +
         '<div class="smart-field" style="margin-top:14px"><textarea class="smart-textarea" id="pefa-st-comments" placeholder="Step test comments..."></textarea>' +
           '<div class="prompt-chips">' +
           pefaPromptChip('3-minute step test completed without difficulty. Heart rate response appropriate. Good cardiovascular fitness demonstrated.', 'Completed — good fitness') +
@@ -12001,7 +12503,7 @@ function renderPefaScreen(appt) {
 
   // ── Fitness outcome (PEMA outcomes page — format and wording) ──
   html += pefaSectionShell('pefa-outcome', 'Fitness for Capacity Outcome', 'Select the outcome that best reflects the assessment findings. The employer determines suitability for employment — this assessment provides objective capacity information only.',
-    '<div class="alert alert-info">This assessment provides objective capacity data. Absolute Injury Management does not make employment decisions. The determination of suitability for employment remains the responsibility of the employer.</div>' +
+    '<div class="alert alert-info">This assessment provides objective capacity data. ' + CLINIC.name + ' does not make employment decisions. The determination of suitability for employment remains the responsibility of the employer.</div>' +
     '<div class="clin-card"><div class="clin-card-header"><h3>In the opinion of the assessor, the applicant has:</h3></div><div class="clin-card-body">' +
       '<div class="outcome-options" id="pefa-outcome-options">' +
       PEFA_OUTCOMES.map(function(o) {
@@ -12033,7 +12535,7 @@ function renderPefaScreen(appt) {
         '<div class="form-group"><label>Assessment Date</label><input class="form-control" type="date" id="pefa-assessor-date"></div>' +
       '</div>' +
       '<div class="form-row">' +
-        '<div class="form-group"><label>Clinic Name</label><input class="form-control" id="pefa-assessor-clinic" placeholder="Absolute Injury Management"></div>' +
+        '<div class="form-group"><label>Clinic Name</label><input class="form-control" id="pefa-assessor-clinic" placeholder="' + CLINIC.name + '"></div>' +
         '<div class="form-group"><label>Clinic Phone</label><input class="form-control" id="pefa-assessor-phone" placeholder="07 XXXX XXXX"></div>' +
       '</div>' +
       '<div class="q-card" style="margin-top:16px"><div class="q-label" style="margin-bottom:10px">Assessor Signature</div>' +
@@ -12094,10 +12596,14 @@ function showPefaSection(id, navItem) {
   window.scrollTo(0, 0);
 }
 
-function selectPefaChip(el) {
+function selectPefaChip(el, group) {
   var container = el.closest('.fce-chips');
   if (container) container.querySelectorAll('.option-chip').forEach(function(c) { c.classList.remove('selected-normal'); });
   el.classList.add('selected-normal');
+  if (group === 'pefa-st-result') {
+    markStepFitnessOverride('pefa', el);
+    applyStepFitnessComment('pefa');
+  }
   savePefaDataDebounced();
 }
 
@@ -12507,6 +13013,7 @@ function wirePefaAutoSave() {
   if (!screen) return;
   screen.addEventListener('input', function(e) {
     if (e.target.dataset && e.target.dataset.pefaHr) checkPefaHRBreach(e.target);
+    if (e.target.id === 'pefa-st-post') autoSelectStepFitness('pefa');
     clearTimeout(_pefaAutoSaveTimer);
     var delay = (e.target.tagName === 'TEXTAREA' || e.target.type === 'text' || e.target.type === 'number') ? 800 : 0;
     _pefaAutoSaveTimer = setTimeout(savePefaDataToStorage, delay);
@@ -12644,8 +13151,10 @@ function buildPEFAPDF() {
   var sections = cfg.sections || {};
   var enabled = function(key, domId) { return sections[key] !== false && !!document.getElementById(domId); };
   var classification = cfg.classification || appt.client_classification || '';
-  var maxKg = cfg.max_weight_kg || null;
   var mhTable = pefaMhTable(classification);
+  if (!mhTable) {
+    throw new Error('No PEFA manual handling weight table exists for the classification "' + (classification || '(none)') + '" — the report cannot state manual handling weights. PEFA supports Medium and Heavy only.');
+  }
 
   var OLIVE = [109, 111, 87], BLACK = [26, 26, 24], CHARCOAL = [46, 46, 42], MID = [107, 107, 101],
       LIGHT_BG = [247, 247, 244], BORDER_COL = [221, 221, 213], WHITE = [255, 255, 255];
@@ -12660,11 +13169,12 @@ function buildPEFAPDF() {
     var p = doc.internal.getCurrentPageInfo().pageNumber;
     doc.setDrawColor.apply(doc, BORDER_COL); doc.setLineWidth(0.3); doc.line(ML, PH - 12, PW - MR, PH - 12);
     doc.setFontSize(7); doc.setTextColor.apply(doc, MID); doc.setFont('helvetica', 'normal');
-    doc.text('Absolute Injury Management', ML, PH - 7);
+    doc.text(CLINIC.name, ML, PH - 7);
     doc.setFont('helvetica', 'bold'); doc.setTextColor.apply(doc, OLIVE);
     doc.text('CONFIDENTIAL', PW / 2, PH - 7, { align: 'center' });
     doc.setFont('helvetica', 'normal'); doc.setTextColor.apply(doc, MID);
     doc.text('Page ' + p + ' of ' + TOTAL, PW - MR, PH - 7, { align: 'right' });
+    doc.setFontSize(6); doc.text(CLINIC.contactLine, ML, PH - 3.2);
   }
   function newPage() { doc.addPage(); y = 14; drawFooter(); }
   function checkY(n) { if (y + (n || 16) > PH - 18) newPage(); }
@@ -13432,6 +13942,10 @@ function restoreClinicianData(data) {
     document.getElementById('ats-yes')?.classList.toggle('selected-yes', atsVal === 'yes');
     document.getElementById('ats-no')?.classList.toggle('selected-no', atsVal === 'no');
   }
+  // Secondary ATS question — reveal it and repaint, since it only shows on 'no'
+  if (typeof syncSpiroUsable === 'function') syncSpiroUsable();
+  // Otoscopy buttons repaint from the restored hidden inputs
+  if (typeof otoSyncButtons === 'function') otoSyncButtons();
 }
 
 function clearClinicianSession() {
@@ -13532,6 +14046,7 @@ function wireClinicianAutoSave() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  hydrateClinicDetails();
   initPatientMode();
   loadSavedLogos();
   initAdmin();
@@ -13569,6 +14084,8 @@ document.addEventListener('DOMContentLoaded', () => {
   renderPostural();
   renderMSK();
   renderPosturalTol();
+  renderPemaFitnessUI();
+  otoRender();
   renderMHCard(liftingTests, 'mh-lifting-cards');
   renderMHCard(carryingTests, 'mh-carrying-cards');
   renderInjuryQs();
