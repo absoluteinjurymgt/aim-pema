@@ -1134,6 +1134,30 @@
   }
   .mh-field input:focus, .mh-field select:focus { border-color: var(--olive); }
 
+  /* One-tap "0" for pain fields. Absolutely positioned inside the input's
+     corner so it occupies no layout space — field widths, row heights and
+     wrapping are untouched on every screen size. */
+  .pain-zero {
+    position: absolute;
+    right: 4px;
+    bottom: 4px;
+    width: 34px;
+    height: 22px;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--olive-ultra);
+    color: var(--olive);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1;
+    padding: 0;
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+  .pain-zero:active { background: var(--olive); color: white; }
+  .vital-item .pain-zero { bottom: auto; top: 50%; transform: translateY(-50%); right: 8px; }
+
 
   .outcome-options {
     display: flex;
@@ -3417,6 +3441,97 @@ var CLINIC = {
 // Second footer line on every report: address · phone · website.
 CLINIC.contactLine = CLINIC.address + '  ·  ' + CLINIC.phone + '  ·  ' + CLINIC.web;
 
+// ─── SHARED: CLINIC-LOCAL CALENDAR DATES ────────────────────────────────────
+// Every calendar date in the app is an Australia/Melbourne date, explicitly —
+// never the device timezone and never UTC. new Date().toISOString() is the
+// UTC instant, which is still "yesterday" for the first 10–11 hours of every
+// Melbourne day (the whole working morning), so it must never be used to
+// derive a calendar date. Reports can also be reviewed from a device set
+// elsewhere, so display formatting pins the timezone too. True timestamps
+// (finalised_at, exported_at, autosave updated_at) stay UTC instants and do
+// NOT go through these helpers.
+var CLINIC_TZ = 'Australia/Melbourne';
+function clinicToday(d) { // 'YYYY-MM-DD' in clinic time (en-CA locale emits ISO order)
+  return new Intl.DateTimeFormat('en-CA', { timeZone: CLINIC_TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d || new Date());
+}
+function formatDateAU(iso) { // 'YYYY-MM-DD…' → 'DD/MM/YYYY' by string slicing — no Date parsing, no timezone shift
+  var m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? m[3] + '/' + m[2] + '/' + m[1] : String(iso || '');
+}
+function clinicTodayAU(d) { return formatDateAU(clinicToday(d)); }
+
+// ─── SHARED: PAIN ZERO-BUTTONS + NUMERIC KEYBOARDS ──────────────────────────
+// One-tap "0" beside every pain field (all three assessment types). The
+// button writes the value only when tapped — a blank field still means NOT
+// RECORDED and prints as an em-dash; nothing is defaulted and there is no
+// touched/untouched state. The tap behaves exactly like typing: same value,
+// same bubbled input/change events, same autosave and downstream treatment.
+// Idempotent — safe to call after every screen render.
+function addPainZeroButtons() {
+  function attach(container, input) {
+    if (!input || input.readOnly || input.disabled) return;
+    if (container.querySelector('.pain-zero')) return;
+    if (getComputedStyle(container).position === 'static') container.style.position = 'relative';
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'pain-zero';
+    b.textContent = '0';
+    b.setAttribute('aria-label', 'Set pain to 0');
+    b.addEventListener('click', function() {
+      input.value = '0';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    container.appendChild(b);
+  }
+  document.querySelectorAll('.mh-field, .postural-field').forEach(function(f) {
+    var lbl = f.querySelector('label');
+    if (lbl && /^pain\b/i.test(lbl.textContent.trim())) attach(f, f.querySelector('input'));
+  });
+  document.querySelectorAll('.vital-item').forEach(function(f) {
+    var lbl = f.querySelector('.vital-label');
+    if (lbl && /^pain\b/i.test(lbl.textContent.trim())) attach(f, f.querySelector('input.vital-input'));
+  });
+}
+
+// iPad keyboards: iOS ignores type="number" for keyboard selection in several
+// cases, so numeric fields declare an explicit inputmode — "numeric" for
+// integers (HR, pain, RPE, reps, BP), "decimal" where fractions are valid
+// (spirometry, weights, heights, grip, balance seconds). Field types are NOT
+// changed, so parsing/validation behaviour is identical. Audiometry inputs are
+// deliberately excluded: thresholds can be negative and the iOS numeric pad
+// has no minus key. Idempotent — safe to call after every screen render.
+function applyNumericInputModes() {
+  function modeForLabel(t) {
+    t = (t || '').toLowerCase();
+    if (/pain|\brpe\b|rep(s\b|\s)|blood pressure|heart rate|\bhr\b|bpm|3-minute|1-min post/.test(t)) return 'numeric';
+    if (/\(kg\)|weight|height|\(sec\)|\(cm\)|\btrial\b/.test(t)) return 'decimal';
+    return null;
+  }
+  function set(inp, m) {
+    if (inp && !inp.readOnly && !inp.disabled && !inp.getAttribute('inputmode')) inp.setAttribute('inputmode', m);
+  }
+  document.querySelectorAll('label').forEach(function(lbl) {
+    var m = modeForLabel(lbl.textContent);
+    if (!m) return;
+    var inp = lbl.nextElementSibling;
+    if (!(inp && inp.tagName === 'INPUT')) inp = lbl.parentElement ? lbl.parentElement.querySelector('input') : null;
+    set(inp, m);
+  });
+  document.querySelectorAll('.vital-item').forEach(function(card) {
+    var l = card.querySelector('.vital-label');
+    var m = l && modeForLabel(l.textContent);
+    if (m) card.querySelectorAll('input').forEach(function(inp) { set(inp, m); });
+  });
+  document.querySelectorAll('[data-hr-field], [data-fce-hr], [data-pefa-hr]').forEach(function(inp) { set(inp, 'numeric'); });
+  var DEC_IDS = /^spiro-(fev1|fvc|pefr|ratio)-/;
+  var NUM_IDS = /^(spiro-blows|fce-ct-hrcount)$/;
+  document.querySelectorAll('input[id]').forEach(function(inp) {
+    if (DEC_IDS.test(inp.id)) set(inp, 'decimal');
+    else if (NUM_IDS.test(inp.id)) set(inp, 'numeric');
+  });
+}
+
 // Fills static markup from CLINIC. data-clinic="name" sets an element's text;
 // data-clinic-ph="name" sets an input's placeholder. Prose keeps the clinic
 // name as an inline <span data-clinic="name"></span> so the copy stays readable.
@@ -4054,7 +4169,7 @@ function updateIDDisplay() {
   const type = document.getElementById('id-type')?.value || '—';
   const num = document.getElementById('id-number')?.value || '—';
   const expiry = document.getElementById('id-expiry')?.value;
-  const expiryFmt = expiry ? new Date(expiry).toLocaleDateString('en-AU') : '—';
+  const expiryFmt = expiry ? formatDateAU(expiry) : '—';
   const typeEl = document.getElementById('clin-id-type-display');
   const numEl = document.getElementById('clin-id-num-display');
   const expEl = document.getElementById('clin-id-expiry-display');
@@ -4234,7 +4349,7 @@ function restorePatientSession(data) {
 function showRecoveryBanner(timestamp) {
   if (document.getElementById('pema-recovery-banner')) return;
   var ts = new Date(timestamp);
-  var timeStr = ts.toLocaleDateString('en-AU') + ' at ' + ts.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' });
+  var timeStr = ts.toLocaleDateString('en-AU', { timeZone: CLINIC_TZ }) + ' at ' + ts.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', timeZone: CLINIC_TZ });
   var banner = document.createElement('div');
   banner.id = 'pema-recovery-banner';
   banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:#2e2e2a;border-bottom:2px solid #b07d2e;padding:16px 24px;display:flex;align-items:center;gap:16px;font-family:DM Sans,sans-serif';
@@ -6304,9 +6419,9 @@ function updatePatientSummary() {
   const sname = document.getElementById('pt-surname')?.value || '';
   document.getElementById('clin-pt-name').textContent = fname + ' ' + sname;
   const dob = document.getElementById('pt-dob')?.value;
-  document.getElementById('clin-pt-dob').textContent = dob ? new Date(dob).toLocaleDateString('en-AU') : '—';
+  document.getElementById('clin-pt-dob').textContent = dob ? formatDateAU(dob) : '—';
   document.getElementById('clin-pt-role').textContent = document.getElementById('pt-position')?.value || '—';
-  document.getElementById('clin-date').textContent = new Date().toLocaleDateString('en-AU');
+  document.getElementById('clin-date').textContent = clinicTodayAU();
   calcMaxHR();
 }
 
@@ -7337,7 +7452,7 @@ function preFillKeyFindings() {
 function generateFindingsBullets() {
   const bullets = [];
   const ptName = getInputVal('pt-firstname') + ' ' + getInputVal('pt-surname');
-  const ptDOB = getInputVal('pt-dob') ? new Date(getInputVal('pt-dob')).toLocaleDateString('en-AU') : '—';
+  const ptDOB = getInputVal('pt-dob') ? formatDateAU(getInputVal('pt-dob')) : '—';
   const position = getInputVal('pt-position') || 'the proposed role';
   const classification = (()=>{
     const cls = window._activeClient?.classification || window._activeClient?.classifications?.[0] || 'Medium';
@@ -7627,7 +7742,7 @@ async function finaliseAssessmentAsync() {
   if (!out || !out.doc) throw new Error('PDF could not be generated.');
   var blob = out.doc.output('blob');
   var token = window._currentToken;
-  var path = (token || 'manual-' + new Date().toISOString().split('T')[0] + '-' + Math.random().toString(36).slice(2, 8)) + '/' + out.filename;
+  var path = (token || 'manual-' + clinicToday() + '-' + Math.random().toString(36).slice(2, 8)) + '/' + out.filename;
 
   try {
     await sbStorageUpload(path, blob);
@@ -8237,13 +8352,13 @@ function buildPDF() {
 
   const ptFirst=val('pt-firstname'),ptLast=val('pt-surname');
   const ptName=(ptFirst+' '+ptLast).trim()||'Not recorded';
-  const ptDOB=val('pt-dob')?new Date(val('pt-dob')).toLocaleDateString('en-AU'):'—';
+  const ptDOB=val('pt-dob')?formatDateAU(val('pt-dob')):'—';
   doc.setFillColor(...WHITE); doc.setDrawColor(...BORDER_COL); doc.setLineWidth(0.3);
   doc.roundedRect(ML,y,CW,48,1.5,1.5,'FD');
   doc.setFillColor(...OLIVE); doc.roundedRect(ML,y,3,48,1,1,'F');
   doc.setFontSize(14); doc.setFont('helvetica','bold'); doc.setTextColor(...BLACK); doc.text(ptName,ML+8,y+12);
   doc.setFontSize(8); doc.setFont('helvetica','normal'); doc.setTextColor(...MID); doc.text('APPLICANT',ML+8,y+18);
-  const apptDate=val('pt-appt-date')?new Date(val('pt-appt-date')).toLocaleDateString('en-AU'):'—';
+  const apptDate=val('pt-appt-date')?formatDateAU(val('pt-appt-date')):'—';
   const apptTime=val('pt-appt-time')||'—';
   const apptStr=apptDate+(apptTime!=='—'?' at '+apptTime:'');
   const infoItems=[['Date of Birth',ptDOB],['Phone',val('pt-phone')||'—'],['Position Applied For',val('pt-position')||'—'],['Site / Location',val('pt-site')||'—'],['Appointment',apptStr],['Client',(window._activeClient?.name||'Not set')]];
@@ -8306,13 +8421,13 @@ function buildPDF() {
   }
   doc.setFontSize(7); doc.setFont('helvetica','normal'); doc.setTextColor(...MID);
   doc.text('Name: '+ptName,ML+3,y+34);
-  doc.text('Date: '+new Date().toLocaleDateString('en-AU'),ML+CW-3,y+34,{align:'right'});
+  doc.text('Date: '+clinicTodayAU(),ML+CW-3,y+34,{align:'right'});
   y+=40;
 
   secHeader('Identity Confirmation');
   const idType=(()=>{const el=document.getElementById('id-type');return el?.value||'Not provided';})();
   const idNum=val('id-number')||'Not provided';
-  const idExpiry=(()=>{const v=val('id-expiry');return v?new Date(v).toLocaleDateString('en-AU'):'Not provided';})();
+  const idExpiry=(()=>{const v=val('id-expiry');return v?formatDateAU(v):'Not provided';})();
   const idConfirmed=document.getElementById('id-confirmed')?.value==='yes';
   threeCol('ID Type',idType,'ID Number',idNum,'Expiry Date',idExpiry);
   checkY(12);
@@ -8813,19 +8928,19 @@ function buildPDF() {
   }
   doc.setFontSize(7); doc.setFont('helvetica','normal'); doc.setTextColor(...MID);
   doc.text('Name: '+aName+'   |   '+assessorQual,ML+4,y+30);
-  doc.text('Date: '+new Date().toLocaleDateString('en-AU'),ML+CW-4,y+30,{align:'right'});
+  doc.text('Date: '+clinicTodayAU(),ML+CW-4,y+30,{align:'right'});
   y+=38;
 
   checkY(14);
   doc.setFillColor(...BLACK); doc.rect(ML,y,CW,12,'F');
   doc.setFontSize(7.5); doc.setFont('helvetica','normal'); doc.setTextColor(180,181,165);
   doc.text(CLINIC.name + '  ·  ' + CLINIC.address + '  ·  ' + CLINIC.phone,ML+4,y+5);
-  doc.text('Generated: '+new Date().toLocaleString('en-AU'),PW-MR,y+5,{align:'right'});
+  doc.text('Generated: '+new Date().toLocaleString('en-AU',{timeZone:CLINIC_TZ}),PW-MR,y+5,{align:'right'});
   doc.setTextColor(...OLIVE_DARK); doc.setFont('helvetica','bold');
   doc.text('CONFIDENTIAL MEDICAL DOCUMENT',PW/2,y+10,{align:'center'});
   drawFooter();
 
-  const dateStr = new Date().toISOString().split('T')[0];
+  const dateStr = clinicToday();
   const filename = 'AIM_PEMA_' + (ptLast.replace(/\s+/g, '_') || 'Applicant') + '_' + dateStr + '.pdf';
   secClose();
   return { doc: doc, filename: filename };
@@ -8908,7 +9023,7 @@ const mskTests = [
   { name: 'Straight Leg Raise', method: '(Lumbar neural tension — record L & R separately)', opts: ['Full range bilaterally (90°+)','Bilateral 60–90° (normal range)','Left 60–90° (normal range)','Right 60–90° (normal range)','Limited — Left (<60°)','Limited — Right (<60°)','Limited bilateral (<60°)','Positive neural tension — Left','Positive neural tension — Right','Positive bilateral'] },
   { name: 'Slump Test', method: '(Neural mechanosensitivity)', opts: ['Normal','Pain — L','Pain — R','Pain — Bilateral','Restricted'] },
   { name: 'Resisted Wrist Extension', method: '(Lateral epicondyle loading)', opts: ['Normal bilaterally','Pain — Right','Pain — Left','Pain — Bilateral'] },
-  { name: 'Prone Plank Hold', method: '(Core stability — 90 sec threshold)', opts: ['Threshold achieved (≥90 sec)','Threshold not reached — time recorded','Not completed'] },
+  { name: 'Prone Plank Hold', method: '(Core stability — 60 sec threshold)', opts: ['Threshold achieved (≥60 sec)','Threshold not reached (30–60 sec) — time recorded','Threshold not reached (<30 sec) — time recorded','Not completed'] },
 ];
 function selectSLR(btn, oi) {
   var card = btn.closest('.clin-card');
@@ -10000,7 +10115,7 @@ async function clearPastUnstarted(btnEl) {
   var orig = btnEl ? btnEl.textContent : '';
   if (btnEl) { btnEl.textContent = 'Checking…'; btnEl.disabled = true; }
   try {
-    var today = new Date().toISOString().split('T')[0];
+    var today = clinicToday();
     var candidates = await sbSelect('appointments', 'status=eq.pending&appointment_date=lt.' + today + '&select=token,appointment_date') || [];
     if (candidates.length) {
       var inList = '(' + candidates.map(function(a) { return a.token; }).join(',') + ')';
@@ -10685,11 +10800,13 @@ function renderFceScreen(appt) {
   setTimeout(function() {
     ['fce-sig-auth', 'fce-sig-consent', 'fce-sig-assessor'].forEach(function(id) { initSig(id, id + '-ph'); });
   }, 60);
-  var today = new Date().toISOString().split('T')[0];
+  var today = clinicToday();
   ['fce-auth-date', 'fce-consent-date', 'fce-signoff-date'].forEach(function(id) {
     var el = document.getElementById(id);
     if (el && !el.value) el.value = today;
   });
+  addPainZeroButtons();
+  applyNumericInputModes();
 
   // Prefill from the appointment
   function setVal(id, v) { var el = document.getElementById(id); if (el && v) el.value = v; }
@@ -11934,9 +12051,8 @@ function buildFCEPDF() {
   var firstInitial = ((val('fce-firstname') || appt.patient_first_name || '').charAt(0) || '').toUpperCase();
   var clientPart = (appt.client_name || '').toUpperCase().replace(/[^A-Z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
   var classPart = (classification || '').toUpperCase().replace(/[^A-Z0-9 ]/g, '').trim();
-  var now = new Date();
-  function p2(n) { return (n < 10 ? '0' : '') + n; }
-  var ddmmyy = p2(now.getDate()) + p2(now.getMonth() + 1) + String(now.getFullYear()).slice(2);
+  var dp = clinicToday().split('-'); // clinic-timezone date, device-independent
+  var ddmmyy = dp[2] + dp[1] + dp[0].slice(2);
   var filename = [surname, firstInitial, 'FCE', clientPart, classPart, ddmmyy].filter(Boolean).join(' ') + '.pdf';
 
   secClose();
@@ -11980,7 +12096,7 @@ async function finaliseFCEAsync() {
   if (!out || !out.doc) throw new Error('PDF could not be generated.');
   var blob = out.doc.output('blob');
   var token = window._currentFceToken;
-  var path = (token || 'fce-manual-' + new Date().toISOString().split('T')[0]) + '/' + out.filename;
+  var path = (token || 'fce-manual-' + clinicToday()) + '/' + out.filename;
   var prevPdf = (window._fceAppointment && window._fceAppointment.pdf_path) || null;
 
   try {
@@ -12550,11 +12666,18 @@ function renderPefaScreen(appt) {
   setTimeout(function() {
     ['pefa-sig-consent', 'pefa-sig-assessor'].forEach(function(id) { initSig(id, id + '-ph'); });
   }, 60);
-  var today = new Date().toISOString().split('T')[0];
+  var today = clinicToday();
   ['pefa-consent-date', 'pefa-assessor-date'].forEach(function(id) {
     var el = document.getElementById(id);
     if (el && !el.value) el.value = today;
   });
+  // Clinic identity prefilled from CLINIC (editable; a restore overwrites)
+  [['pefa-assessor-clinic', CLINIC.name], ['pefa-assessor-phone', CLINIC.phone]].forEach(function(p) {
+    var el = document.getElementById(p[0]);
+    if (el && !el.value) el.value = p[1];
+  });
+  addPainZeroButtons();
+  applyNumericInputModes();
   function setVal(id, v) { var el = document.getElementById(id); if (el && v) el.value = v; }
   setVal('pefa-firstname', appt.patient_first_name);
   setVal('pefa-surname', appt.patient_last_name);
@@ -13112,7 +13235,7 @@ async function finalisePEFAAsync() {
   if (!out || !out.doc) throw new Error('PDF could not be generated.');
   var blob = out.doc.output('blob');
   var token = window._currentPefaToken;
-  var path = (token || 'pefa-manual-' + new Date().toISOString().split('T')[0]) + '/' + out.filename;
+  var path = (token || 'pefa-manual-' + clinicToday()) + '/' + out.filename;
   var prevPdf = (window._pefaAppointment && window._pefaAppointment.pdf_path) || null;
   try {
     await sbStorageUpload(path, blob);
@@ -13525,9 +13648,8 @@ function buildPEFAPDF() {
   var firstInitial = ((val('pefa-firstname') || appt.patient_first_name || '').charAt(0) || '').toUpperCase();
   var clientPart = (appt.client_name || '').toUpperCase().replace(/[^A-Z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
   var classPart = (classification || '').toUpperCase().replace(/[^A-Z0-9 ]/g, '').trim();
-  var now = new Date();
-  function p2(n) { return (n < 10 ? '0' : '') + n; }
-  var ddmmyy = p2(now.getDate()) + p2(now.getMonth() + 1) + String(now.getFullYear()).slice(2);
+  var dp = clinicToday().split('-'); // clinic-timezone date, device-independent
+  var ddmmyy = dp[2] + dp[1] + dp[0].slice(2);
   var filename = [surname, firstInitial, 'PEFA', clientPart, classPart, ddmmyy].filter(Boolean).join(' ') + '.pdf';
   secClose();
   return { doc: doc, filename: filename };
@@ -13965,7 +14087,7 @@ function showClinicianRecoveryBanner(timestamp, savedData) {
   var timeAgo  = diffHrs  > 0 ? diffHrs  + ' hr'  + (diffHrs  > 1 ? 's' : '') + ' ago' :
                  diffMins > 1 ? diffMins + ' min ago' : 'just now';
   var patientName  = savedData._patientName ? ' — ' + savedData._patientName : '';
-  var savedTimeStr = ts.toLocaleDateString('en-AU') + ' at ' + ts.toLocaleTimeString('en-AU', {hour:'2-digit', minute:'2-digit'});
+  var savedTimeStr = ts.toLocaleDateString('en-AU', {timeZone: CLINIC_TZ}) + ' at ' + ts.toLocaleTimeString('en-AU', {hour:'2-digit', minute:'2-digit', timeZone: CLINIC_TZ});
   var banner = document.createElement('div');
   banner.id = 'clin-recovery-banner';
   banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:#2e2e2a;border-bottom:2px solid #b07d2e;padding:14px 20px;display:flex;align-items:center;gap:14px;font-family:\'DM Sans\',sans-serif;box-shadow:0 2px 12px rgba(0,0,0,0.4)';
@@ -14072,8 +14194,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }, 400);
   });
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = clinicToday();
   document.querySelectorAll('input[type="date"]').forEach(el => { if (!el.value) el.value = today; });
+
+  // Clinic identity prefilled from CLINIC (editable; a restore overwrites)
+  [['assessor-clinic', CLINIC.name], ['assessor-phone', CLINIC.phone]].forEach(p => {
+    const el = document.getElementById(p[0]);
+    if (el && !el.value) el.value = p[1];
+  });
 
   ['sig-consent','sig-assessor'].forEach(id => {
     const ph = id + '-ph';
@@ -14098,6 +14226,10 @@ document.addEventListener('DOMContentLoaded', () => {
   renderIshihara();
   updatePatientNav();
   addNextButtons();
+
+  // After every section renderer, so the dynamically built cards are covered
+  addPainZeroButtons();
+  applyNumericInputModes();
   wirePatientAutoSave();
   checkAndShowRecoveryBanner();
   wireClinicianAutoSave();
