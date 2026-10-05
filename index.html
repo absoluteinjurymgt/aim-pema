@@ -11630,22 +11630,34 @@ function buildFCEPDF() {
   // selectedText may be a string or an array (e.g. ROM rows where Pain and
   // Limited can both be ticked)
   function selectorRow(name, opts, selectedText, detail) {
+    // Options flow left to right and wrap to further lines when the next
+    // label would cross the right margin — long option sets used to run off
+    // the page. Widths are measured on the glyph-shimmed text (≥ prints as
+    // ">="), since that is what lands on the page.
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7.2);
+    var optX = ML + 50, optLine = 0, optPos = [];
+    opts.forEach(function(o) {
+      var tw = doc.getTextWidth(pdfSafeText(o));
+      if (optX > ML + 50 && optX + 4.4 + tw > PW - MR) { optX = ML + 50; optLine++; }
+      optPos.push({ x: optX, line: optLine });
+      optX += 4.4 + tw + 6;
+    });
+    var optBlockH = (opts.length ? optLine : 0) * 4.2;
     var dLines = (detail && detail.trim()) ? doc.splitTextToSize('Details: ' + detail.trim(), CW - 52) : [];
-    var rowH = 6.5 + (dLines.length ? dLines.length * 3.4 + 1 : 0);
+    var rowH = 6.5 + optBlockH + (dLines.length ? dLines.length * 3.4 + 1 : 0);
     checkY(rowH + 2);
     doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.setTextColor.apply(doc, CHARCOAL);
     doc.text(doc.splitTextToSize(name, 46), ML + 1, y + 2.8);
-    var x = ML + 50;
     doc.setFont('helvetica', 'normal'); doc.setFontSize(7.2);
-    opts.forEach(function(o) {
-      tickBox(x, y, Array.isArray(selectedText) ? selectedText.indexOf(o) >= 0 : o === selectedText);
+    opts.forEach(function(o, i) {
+      var px = optPos[i].x, py = y + optPos[i].line * 4.2;
+      tickBox(px, py, Array.isArray(selectedText) ? selectedText.indexOf(o) >= 0 : o === selectedText);
       doc.setTextColor.apply(doc, CHARCOAL);
-      doc.text(o, x + 4.4, y + 2.7);
-      x += 4.4 + doc.getTextWidth(o) + 6;
+      doc.text(o, px + 4.4, py + 2.7);
     });
     if (dLines.length) {
       doc.setFontSize(7.5); doc.setTextColor.apply(doc, MID);
-      doc.text(dLines, ML + 50, y + 6.2);
+      doc.text(dLines, ML + 50, y + 6.2 + optBlockH);
     }
     doc.setDrawColor.apply(doc, BORDER_COL); doc.setLineWidth(0.15);
     doc.line(ML, y + rowH, PW - MR, y + rowH);
@@ -11815,16 +11827,19 @@ function buildFCEPDF() {
   y += 2;
   lrGrid('Thomas Test (Hip flexor length)', FCE_THOMAS_LEVELS, 'fce-thomas');
   lrGrid('Straight Leg Raise', FCE_SLR_RANGES, 'fce-slr');
-  checkY(10);
+  checkY(14);
   doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.setTextColor.apply(doc, CHARCOAL);
   doc.text('Abdominal Strength', ML + 1, y + 2.8);
   var ax = ML + 50, abdoSel = chipText('fce-abdo');
   doc.setFont('helvetica', 'normal'); doc.setFontSize(6.8);
   FCE_ABDO_OPTS.forEach(function(o) {
+    // Wrap to a new line rather than run past the right margin (Item 22)
+    var aw = doc.getTextWidth(o);
+    if (ax > ML + 50 && ax + 4.2 + aw > PW - MR) { ax = ML + 50; y += 4.2; }
     tickBox(ax, y, o === abdoSel);
     doc.setTextColor.apply(doc, CHARCOAL);
     doc.text(o, ax + 4.2, y + 2.7);
-    ax += 4.2 + doc.getTextWidth(o) + 4;
+    ax += 4.2 + aw + 4;
   });
   y += 8;
   if ((val('fce-msk-comments') || '').trim()) {
@@ -13393,20 +13408,32 @@ function buildPEFAPDF() {
     y += 2;
   }
   function selectorRow(name, opts, selectedText, detail) {
+    // Options flow left to right and wrap to further lines when the next
+    // label would cross the right margin — long option sets used to run off
+    // the page. Widths are measured on the glyph-shimmed text (≥ prints as
+    // ">="), since that is what lands on the page.
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7.2);
+    var optX = ML + 50, optLine = 0, optPos = [];
+    opts.forEach(function(o) {
+      var tw = doc.getTextWidth(pdfSafeText(o));
+      if (optX > ML + 50 && optX + 4.4 + tw > PW - MR) { optX = ML + 50; optLine++; }
+      optPos.push({ x: optX, line: optLine });
+      optX += 4.4 + tw + 6;
+    });
+    var optBlockH = (opts.length ? optLine : 0) * 4.2;
     var dLines = (detail && detail.trim()) ? doc.splitTextToSize('Details: ' + detail.trim(), CW - 52) : [];
-    var rowH = 6.5 + (dLines.length ? dLines.length * 3.4 + 1 : 0);
+    var rowH = 6.5 + optBlockH + (dLines.length ? dLines.length * 3.4 + 1 : 0);
     checkY(rowH + 2);
     doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.setTextColor.apply(doc, CHARCOAL);
     doc.text(doc.splitTextToSize(name, 46), ML + 1, y + 2.8);
-    var x = ML + 50;
     doc.setFont('helvetica', 'normal'); doc.setFontSize(7.2);
-    opts.forEach(function(o) {
-      tickBox(x, y, Array.isArray(selectedText) ? selectedText.indexOf(o) >= 0 : o === selectedText);
+    opts.forEach(function(o, i) {
+      var px = optPos[i].x, py = y + optPos[i].line * 4.2;
+      tickBox(px, py, Array.isArray(selectedText) ? selectedText.indexOf(o) >= 0 : o === selectedText);
       doc.setTextColor.apply(doc, CHARCOAL);
-      doc.text(o, x + 4.4, y + 2.7);
-      x += 4.4 + doc.getTextWidth(o) + 6;
+      doc.text(o, px + 4.4, py + 2.7);
     });
-    if (dLines.length) { doc.setFontSize(7.5); doc.setTextColor.apply(doc, MID); doc.text(dLines, ML + 50, y + 6.2); }
+    if (dLines.length) { doc.setFontSize(7.5); doc.setTextColor.apply(doc, MID); doc.text(dLines, ML + 50, y + 6.2 + optBlockH); }
     doc.setDrawColor.apply(doc, BORDER_COL); doc.setLineWidth(0.15);
     doc.line(ML, y + rowH, PW - MR, y + rowH);
     y += rowH + 2;
