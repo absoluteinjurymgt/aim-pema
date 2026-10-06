@@ -8396,9 +8396,20 @@ function buildPDF() {
     return lines.length*4.5+4;
   }
 
-  function twoCol(l1,v1,l2,v2){ checkY(14); const h=CW/2-3; lv(l1,v1,ML,h); lv(l2,v2,ML+CW/2+3,h); y+=13; }
-  function threeCol(l1,v1,l2,v2,l3,v3){ checkY(14); const t=CW/3-2; lv(l1,v1,ML,t); lv(l2,v2,ML+CW/3+2,t); lv(l3,v3,ML+(CW/3)*2+4,t); y+=13; }
-  function fullRow(label,value){ checkY(14); lv(label,value,ML,CW); y+=13; }
+  // Label/value rows grow to their content instead of advancing a fixed 13mm —
+  // a long value (e.g. a balance note) used to spill past the row and be
+  // overdrawn by whatever came next.
+  function lvRow(cells){ // cells: [label, value, x, w]
+    doc.setFontSize(7.5); doc.setFont('helvetica','normal');
+    let h=13;
+    cells.forEach(c=>{ const lines=doc.splitTextToSize(String(c[1]||'—'),c[3]-2); h=Math.max(h,4+lines.length*4.5+4); });
+    checkY(h+1);
+    cells.forEach(c=>lv(c[0],c[1],c[2],c[3]));
+    y+=h;
+  }
+  function twoCol(l1,v1,l2,v2){ const h=CW/2-3; lvRow([[l1,v1,ML,h],[l2,v2,ML+CW/2+3,h]]); }
+  function threeCol(l1,v1,l2,v2,l3,v3){ const t=CW/3-2; lvRow([[l1,v1,ML,t],[l2,v2,ML+CW/3+2,t],[l3,v3,ML+(CW/3)*2+4,t]]); }
+  function fullRow(label,value){ lvRow([[label,value,ML,CW]]); }
   function divLine(){ doc.setDrawColor(...BORDER_COL); doc.setLineWidth(0.2); doc.line(ML,y,PW-MR,y); y+=4; }
 
   function txtBlock(text,indent=0){
@@ -8424,7 +8435,14 @@ function buildPDF() {
   }
 
   function tblRow(cols,widths,isHdr=false,alt=false){
-    checkY(8); const rowH=7; let x=ML;
+    // Cells wrap instead of silently dropping everything past the first line
+    // (long task names and notes used to be clipped mid-word); the row grows
+    // to fit the tallest cell.
+    doc.setFontSize(7.5); doc.setFont('helvetica',isHdr?'bold':'normal');
+    const cellLines=cols.map((col,i)=>doc.splitTextToSize(String(col||'—'),widths[i]-3));
+    const maxL=Math.max(1,...cellLines.map(l=>l.length));
+    const rowH=7+(maxL-1)*3.4;
+    checkY(rowH+1); let x=ML;
     if(isHdr) doc.setFillColor(...CHARCOAL);
     else if(alt) doc.setFillColor(...LIGHT_BG);
     else doc.setFillColor(...WHITE);
@@ -8434,8 +8452,7 @@ function buildPDF() {
       const w=widths[i];
       doc.setFontSize(7.5); doc.setFont('helvetica',isHdr?'bold':'normal');
       doc.setTextColor(isHdr?255:CHARCOAL[0],isHdr?255:CHARCOAL[1],isHdr?255:CHARCOAL[2]);
-      const lines=doc.splitTextToSize(String(col||'—'),w-3);
-      doc.text(lines[0],x+2,y+4.5);
+      cellLines[i].forEach((ln,li)=>doc.text(ln,x+2,y+4.5+li*3.4));
       if(i<cols.length-1){ doc.setDrawColor(...BORDER_COL); doc.line(x+w,y,x+w,y+rowH); }
       x+=w;
     }); y+=rowH;
@@ -8677,7 +8694,8 @@ function buildPDF() {
                    document.querySelector('#ps-3 textarea[placeholder*="Any other"]')?.value?.trim();
   if(injComment){ y+=4; fullRow('Additional Comments',injComment); }
 
-  newPage();
+  // Questionnaire sections flow continuously — secHeader's keep-together still
+  // moves a section to a fresh page if it would split (Item 29)
   secHeader('Respiratory Health');
 
   const smokingChip=document.querySelector('#ps-4 .option-chip.selected-normal');
@@ -8755,7 +8773,6 @@ function buildPDF() {
     : 'Low risk';
   twoCol('AUDIT Score', audDone ? audScore+'/40' : 'Not completed', 'Interpretation', audDone ? audInterp : 'Not completed');
 
-  newPage();
   secHeader('Health Conditions Checklist');
   doc.setFontSize(7.5); doc.setFont('helvetica','italic'); doc.setTextColor(...MID);
   doc.text('Patient-reported conditions. YES responses require clinical review and are noted below.',ML,y); y+=7;
@@ -8810,7 +8827,8 @@ function buildPDF() {
   const bmiCat=document.getElementById('bmi-cat')?.textContent||'—';
   const maxHR=document.getElementById('v-maxhr')?.textContent||'—';
   const maxMH=document.getElementById('v-maxmh')?.textContent||'—';
-  threeCol('Blood Pressure',bpSys&&bpDia?bpSys+'/'+bpDia+' mmHg':'—','Resting Heart Rate',hr?hr+' bpm':'—','Max HR for Testing',maxHR?maxHR+' bpm':'—');
+  // v-maxhr textContent already carries its unit ('179 bpm') — no append
+  threeCol('Blood Pressure',bpSys&&bpDia?bpSys+'/'+bpDia+' mmHg':'—','Resting Heart Rate',hr?hr+' bpm':'—','Max HR for Testing',maxHR);
   threeCol('Height',ht?ht+' m':'—','Weight',wt?wt+' kg':'—','BMI',bmi!=='—'?bmi+' kg/m² — '+bmiCat:'—');
   fullRow('Max MH Testing Weight',maxMH);
   if(bpSys&&parseInt(bpSys)>160){
@@ -8845,7 +8863,9 @@ function buildPDF() {
   secHeader('Spirometry');
   const spW=[28,27,27,27,27,27,27];
   // Blank stays an em-dash so an unrecorded test never reads as a zero result.
-  const spV=id=>{const el=document.getElementById(id);const v=(el?.value||'').trim();return v===''?'—':v;};
+  // Numeric cells print with a leading zero whichever way they were typed
+  // ('.85' and '0.85' both print '0.85')
+  const spV=id=>{const el=document.getElementById(id);const v=(el?.value||'').trim();return v===''?'—':v.replace(/^(-?)\./,'$10.');};
   const spRow=(label,base)=>[label,spV(base+'-meas'),spV(base+'-pred'),spV(base+'-pct'),
                              spV(base+'-post'),spV(base+'-post-pct'),spV(base+'-chg')];
   tblRow(['Measure','Measured','Predicted','% Predicted','Post Broncho.','% Predicted','% Change'],spW,true);
@@ -8872,7 +8892,13 @@ function buildPDF() {
                           vV('vis-dist-a-r'),vV('vis-dist-a-l'),vV('vis-dist-a-b')],vW,false,false);
   tblRow(['Near 40cm (N)',vV('vis-near-ua-r'),vV('vis-near-ua-l'),vV('vis-near-ua-b'),
                           vV('vis-near-a-r'),vV('vis-near-a-l'),vV('vis-near-a-b')],vW,false,true);
-  y+=4; fullRow('Colour Vision',getSmart('clin-vision','Not recorded'));
+  // The vision section holds TWO narratives: #vision-comments (visual acuity)
+  // and the Ishihara card's textarea (colour vision). getSmart() returned the
+  // FIRST textarea, so acuity text printed under the Colour Vision heading.
+  const acuityText=(document.getElementById('vision-comments')?.value||'').trim()||'Not recorded';
+  const colourText=(Array.from(document.querySelectorAll('#clin-vision .smart-textarea')).find(t=>/colour/i.test(t.placeholder||''))?.value||'').trim()||'Not recorded';
+  y+=4; fullRow('Visual Acuity',acuityText);
+  fullRow('Colour Vision',colourText);
 
   newPage();
   secHeader('Range of Motion');
@@ -8983,7 +9009,7 @@ function buildPDF() {
       const phases=card.querySelectorAll('.mh-phase');
       if(phases[0]){ p1=phases[0].querySelector('select')?.value==='Demonstrated'?'Yes':'No'; pain=phases[0].querySelectorAll('input')[1]?.value||'—'; hr=phases[0].querySelectorAll('input')[2]?.value||'—'; }
       if(phases[1]){ p2=phases[1].querySelector('select')?.value==='Demonstrated'?'Yes':'No'; }
-      notes=card.querySelector('.smart-textarea')?.value?.trim()?.substring(0,50)||'—';
+      notes=card.querySelector('.smart-textarea')?.value?.trim()||'—'; // full text — tblRow wraps
     }
     tblRow([name,p1,p2,pain,hr,notes],mhW,false,i%2===1);
   });
@@ -9066,7 +9092,9 @@ function buildPDF() {
   if(assessorClinic||assessorAddress) twoCol('Clinic',assessorClinic,'Address',assessorAddress||'—');
   if(assessorPhone||assessorEmail) twoCol('Phone',assessorPhone||'—','Email',assessorEmail||'—');
 
-  checkY(42);
+  // Signature block (38) + confidential band (14) stay together — the band
+  // used to be pushed to a page of its own when the signature ended low.
+  checkY(54);
   const sigW=(CW/2)-4;
   doc.setFillColor(...LIGHT_BG); doc.setDrawColor(...BORDER_COL); doc.setLineWidth(0.3);
   doc.roundedRect(ML,y,CW,34,1,1,'FD');
@@ -9083,11 +9111,10 @@ function buildPDF() {
   doc.text('Date: '+clinicTodayAU(),ML+CW-4,y+30,{align:'right'});
   y+=38;
 
-  checkY(14);
   doc.setFillColor(...BLACK); doc.rect(ML,y,CW,12,'F');
   doc.setFontSize(7.5); doc.setFont('helvetica','normal'); doc.setTextColor(180,181,165);
   doc.text(CLINIC.name + '  ·  ' + CLINIC.address + '  ·  ' + CLINIC.phone,ML+4,y+5);
-  doc.text('Generated: '+new Date().toLocaleString('en-AU',{timeZone:CLINIC_TZ}),PW-MR,y+5,{align:'right'});
+  doc.text('Generated: '+new Date().toLocaleString('en-AU',{timeZone:CLINIC_TZ}),PW-MR-4,y+5,{align:'right'});
   doc.setTextColor(...OLIVE_DARK); doc.setFont('helvetica','bold');
   doc.text('CONFIDENTIAL MEDICAL DOCUMENT',PW/2,y+10,{align:'center'});
   drawFooter();
@@ -14391,8 +14418,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const today = clinicToday();
   document.querySelectorAll('input[type="date"]').forEach(el => { if (!el.value) el.value = today; });
 
-  // Clinic identity prefilled from CLINIC (editable; a restore overwrites)
-  [['assessor-clinic', CLINIC.name], ['assessor-phone', CLINIC.phone]].forEach(p => {
+  // Clinic identity prefilled from CLINIC (editable; a restore overwrites).
+  // CLINIC carries no email — that field stays manual rather than inventing one.
+  [['assessor-clinic', CLINIC.name], ['assessor-phone', CLINIC.phone], ['assessor-address', CLINIC.address]].forEach(p => {
     const el = document.getElementById(p[0]);
     if (el && !el.value) el.value = p[1];
   });
