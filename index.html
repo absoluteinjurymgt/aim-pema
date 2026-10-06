@@ -2517,6 +2517,7 @@
     </div>
     <div class="nav-actions">
       <button class="nav-btn" onclick="showScreen('screen-portal')">← Portal</button>
+      <button class="nav-btn" id="pema-fieldwork-btn" onclick="markFieldworkComplete(this)" style="background:#8a6d3b;border-color:#8a6d3b;color:white">Fieldwork Complete ✓</button>
       <button class="nav-btn primary" onclick="finaliseAssessment()">Finalise Assessment</button>
     </div>
   </nav>
@@ -7005,6 +7006,19 @@ function preFillMSK() {
       return;
     }
 
+    // Prone plank bands: "Threshold achieved" is the BEST result — it must
+    // never fall into the finding branch below (which would describe a normal
+    // result as a clinical finding and flag it for employer awareness).
+    if (testName.includes('Prone Plank')) {
+      if (/threshold achieved/i.test(finding)) {
+        ta.value = 'Prone plank hold ≥60 seconds — core endurance within functional limits. No concerns identified.';
+        ta.classList.add('prefilled');
+        return;
+      }
+      // Below-threshold bands and "Not completed" fall through to the
+      // finding branch — those are genuine findings.
+    }
+
     const isNormal = finding.toLowerCase().includes('normal') ||
                      finding.toLowerCase().includes('within') ||
                      finding.toLowerCase().includes('full range');
@@ -7966,6 +7980,32 @@ var NAVDOT_RULES = {
     sec.querySelectorAll('.audio-table input').forEach(function(el) { t++; if (el.value.trim()) a++; });
     return !a ? 'empty' : _ndVerdict(true, t > 0 && a / t >= 0.9);
   },
+  // Spirometry: complete on the fields actually presented — the pre-broncho
+  // measured + predicted set. The hidden post-bronchodilator columns only
+  // count when that testing is switched on (previously the generic 60%-of-
+  // all-inputs check counted them always, so the dot could never go green).
+  'clin-spirometry': function(sec) {
+    var pre = ['spiro-fev1-meas', 'spiro-fvc-meas', 'spiro-pefr-meas', 'spiro-fev1-pred', 'spiro-fvc-pred'].every(_ndFilled);
+    var postOn = !!document.querySelector('#postbroncho-yes.selected-yes');
+    var post = !postOn || (_ndFilled('spiro-fev1-post') && _ndFilled('spiro-fvc-post'));
+    return _ndVerdict(_ndAnyEntry(sec), pre && post);
+  },
+  // Urinalysis: the three dipstick chip groups are the section's substance;
+  // chips are buttons, which the generic input-counting check never saw.
+  'clin-urinalysis': function(sec) {
+    var groups = ['urine-blood', 'urine-protein', 'urine-glucose'];
+    var done = groups.filter(function(g) { return !!sec.querySelector('.option-chip.selected-normal[onclick*="' + g + '"]'); }).length;
+    return _ndVerdict(done > 0 || _ndAnyEntry(sec), done === groups.length);
+  },
+  // Vision: unaided acuity (always presented) + a colour vision result —
+  // plates marked or an interpretation written. Aided acuity and the defect
+  // text are situational and never block the dot.
+  'clin-vision': function(sec) {
+    var acuity = ['vis-dist-ua-r', 'vis-dist-ua-l', 'vis-near-ua-r', 'vis-near-ua-l'].every(_ndFilled);
+    var colour = !!sec.querySelector('.ish-plate.selected-normal, .ish-plate.selected-fail') ||
+                 !!Array.from(sec.querySelectorAll('.smart-textarea')).find(function(t) { return /colour/i.test(t.placeholder || '') && t.value.trim(); });
+    return _ndVerdict(_ndAnyEntry(sec), acuity && colour);
+  },
   'clin-rom': function(sec) { var c = _ndChipsAll(sec, '.rom-options'); return _ndVerdict(c.sel > 0 || _ndAnyEntry(sec), c.total > 0 && c.sel === c.total); },
   'clin-postural': function(sec) { var c = _ndChipsAll(sec, '.rom-options'); return _ndVerdict(c.sel > 0 || _ndAnyEntry(sec), c.total > 0 && c.sel === c.total); },
   'clin-msk': function(sec) {
@@ -7986,7 +8026,13 @@ var NAVDOT_RULES = {
   'clin-carrying': function(sec) { return _ndMhCards(sec); },
   'clin-climbing': function(sec) { return _ndVerdict(_ndAnyEntry(sec), _ndFilled('stepup-hr') || _ndFilled('ladder-hr')); },
   'clin-findings': function(sec) { return _ndVerdict(_ndAnyEntry(sec), !!(sec.querySelector('.smart-textarea') || {}).value && sec.querySelector('.smart-textarea').value.trim() !== ''); },
-  'clin-outcome': function(sec) { return _ndVerdict(_ndAnyEntry(sec) || !!sec.querySelector('.outcome-option.selected'), !!sec.querySelector('.outcome-option.selected')); },
+  // Outcome: match what the PDF prints — a tapped selection, an accepted
+  // auto-suggestion, or a restored radio all count (previously only a tapped
+  // .selected did, so a suggested or restored outcome left the dot amber).
+  'clin-outcome': function(sec) {
+    var chosen = !!sec.querySelector('.outcome-option.selected, .outcome-option.suggested') || !!sec.querySelector('input[name="outcome"]:checked');
+    return _ndVerdict(_ndAnyEntry(sec) || chosen, chosen);
+  },
   'clin-signature': function(sec) { return _ndVerdict(_ndAnyEntry(sec), !!getSigGlobal('sig-assessor') && _ndFilled('assessor-name')); },
 
   // ── FCE ──
@@ -8060,6 +8106,91 @@ var NAVDOT_RULES = {
   'pefa-signoff': function(sec) { return _ndVerdict(_ndAnyEntry(sec), !!getSigGlobal('pefa-sig-assessor')); }
 };
 
+// Item 27: what a not-yet-green dot is waiting on, per PEMA section. Mirrors
+// the completion conditions in NAVDOT_RULES; shown as the nav item's tooltip
+// and in a toast when the dot itself is tapped.
+var NAVDOT_PENDING = {
+  'clin-vitals': function() {
+    var m = [];
+    if (!_ndFilled('v-bp-sys') || !_ndFilled('v-bp-dia')) m.push('blood pressure');
+    if (!_ndFilled('v-height')) m.push('height');
+    if (!_ndFilled('v-weight')) m.push('weight');
+    return m;
+  },
+  'clin-audiometry': function(sec) {
+    var t = 0, a = 0;
+    sec.querySelectorAll('.audio-table input').forEach(function(el) { t++; if (el.value.trim()) a++; });
+    return t && a / t < 0.9 ? [(t - a) + ' of ' + t + ' audiogram thresholds'] : [];
+  },
+  'clin-spirometry': function() {
+    var m = [['spiro-fev1-meas', 'FEV1 measured'], ['spiro-fvc-meas', 'FVC measured'], ['spiro-pefr-meas', 'PEF measured'], ['spiro-fev1-pred', 'FEV1 predicted'], ['spiro-fvc-pred', 'FVC predicted']]
+      .filter(function(p) { return !_ndFilled(p[0]); }).map(function(p) { return p[1]; });
+    if (document.querySelector('#postbroncho-yes.selected-yes') && (!_ndFilled('spiro-fev1-post') || !_ndFilled('spiro-fvc-post'))) m.push('post-bronchodilator FEV1/FVC');
+    return m;
+  },
+  'clin-urinalysis': function(sec) {
+    return [['urine-blood', 'blood'], ['urine-protein', 'protein'], ['urine-glucose', 'glucose']]
+      .filter(function(p) { return !sec.querySelector('.option-chip.selected-normal[onclick*="' + p[0] + '"]'); })
+      .map(function(p) { return p[1] + ' dipstick result'; });
+  },
+  'clin-vision': function(sec) {
+    var m = [['vis-dist-ua-r', 'distance unaided R'], ['vis-dist-ua-l', 'distance unaided L'], ['vis-near-ua-r', 'near unaided R'], ['vis-near-ua-l', 'near unaided L']]
+      .filter(function(p) { return !_ndFilled(p[0]); }).map(function(p) { return p[1]; });
+    var colour = !!sec.querySelector('.ish-plate.selected-normal, .ish-plate.selected-fail') ||
+                 !!Array.from(sec.querySelectorAll('.smart-textarea')).find(function(t) { return /colour/i.test(t.placeholder || '') && t.value.trim(); });
+    if (!colour) m.push('colour vision result (plates or interpretation)');
+    return m;
+  },
+  'clin-rom': function(sec) { var c = _ndChipsAll(sec, '.rom-options'); return c.sel < c.total ? [(c.total - c.sel) + ' of ' + c.total + ' joints unrated'] : []; },
+  'clin-postural': function(sec) { var c = _ndChipsAll(sec, '.rom-options'); return c.sel < c.total ? [(c.total - c.sel) + ' of ' + c.total + ' regions unrated'] : []; },
+  'clin-msk': function(sec) {
+    var missing = [];
+    sec.querySelectorAll('#msk-cards .clin-card').forEach(function(c) {
+      if (!c.querySelector('.option-chip.selected-normal')) missing.push((c.querySelector('h3') || {}).textContent ? c.querySelector('h3').textContent.replace(/\(.*$/, '').trim() : 'a test');
+    });
+    return missing;
+  },
+  'clin-grip': function() {
+    var m = [];
+    if (!_ndFilled('grip-r1')) m.push('right grip trial 1');
+    if (!_ndFilled('grip-l1')) m.push('left grip trial 1');
+    return m;
+  },
+  'clin-postural-tol': function(sec) {
+    var missing = [];
+    sec.querySelectorAll('.postural-test-card').forEach(function(c) {
+      if (!c.querySelector('.option-chip.selected-normal') && !(c.querySelector('input') || {}).value) missing.push((c.querySelector('.postural-test-name') || {}).textContent || 'a test');
+    });
+    return missing;
+  },
+  'clin-steptest': function(sec) {
+    var m = [];
+    if (!sec.querySelector('.option-chip.selected-normal')) m.push('fitness result rating');
+    if (!Array.from(sec.querySelectorAll('.vital-input')).find(function(el) { return el.tagName === 'INPUT' && el.value.trim(); })) m.push('heart rate readings');
+    return m;
+  },
+  'clin-mh': function(sec) { return _ndMhPending(sec); },
+  'clin-carrying': function(sec) { return _ndMhPending(sec); },
+  'clin-climbing': function() { return (!_ndFilled('stepup-hr') && !_ndFilled('ladder-hr')) ? ['step-up or ladder peak HR'] : []; },
+  'clin-findings': function() { return ['key findings summary']; },
+  'clin-outcome': function() { return ['outcome selection (A–D)']; },
+  'clin-signature': function() {
+    var m = [];
+    if (!getSigGlobal('sig-assessor')) m.push('assessor signature');
+    if (!_ndFilled('assessor-name')) m.push('assessor name');
+    return m;
+  }
+};
+function _ndMhPending(sec) {
+  var missing = [];
+  sec.querySelectorAll('.clin-card').forEach(function(c) {
+    var phase1 = c.querySelector('.mh-phase');
+    var hr = phase1 ? phase1.querySelectorAll('input')[2] : null;
+    if (!hr || !hr.value.trim()) missing.push('phase 1 peak HR — ' + ((c.querySelector('h3') || {}).textContent || 'task').replace(/\(.*$/, '').trim());
+  });
+  return missing;
+}
+
 // PEMA MH selects have no empty option, so a phase-1 peak HR per card is the
 // reliable "assessed" signal
 function _ndMhCards(sec) {
@@ -8082,6 +8213,13 @@ function sectionStatus(id) {
   try { return rule ? rule(sec) : _ndGenericStatus(sec); } catch(e) { return 'empty'; }
 }
 
+function navdotPendingList(id) {
+  var fn = NAVDOT_PENDING[id];
+  var sec = document.getElementById(id);
+  if (!fn || !sec) return null;
+  try { return fn(sec); } catch(e) { return null; }
+}
+
 function updateNavDots(screenId) {
   var screen = document.getElementById(screenId);
   if (!screen) return;
@@ -8094,6 +8232,20 @@ function updateNavDots(screenId) {
     dot.classList.remove('nd-partial', 'nd-complete');
     if (status === 'complete') dot.classList.add('nd-complete');
     else if (status === 'partial') dot.classList.add('nd-partial');
+    // Item 27: an incomplete dot says what it is waiting on — tooltip on the
+    // nav item, and a toast when the dot itself is tapped.
+    var pending = status === 'complete' ? [] : navdotPendingList(m[1]);
+    var label = item.textContent.trim();
+    if (pending && pending.length) {
+      var msg = label + ' — waiting on: ' + pending.join(', ');
+      item.title = msg;
+      dot.style.cursor = 'pointer';
+      dot.onclick = function(ev) { ev.stopPropagation(); showToast(msg); };
+    } else {
+      item.removeAttribute('title');
+      dot.style.cursor = '';
+      dot.onclick = null;
+    }
   });
 }
 
@@ -10216,7 +10368,7 @@ function renderApptQueue(appts) {
       ? '<span style="display:inline-block;background:#6d6f57;color:white;padding:3px 9px;border-radius:4px;font-size:11px;font-weight:600">📄 Finalised — report ready</span>'
       : (isClinOnly && isExported)
       ? '<span style="display:inline-block;background:rgba(255,255,255,0.12);color:var(--light);padding:3px 9px;border-radius:4px;font-size:11px;font-weight:600">✓ Exported</span>'
-      : (isClinOnly && isFieldworkDone)
+      : isFieldworkDone
       ? '<span style="display:inline-block;background:#b8860b;color:white;padding:3px 9px;border-radius:4px;font-size:11px;font-weight:600">⏱ Fieldwork Complete — awaiting write-up</span>'
       : isClinOnly
       ? '<span style="display:inline-block;background:rgba(255,255,255,0.08);color:var(--light);padding:3px 9px;border-radius:4px;font-size:11px">Pending — ready to assess</span>'
@@ -10231,11 +10383,14 @@ function renderApptQueue(appts) {
       var startFn = isPefa ? 'startPEFA' : 'startFCE';
       startBtn = '<button onclick="' + startFn + '(this,\'' + a.token + '\')" style="' + activeStyle + '">Start ' + clinLabel + ' →</button>';
     } else {
-      var startStyle = isComplete
+      // PEMA is startable once the questionnaire is in, and stays startable
+      // while fieldwork is complete but the write-up is not yet finalised
+      var pemaStartable = isComplete || isFieldworkDone;
+      var startStyle = pemaStartable
         ? activeStyle
         : 'background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:var(--mid);padding:10px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:not-allowed;font-family:\'DM Sans\',sans-serif;min-height:44px;white-space:nowrap';
-      var startOnclick = isComplete ? 'onclick="startPEMA(this,\'' + a.token + '\')" ' : '';
-      var startDisabled = isComplete ? '' : 'disabled ';
+      var startOnclick = pemaStartable ? 'onclick="startPEMA(this,\'' + a.token + '\')" ' : '';
+      var startDisabled = pemaStartable ? '' : 'disabled ';
       startBtn = '<button ' + startOnclick + startDisabled + 'style="' + startStyle + '">Start PEMA →</button>';
     }
 
@@ -10321,6 +10476,17 @@ async function startPEMA(btnEl, token) {
 
     var name = ((data['pt-firstname'] || '') + ' ' + (data['pt-surname'] || '')).trim();
     showToast('Patient data loaded — ' + (name || 'Unknown'));
+
+    // Cross-device resume (PEFA parity): restore the clinician write-up from
+    // clinician_progress so fieldwork marked complete on one device can be
+    // written up on another. PEMA progress rows carry no _type marker.
+    try {
+      var prog = await sbSelect('clinician_progress', 'token=eq.' + token + '&select=progress_data');
+      var pd = prog && prog.length && prog[0].progress_data;
+      if (pd && pd._type !== 'fce' && pd._type !== 'pefa') {
+        setTimeout(function() { restoreClinicianData(pd); showToast('In-progress assessment restored from cloud.'); }, 150);
+      }
+    } catch(e) { console.warn('[PEMA] cloud progress fetch failed:', e); }
   } catch(e) {
     alert('Failed to load patient: ' + e.message);
     if (btnEl) { btnEl.textContent = 'Start PEMA →'; btnEl.disabled = false; }
@@ -11428,14 +11594,15 @@ function wireFceAutoSave() {
 // Only ever moves status forward from pending; never regresses a finalised or
 // exported appointment.
 async function markFieldworkComplete(btn) {
-  // Shared by the FCE and PEFA screens — exactly one token is set at a time
+  // Shared by the FCE, PEFA and PEMA screens — exactly one token is set at a time
   var isPefaAssess = !!window._currentPefaToken;
-  var token = window._currentFceToken || window._currentPefaToken;
-  var apptObj = isPefaAssess ? window._pefaAppointment : window._fceAppointment;
+  var isFceAssess = !isPefaAssess && !!window._currentFceToken;
+  var token = window._currentFceToken || window._currentPefaToken || window._currentToken;
+  var apptObj = isPefaAssess ? window._pefaAppointment : isFceAssess ? window._fceAppointment : null;
   if (!token) { showErrorToast('No assessment loaded.'); return; }
   var orig = btn ? btn.textContent : '';
   if (btn) { btn.textContent = 'Saving…'; btn.disabled = true; }
-  if (isPefaAssess) savePefaDataToStorage(); else saveFceDataToStorage();
+  if (isPefaAssess) savePefaDataToStorage(); else if (isFceAssess) saveFceDataToStorage(); else saveClinicianDataToStorage();
   try {
     // Check the live status (another device may have finalised this appointment)
     var rows = await sbSelect('appointments', 'token=eq.' + token + '&select=status');
