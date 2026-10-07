@@ -8999,7 +8999,10 @@ function buildPDF() {
   const prLines=doc.splitTextToSize(proto,CW);
   doc.text(prLines,ML,y); y+=prLines.length*4+5;
 
-  const mhNames=['Lifting: Floor to Bench (800mm) — Occ:23kg Freq:11kg','Carrying (5m bilateral) — Occ:23kg Freq:11kg','Lifting: Bench to Overhead — Occ:23kg Freq:11kg','Pulling (resistance band) — Occ:14kg Freq:10kg'];
+  // Task names and weights come from the SAME resolved table as the on-screen
+  // cards and prefills (Item 32) — the three can never disagree again
+  if(!window._pemaMhTable) throw new Error('No manual handling weight table exists for the classification "'+(window._pemaClassification||'(none)')+'" — the report cannot state manual handling weights. PEMA supports Medium and Heavy only.');
+  const mhNames=window._pemaMhTable.map(t=>t.name+' — Occ:'+t.occ+' Freq:'+t.freq);
   const mhW=[52,18,18,16,16,62];
   tblRow(['Task','Phase 1','Phase 2','Pain/10','Peak HR','Notes'],mhW,true);
   const allCards=document.querySelectorAll('#mh-lifting-cards .clin-card, #mh-carrying-cards .clin-card');
@@ -9344,14 +9347,31 @@ function renderPosturalTol() {
 }
 
 // Performed order: 1. Lifting (floor to bench) · 2. Carrying · 3. Overhead lift · 4. Pulling
-const liftingTests = [
-  { name: 'Lifting: Floor to Bench (800mm)', occ: '23kg', freq: '11kg', const_: '4.5kg' },
-];
-const carryingTests = [
-  { name: 'Carrying (5m bilateral, from 800mm bench)', occ: '23kg', freq: '11kg', const_: '4.5kg' },
-  { name: 'Lifting: Bench (800mm) to Overhead', occ: '23kg', freq: '11kg', const_: '4.5kg' },
-  { name: 'Pulling (resistance band, 2× length, controlled return)', occ: '14kg', freq: '10kg', const_: '6kg' },
-];
+// PEMA manual handling reads the SHARED MH_TABLES (Item 32) — the hardcoded
+// per-task weights that used to live here (and their dormant const_ values,
+// which never rendered anywhere) are retired. Weights resolve from the
+// booking's classification at startPEMA; until then the cards render as
+// weightless placeholders and the report refuses to build (no defaults).
+window._pemaMhTable = null;
+window._pemaClassification = null;
+function pemaMhPlaceholders() {
+  return [
+    { name: 'Lifting: Floor to Bench (800mm)', occ: '—', freq: '—' },
+    { name: 'Carrying (5m bilateral, from 800mm bench)', occ: '—', freq: '—' },
+    { name: 'Lifting: Bench (800mm) to Overhead', occ: '—', freq: '—' },
+    { name: 'Pulling (resistance band, 2× length, controlled return)', occ: '—', freq: '—' }
+  ];
+}
+// Re-renders both PEMA MH sections from the resolved table (or placeholders),
+// preserving the lifting/carrying split: table[0] is the lifting section,
+// table[1..3] the carrying/overhead/pulling section.
+function renderPemaMhSections() {
+  var t = window._pemaMhTable || pemaMhPlaceholders();
+  renderMHCard([t[0]], 'mh-lifting-cards');
+  renderMHCard(t.slice(1), 'mh-carrying-cards');
+  if (typeof addPainZeroButtons === 'function') addPainZeroButtons();
+  if (typeof applyNumericInputModes === 'function') applyNumericInputModes();
+}
 
 function getTechChips(testName) {
   const name = (testName || '').toLowerCase();
@@ -9418,7 +9438,9 @@ function renderMHCard(tests, containerId) {
   `).join('');
   const techAreas = container.querySelectorAll('.mh-tech-chips');
   tests.forEach(function(t, i) {
-    if (techAreas[i]) techAreas[i].innerHTML = getTechChips(t.name);
+    // chipName keeps the overhead technique chips for Medium's
+    // bench-to-shoulder-height variant (same convention as the PEFA)
+    if (techAreas[i]) techAreas[i].innerHTML = getTechChips(t.chipName || t.name);
   });
 }
 
@@ -9883,7 +9905,7 @@ function renderApptFceConfig() {
     pHtml += '<div style="color:var(--mid);font-size:11px;margin-top:6px">Histories, baseline, ROM, postural analysis, manual handling and determination are always included.</div>';
     // PEFA MH weights come from the pre-employment form tables, not classification_config
     var pClass = (document.getElementById('appt-classification') || {}).value || '';
-    var pTable = pefaMhTable(pClass);
+    var pTable = mhTableFor(pClass);
     if (pTable) {
       pHtml += '<div style="color:var(--olive-light);font-size:11px;margin-top:8px">Manual handling occasional maxima: floor lift / carry <strong>' + pTable[0].occ + '</strong> · ' + pTable[2].name.replace('Lifting: ', '') + ' <strong>' + pTable[2].occ + '</strong> · pulling <strong>' + pTable[3].occ + '</strong></div>';
     } else {
@@ -9941,7 +9963,7 @@ function collectApptFceConfig() {
 }
 
 // PEFA: classification + section toggles only. MH weights are resolved from
-// PEFA_MH_TABLES at render/PDF time — the FCE classification_config maxima
+// MH_TABLES at render/PDF time — the FCE classification_config maxima
 // (max_weight_kg) must never be stored on or read by a PEFA.
 function collectApptPefaConfig() {
   var cfg = {
@@ -9976,12 +9998,13 @@ async function createAppointment() {
   var token = generateToken8();
   var assessmentType = getApptAssessmentType();
 
-  // PEFA weights come only from PEFA_MH_TABLES — a classification without a
-  // table entry must block the booking, never fall back to a default weight
-  if (assessmentType === 'pefa') {
-    var pefaClass = (document.getElementById('appt-classification') || {}).value || '';
-    if (!pefaMhTable(pefaClass)) {
-      alert('Cannot create this PEFA appointment.\n\nNo PEFA manual handling weight table exists for the classification "' + (pefaClass || '(none)') + '". PEFA supports Medium and Heavy only — choose one of those, or book an FCE for other classifications.');
+  // PEMA and PEFA manual handling weights come only from MH_TABLES — a
+  // classification without a table entry must block the booking, never fall
+  // back to a default weight
+  if (assessmentType === 'pefa' || assessmentType === 'pema') {
+    var mhClass = (document.getElementById('appt-classification') || {}).value || '';
+    if (!mhTableFor(mhClass)) {
+      alert('Cannot create this ' + assessmentType.toUpperCase() + ' appointment.\n\nNo manual handling weight table exists for the classification "' + (mhClass || '(none)') + '". ' + assessmentType.toUpperCase() + ' supports Medium and Heavy only — choose one of those, or book an FCE for other classifications.');
       return;
     }
   }
@@ -10490,12 +10513,29 @@ async function startPEMA(btnEl, token) {
     window._currentToken = token;
     localStorage.setItem('aim_patient_data', JSON.stringify(data));
 
-    var apptRows = await sbSelect('appointments', 'token=eq.' + token + '&select=client_name');
+    var apptRows = await sbSelect('appointments', 'token=eq.' + token + '&select=client_name,client_classification');
+    var apptCls = '';
     if (apptRows && apptRows.length) {
+      apptCls = apptRows[0].client_classification || '';
       var clientName = apptRows[0].client_name;
       var match = getClients().find(function(c) { return c.name === clientName; });
       if (match) applyClientToAssessment(match.id);
     }
+
+    // Manual handling weights resolve from the booking's classification via
+    // the shared MH_TABLES — no table entry means no assessment, never a
+    // default weight (Item 32)
+    var cls = apptCls || window._activeClient?.classification || (window._activeClient?.classifications || [])[0] || '';
+    var mhT = mhTableFor(cls);
+    if (!mhT) {
+      alert('Cannot start this PEMA.\n\nNo manual handling weight table exists for the classification "' + (cls || '(none)') + '". PEMA supports Medium and Heavy only — re-book with a supported classification.');
+      window._currentToken = null;
+      if (btnEl) { btnEl.textContent = 'Start PEMA →'; btnEl.disabled = false; }
+      return;
+    }
+    window._pemaClassification = cls;
+    window._pemaMhTable = mhT;
+    renderPemaMhSections();
 
     showScreen('screen-clinician');
     loadPatientDataIntoClinician();
@@ -12451,16 +12491,18 @@ const PEFA_OUTCOMES = [
   { code: 'D', title: 'Insufficient capacity demonstrated at this classification level', desc: 'The applicant did not demonstrate sufficient functional capacity for the assessed classification during this assessment. Further assessment, modified role consideration, or medical review is recommended prior to placement decision.' }
 ];
 
-// PEFA manual handling weights — exact hard tables transcribed from AIM's
-// production pre-employment forms (PEFA/PEMA values). These deliberately
-// DIFFER from the FCE classification maxima in classification_config (e.g.
-// Heavy floor lift here is 35kg vs the FCE Heavy max of 32kg) — do not
-// reconcile them. Constant demand is not tested in PEFAs: only occasional and
-// frequent are recorded (constant remains inference text only).
+// Manual handling weights — exact hard tables transcribed from AIM's
+// production pre-employment forms, SHARED by the PEMA and the PEFA (the two
+// assessments are identical outside the clinical screening sections and the
+// patient questionnaire). These deliberately DIFFER from the FCE
+// classification maxima in classification_config (e.g. Heavy floor lift here
+// is 35kg vs the FCE Heavy max of 32kg) — do not reconcile them. Constant
+// demand is not tested: only occasional and frequent are recorded (constant
+// remains inference text only in the protocol note).
 // The third lift's name differs by classification: 'Bench to Shoulder Height'
 // (Medium) vs 'Bench to Overhead' (Heavy); chipName keeps the overhead
 // technique-chip set for both variants.
-const PEFA_MH_TABLES = {
+const MH_TABLES = {
   Medium: [
     { name: 'Lifting: Floor to Bench (800mm)', occ: '19kg', freq: '12kg' },
     { name: 'Carrying (5m bilateral, from 800mm bench)', occ: '19kg', freq: '12kg' },
@@ -12474,17 +12516,17 @@ const PEFA_MH_TABLES = {
     { name: 'Pulling (resistance band, 2× length, controlled return)', occ: '24kg', freq: '18kg' }
   ]
 };
-// Returns null for any classification without a PEFA_MH_TABLES entry —
-// callers must fail loudly (visible error at booking or assessment time)
-// rather than fall back to a default. A wrong weight printed in a report is
-// worse than a blocked booking. Accepts "Medium"/"Heavy" with an optional
-// trailing parenthetical (e.g. "Medium (9–23 kg occasional)"); "Very Heavy",
-// "Light", "Sedentary" etc. deliberately do NOT match.
-function pefaMhTable(classification) {
+// Returns null for any classification without an MH_TABLES entry — callers
+// must fail loudly (visible error at booking or assessment time) rather than
+// fall back to a default. A wrong weight printed in a report is worse than a
+// blocked booking. Accepts "Medium"/"Heavy" with an optional trailing
+// parenthetical (e.g. "Medium (9–23 kg occasional)"); "Very Heavy", "Light",
+// "Sedentary" etc. deliberately do NOT match.
+function mhTableFor(classification) {
   var m = String(classification || '').trim().match(/^(medium|heavy)\s*(\(.*)?$/i);
   if (!m) return null;
   var key = m[1].charAt(0).toUpperCase() + m[1].slice(1).toLowerCase();
-  return PEFA_MH_TABLES[key] || null;
+  return MH_TABLES[key] || null;
 }
 
 function pefaSectionShell(id, title, desc, bodyHtml) {
@@ -12528,7 +12570,7 @@ function renderPefaScreen(appt) {
   var cfg = appt.pefa_config || {};
   var sections = cfg.sections || {};
   var on = function(key) { return sections[key] !== false; };
-  var mhTable = pefaMhTable(cfg.classification || appt.client_classification);
+  var mhTable = mhTableFor(cfg.classification || appt.client_classification);
   if (!mhTable) {
     throw new Error('No PEFA manual handling weight table exists for the classification "' + (cfg.classification || appt.client_classification || '(none)') + '". PEFA supports Medium and Heavy only — re-book this appointment with a supported classification.');
   }
@@ -13483,7 +13525,7 @@ function buildPEFAPDF() {
   var sections = cfg.sections || {};
   var enabled = function(key, domId) { return sections[key] !== false && !!document.getElementById(domId); };
   var classification = cfg.classification || appt.client_classification || '';
-  var mhTable = pefaMhTable(classification);
+  var mhTable = mhTableFor(classification);
   if (!mhTable) {
     throw new Error('No PEFA manual handling weight table exists for the classification "' + (classification || '(none)') + '" — the report cannot state manual handling weights. PEFA supports Medium and Heavy only.');
   }
@@ -14436,8 +14478,7 @@ document.addEventListener('DOMContentLoaded', () => {
   renderPosturalTol();
   renderPemaFitnessUI();
   otoRender();
-  renderMHCard(liftingTests, 'mh-lifting-cards');
-  renderMHCard(carryingTests, 'mh-carrying-cards');
+  renderPemaMhSections();
   renderInjuryQs();
   renderRespQs();
   renderSleepQs();
