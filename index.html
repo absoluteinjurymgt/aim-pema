@@ -2868,9 +2868,12 @@
                     <td class="postbroncho-col" style="display:none"><input id="spiro-fvc-post" oninput="calcSpiroPct()"></td>
                     <td class="postbroncho-col" style="display:none"><input id="spiro-fvc-post-pct"></td>
                     <td class="postbroncho-col" style="display:none"><input id="spiro-fvc-chg"></td></tr>
-                  <tr><td><strong>FEV1/FVC</strong> <span style="font-size:10px;color:var(--mid)">ratio</span></td>
-                    <td><input id="spiro-ratio-meas" oninput="calcSpiroPct()"></td>
-                    <td><input id="spiro-ratio-pred" oninput="calcSpiroPct()"></td>
+                  <tr><td><strong>FEV1/FVC</strong> <span style="font-size:10px;color:var(--mid)">%</span></td>
+                    <td><input id="spiro-ratio-meas" placeholder="e.g. 80" oninput="calcSpiroPct()">
+                      <!-- The clinician's entry is never rewritten; this note is
+                           what makes a legacy decimal entry visible as a percentage. -->
+                      <div id="spiro-ratio-note" style="display:none;font-size:10px;margin-top:3px;line-height:1.3"></div></td>
+                    <td><input id="spiro-ratio-pred" placeholder="e.g. 80" oninput="calcSpiroPct()"></td>
                     <td><input id="spiro-ratio-pct"></td>
                     <td class="postbroncho-col" style="display:none"><input id="spiro-ratio-post"></td>
                     <td class="postbroncho-col" style="display:none"><input></td>
@@ -2896,6 +2899,9 @@
                 <button class="option-chip" id="spiro-pat-border" onclick="selectChip(this,'spiro-pattern')">Borderline</button>
                 <button class="option-chip" id="spiro-pat-mixed" onclick="selectChip(this,'spiro-pattern')">Mixed</button>
               </div>
+              <!-- Shown when the entered FEV1/FVC cannot be read as a percentage:
+                   no pattern is auto-selected rather than a confident wrong one. -->
+              <div id="spiro-pattern-warning" style="display:none;margin-top:8px;font-size:11px;font-weight:600;color:var(--warning);line-height:1.4"></div>
             </div>
             <div class="smart-field" style="margin-top:14px">
               <label style="font-size:11px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.04em;display:block;margin-bottom:6px">Spirometry Interpretation</label>
@@ -5396,14 +5402,52 @@ function calcSpiroPredicted() {
   const ratioPred = isMale ? (0.872 - 0.0018 * age) : (0.903 - 0.0021 * age);
 
   // Every value is returned in the same unit the matching input is entered in —
-  // FEV1/FVC in litres, PEF in L/sec, ratio dimensionless — so % predicted stays
-  // valid whichever way these are consumed.
+  // FEV1/FVC in litres, PEF in L/sec, and the FEV1/FVC ratio as the PERCENTAGE
+  // the spirometer reports (Item 36) — so % predicted stays valid whichever
+  // way these are consumed.
   return {
     fev1: Math.max(0.5, fev1Pred).toFixed(2),
     fvc:  Math.max(0.5, fvcPred).toFixed(2),
     pef:  Math.max(1.67, pefPred).toFixed(2),
-    ratio: ratioPred.toFixed(2)
+    ratio: (ratioPred * 100).toFixed(0)
   };
+}
+
+// FEV1/FVC is entered as the PERCENTAGE the spirometer reports (80 means 80%).
+// A value of 1.5 or below is unambiguously the old decimal form (0.80) — a
+// clinician typing from habit, or an assessment saved before the field became
+// a percentage — and is read as value×100 with a visible note; the entry
+// itself is never rewritten. Between 1.5 and 15, or above 100 (FEV1 cannot
+// exceed FVC), is not a plausible FEV1/FVC in either form and is rejected
+// rather than guessed at. Every consumer reads the value through here.
+const RATIO_PCT_MIN = 15, RATIO_PCT_MAX = 100;
+function readSpiroRatioPct(id) {
+  const el = document.getElementById(id);
+  const raw = (el?.value || '').trim();
+  if (raw === '') return { state: 'empty', value: null, raw: raw, converted: false };
+  const v = parseFloat(raw);
+  if (isNaN(v)) return { state: 'invalid', value: null, raw: raw, converted: false };
+  const converted = v <= 1.5;
+  const pct = converted ? v * 100 : v;
+  if (!(pct >= RATIO_PCT_MIN && pct <= RATIO_PCT_MAX)) return { state: 'invalid', value: null, raw: raw, converted: false };
+  return { state: 'ok', value: pct, raw: raw, converted: converted };
+}
+
+function showSpiroRatioNote(r) {
+  const note = document.getElementById('spiro-ratio-note');
+  if (!note) return;
+  if (r.state === 'invalid') {
+    note.textContent = 'Not a usable FEV1/FVC percentage';
+    note.style.color = 'var(--warning)';
+    note.style.display = 'block';
+  } else if (r.state === 'ok' && r.converted) {
+    note.textContent = 'interpreted as ' + (Math.round(r.value * 10) / 10) + '%';
+    note.style.color = 'var(--mid)';
+    note.style.display = 'block';
+  } else {
+    note.textContent = '';
+    note.style.display = 'none';
+  }
 }
 
 function calcSpiroPct() {
@@ -5424,7 +5468,21 @@ function calcSpiroPct() {
   const fev1Pct = calcPct('spiro-fev1-meas','spiro-fev1-pred','spiro-fev1-pct');
   const fvcPct = calcPct('spiro-fvc-meas','spiro-fvc-pred','spiro-fvc-pct');
   calcPct('spiro-pefr-meas','spiro-pefr-pred','spiro-pefr-pct');
-  calcPct('spiro-ratio-meas','spiro-ratio-pred','spiro-ratio-pct');
+  // Ratio % predicted: both sides normalised independently, so the figure
+  // stays correct even when the two fields are entered in different forms
+  // (84 against a legacy 0.80)
+  (function calcRatioPct() {
+    const pctEl = document.getElementById('spiro-ratio-pct');
+    if (!pctEl) return;
+    const m = readSpiroRatioPct('spiro-ratio-meas');
+    const p = readSpiroRatioPct('spiro-ratio-pred');
+    if (m.state === 'ok' && p.state === 'ok' && p.value > 0) {
+      pctEl.value = (m.value / p.value * 100).toFixed(1) + '%';
+    } else {
+      // Clear rather than leave a stale figure from a previous entry
+      pctEl.value = '';
+    }
+  })();
 
   function calcPostPct(postId, predId, postPctId, chgId, preMeasId) {
     const post = parseFloat(document.getElementById(postId)?.value);
@@ -5446,22 +5504,51 @@ function calcSpiroPct() {
   const fvcMeas = parseFloat(document.getElementById('spiro-fvc-meas')?.value);
   const ratioEl = document.getElementById('spiro-ratio-meas');
   if (!isNaN(fev1Meas) && !isNaN(fvcMeas) && fvcMeas > 0 && ratioEl && !ratioEl.value) {
-    ratioEl.value = (fev1Meas/fvcMeas).toFixed(2);
+    ratioEl.value = Math.round(fev1Meas / fvcMeas * 100); // percentage form
   }
-  const ratio = parseFloat(document.getElementById('spiro-ratio-meas')?.value);
+  const ratioR = readSpiroRatioPct('spiro-ratio-meas');
+  showSpiroRatioNote(ratioR);
 
-  if (fev1Pct !== null && !isNaN(ratio)) {
+  const patternChips = document.querySelectorAll('#spiro-pattern-chips .option-chip');
+  const warnEl = document.getElementById('spiro-pattern-warning');
+  const clearWarning = () => { if (warnEl) { warnEl.textContent = ''; warnEl.style.display = 'none'; } };
+
+  if (ratioR.state === 'invalid') {
+    // Silence is safe; a confident wrong answer is not. Any chip left over
+    // from an earlier valid entry is cleared so it cannot reach
+    // preFillSpirometry() or the PDF, and the reason is stated on screen.
+    patternChips.forEach(el => el.classList.remove('selected-normal'));
+    // Clearing the chip is not enough: a pattern narrative written from an
+    // earlier valid entry would otherwise stand and print into the PDF.
+    // Anything the clinician typed by hand is left alone, per canOverwrite().
+    const spiroTa = document.getElementById('clin-spirometry')?.querySelector('.smart-textarea');
+    if (spiroTa && canOverwrite(spiroTa)) {
+      spiroTa.value = '';
+      spiroTa.classList.remove('prefilled');
+    }
+    if (warnEl) {
+      warnEl.textContent = 'FEV1/FVC "' + ratioR.raw + '" cannot be read as a percentage — no pattern applied. '
+        + 'Enter the percentage the spirometer reports (e.g. 80).';
+      warnEl.style.display = 'block';
+    }
+  } else if (fev1Pct !== null && ratioR.state === 'ok') {
+    const ratio = ratioR.value; // percentage scale
     let pattern = 'normal';
-    if (ratio < 0.70 && fev1Pct < 80) pattern = 'obs';
-    else if (ratio >= 0.70 && fvcPct !== null && fvcPct < 80) pattern = 'res';
-    else if (fev1Pct >= 80 && fev1Pct < 100 && ratio >= 0.70) pattern = fev1Pct < 90 ? 'border' : 'normal';
-    else if (ratio < 0.70 && fvcPct !== null && fvcPct < 80) pattern = 'mixed';
+    if (ratio < 70 && fev1Pct < 80) pattern = 'obs';
+    else if (ratio >= 70 && fvcPct !== null && fvcPct < 80) pattern = 'res';
+    else if (fev1Pct >= 80 && fev1Pct < 100 && ratio >= 70) pattern = fev1Pct < 90 ? 'border' : 'normal';
+    else if (ratio < 70 && fvcPct !== null && fvcPct < 80) pattern = 'mixed';
 
-    document.querySelectorAll('#spiro-pattern-chips .option-chip').forEach(el => el.classList.remove('selected-normal'));
+    clearWarning();
+    patternChips.forEach(el => el.classList.remove('selected-normal'));
     const patEl = document.getElementById('spiro-pat-' + pattern);
     if (patEl) patEl.classList.add('selected-normal');
 
     preFillSpirometry();
+  } else {
+    // Ratio blank or FEV1 % predicted not yet available — nothing to
+    // classify from, and nothing to warn about
+    clearWarning();
   }
 }
 
@@ -8899,8 +8986,14 @@ function buildPDF() {
   tblRow(spRow('FEV1','spiro-fev1'),spW,false,false);
   tblRow(spRow('FVC','spiro-fvc'),spW,false,true);
   // The ratio row has no post-bronchodilator %-predicted or %-change field
-  // on screen, so those two cells resolve to em-dashes.
-  tblRow(spRow('FEV1/FVC','spiro-ratio'),spW,false,false);
+  // on screen, so those two cells resolve to em-dashes. Measured, predicted
+  // and post-bronchodilator print as percentages whichever form was typed
+  // (a legacy 0.84 prints "84%"); an entry that cannot be read as a
+  // percentage prints exactly as the clinician typed it rather than being
+  // dropped.
+  const spRatioV=id=>{const r=readSpiroRatioPct(id);return r.state==='ok'?(Math.round(r.value*10)/10)+'%':(r.raw===''?'—':r.raw);};
+  tblRow(['FEV1/FVC (%)',spRatioV('spiro-ratio-meas'),spRatioV('spiro-ratio-pred'),spV('spiro-ratio-pct'),
+          spRatioV('spiro-ratio-post'),spV('spiro-ratio-post-pct'),spV('spiro-ratio-chg')],spW,false,false);
   tblRow(spRow('PEF','spiro-pefr'),spW,false,true);
   y+=4; twoCol('Pattern',getChip('spiro-pattern','—'),'Interpretation',getSmart('clin-spirometry','Not recorded'));
 
