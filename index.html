@@ -1596,7 +1596,7 @@
         <input id="appt-site" type="text" placeholder="e.g. Traralgon" style="width:100%;padding:10px 12px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:8px;color:white;font-size:16px;font-family:'DM Sans',sans-serif;box-sizing:border-box">
       </div>
       <div id="appt-fce-config" style="display:none;margin-bottom:16px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:14px 16px">
-        <div style="color:var(--olive-light);font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:10px">FCE Sections &amp; Tasks for this Referral</div>
+        <div id="appt-config-title" style="color:var(--olive-light);font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:10px">FCE Sections &amp; Tasks for this Referral</div>
         <div id="appt-fce-config-body" style="color:var(--light);font-size:13px"></div>
       </div>
       <button id="generate-appt-btn" onclick="createAppointment()" style="width:100%;padding:14px;background:var(--olive);border:none;color:white;border-radius:8px;font-size:16px;font-family:'DM Sans',sans-serif;font-weight:600;cursor:pointer;min-height:44px">Generate Questionnaire Link</button>
@@ -1882,8 +1882,8 @@
             <label class="toggle"><input type="checkbox" checked><span class="toggle-slider"></span></label>
           </div>
           <div class="toggle-row">
-            <div class="toggle-info"><h4>Drug & Alcohol Screen (DAS)</h4><p>Urine/breath collection with chain of custody</p></div>
-            <label class="toggle"><input type="checkbox"><span class="toggle-slider"></span></label>
+            <div class="toggle-info"><h4>Drug & Alcohol Screen (DAS)</h4><p>Breath alcohol band + initial drug screen — default for this client, adjustable per booking</p></div>
+            <label class="toggle"><input type="checkbox" id="pema-das-default" onchange="togglePemaDasDefault(this.checked)"><span class="toggle-slider"></span></label>
           </div>
           <div class="toggle-row">
             <div class="toggle-info"><h4>Vision & Colour Vision</h4><p>Snellen acuity + Ishihara 14-plate concise edition</p></div>
@@ -2552,6 +2552,7 @@
         <div class="clinician-nav-item" onclick="showClinSection('clin-audiometry',this)"><span class="nav-dot"></span>Audiometry</div>
         <div class="clinician-nav-item" onclick="showClinSection('clin-spirometry',this)"><span class="nav-dot"></span>Spirometry</div>
         <div class="clinician-nav-item" onclick="showClinSection('clin-urinalysis',this)"><span class="nav-dot"></span>Urinalysis</div>
+        <div class="clinician-nav-item" id="nav-clin-das" style="display:none" onclick="showClinSection('clin-das',this)"><span class="nav-dot"></span>Drug &amp; Alcohol Screen</div>
         <div class="clinician-nav-item" onclick="showClinSection('clin-vision',this)"><span class="nav-dot"></span>Vision</div>
       </div>
       <div class="clinician-nav-section">
@@ -2961,6 +2962,44 @@
                 <div class="prompt-chip" onclick="insertPrompt(this,'Trace blood detected. Likely due to recent physical activity. Recommend repeat urinalysis via GP if persistent.')">Trace blood — follow up</div>
                 <div class="prompt-chip" onclick="insertPrompt(this,'Glucose detected. Patient reports known diabetes. GP review recommended.')">Glucose — known DM</div>
               </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Drug & Alcohol Screen — rendered only when the booking enables it
+           (pema_config.das); the nav item is hidden otherwise so no empty
+           heading is left behind. Selections persist via the hidden inputs
+           das-breath / das-drug (stable string keys, not onclick-derived). -->
+      <div class="clinician-section" id="clin-das">
+        <div class="section-title" style="margin-bottom:4px">Drug &amp; Alcohol Screen</div>
+        <div class="section-desc">Instant breath alcohol test and initial drug screen. A non-negative drug screen is forwarded to an accredited laboratory for confirmation; the report finalises normally and the laboratory result is forwarded separately.</div>
+        <div class="clin-card">
+          <div class="clin-card-header"><h3>Breath Alcohol</h3></div>
+          <div class="clin-card-body">
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px" id="das-breath-chips">
+              <button class="option-chip" onclick="selectDas(this,'das-breath','&lt;0.02')">&lt;0.02</button>
+              <button class="option-chip" onclick="selectDas(this,'das-breath','0.02–0.05')">0.02–0.05</button>
+              <button class="option-chip" onclick="selectDas(this,'das-breath','&gt;0.05')">&gt;0.05</button>
+            </div>
+            <input type="hidden" id="das-breath">
+            <div class="smart-field">
+              <label style="font-size:11px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.04em;display:block;margin-bottom:6px">Comments</label>
+              <textarea class="smart-textarea" id="das-breath-comments" placeholder="Breath alcohol comments..."></textarea>
+            </div>
+          </div>
+        </div>
+        <div class="clin-card">
+          <div class="clin-card-header"><h3>Drug Screen (Initial)</h3></div>
+          <div class="clin-card-body">
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px" id="das-drug-chips">
+              <button class="option-chip" onclick="selectDas(this,'das-drug','Negative')">Negative</button>
+              <button class="option-chip" onclick="selectDas(this,'das-drug','Non-negative')">Non-negative</button>
+            </div>
+            <input type="hidden" id="das-drug">
+            <div class="smart-field">
+              <label style="font-size:11px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.04em;display:block;margin-bottom:6px">Comments</label>
+              <textarea class="smart-textarea" id="das-drug-comments" placeholder="Drug screen comments..."></textarea>
             </div>
           </div>
         </div>
@@ -5747,7 +5786,7 @@ function showClinSection(id, navItem) {
 
 const clinSectionOrder = [
   'clin-flagged','clin-vitals','clin-audiometry','clin-spirometry',
-  'clin-vision','clin-urinalysis','clin-rom','clin-postural','clin-msk',
+  'clin-vision','clin-urinalysis','clin-das','clin-rom','clin-postural','clin-msk',
   'clin-grip','clin-postural-tol','clin-mh',
   'clin-carrying','clin-climbing','clin-steptest','clin-findings','clin-outcome','clin-signature'
 ];
@@ -5755,11 +5794,84 @@ const clinSectionOrder = [
 function goNextSection() {
   const current = document.querySelector('.clinician-section.active');
   if (!current) return;
-  const idx = clinSectionOrder.indexOf(current.id);
+  let idx = clinSectionOrder.indexOf(current.id);
   if (idx < 0 || idx >= clinSectionOrder.length - 1) return;
-  const nextId = clinSectionOrder[idx + 1];
+  let nextId = clinSectionOrder[idx + 1];
+  // DAS is per-booking: skip it entirely when this booking has it off
+  if (nextId === 'clin-das' && !window._pemaDasEnabled) {
+    if (idx + 2 >= clinSectionOrder.length) return;
+    nextId = clinSectionOrder[idx + 2];
+  }
   const nextNavItem = document.querySelector(`[onclick*="${nextId}"]`);
   showClinSection(nextId, nextNavItem);
+}
+
+// ─── Drug & Alcohol Screen (per-booking, pema_config.das) ───────────────────
+// Bands and results persist in the hidden inputs das-breath / das-drug —
+// stable string values, independent of chip order. Generated comments are
+// deliberately factual with no interpretation: employer thresholds vary by
+// site, and a screening drug result cannot name a substance class before
+// laboratory confirmation. A non-negative result never blocks finalisation.
+var DAS_BREATH_COMMENTS = {
+  '<0.02': 'Breath alcohol screen returned a result below 0.02.',
+  '0.02–0.05': 'Breath alcohol screen returned a result between 0.02 and 0.05.',
+  '>0.05': 'Breath alcohol screen returned a result above 0.05.'
+};
+var DAS_NONNEG_COMMENT = 'Initial screening returned a non-negative result. Sample forwarded to an accredited laboratory for confirmatory analysis. Results pending and will be forwarded separately on receipt.';
+
+function selectDas(btn, key, value) {
+  var state = document.getElementById(key);
+  if (!state) return;
+  state.value = value;
+  syncDasChips();
+  preFillDas();
+  saveClinicianDataToStorage();
+  if (typeof updateNavDots === 'function') updateNavDots('screen-clinician');
+}
+
+// Restyles the chips from the hidden-input state (used after restore too)
+function syncDasChips() {
+  [['das-breath', 'das-breath-chips'], ['das-drug', 'das-drug-chips']].forEach(function(p) {
+    var v = (document.getElementById(p[0]) || {}).value || '';
+    document.querySelectorAll('#' + p[1] + ' .option-chip').forEach(function(c) {
+      c.classList.toggle('selected-normal', c.textContent.trim() === v);
+    });
+  });
+}
+
+function preFillDas() {
+  var band = (document.getElementById('das-breath') || {}).value || '';
+  var bTa = document.getElementById('das-breath-comments');
+  if (bTa && DAS_BREATH_COMMENTS[band] && canOverwrite(bTa)) {
+    bTa.value = DAS_BREATH_COMMENTS[band];
+    bTa.classList.add('prefilled');
+  }
+  var drug = (document.getElementById('das-drug') || {}).value || '';
+  var dTa = document.getElementById('das-drug-comments');
+  if (dTa && canOverwrite(dTa)) {
+    if (drug === 'Non-negative') { dTa.value = DAS_NONNEG_COMMENT; dTa.classList.add('prefilled'); }
+    else if (drug === 'Negative' && dTa.classList.contains('prefilled')) { dTa.value = ''; dTa.classList.remove('prefilled'); }
+  }
+  // Findings flags: anything above <0.02, and any non-negative screen
+  window._findingFlags = window._findingFlags || [];
+  window._findingFlags = window._findingFlags.filter(function(f) { return f.section !== 'Drug & Alcohol Screen'; });
+  if (band && band !== '<0.02') {
+    window._findingFlags.push({ section: 'Drug & Alcohol Screen', finding: 'Breath alcohol screen — result ' + (band === '>0.05' ? 'above 0.05' : 'between 0.02 and 0.05'), rec: null });
+  }
+  if (drug === 'Non-negative') {
+    window._findingFlags.push({ section: 'Drug & Alcohol Screen', finding: 'Initial drug screen non-negative — confirmatory laboratory result pending', rec: null });
+  }
+}
+
+// Shows or hides the whole DAS surface for the loaded booking
+function applyDasVisibility() {
+  var nav = document.getElementById('nav-clin-das');
+  if (nav) nav.style.display = window._pemaDasEnabled ? '' : 'none';
+  // Never leave a hidden section active behind the scenes
+  if (!window._pemaDasEnabled) {
+    var sec = document.getElementById('clin-das');
+    if (sec && sec.classList.contains('active')) showClinSection('clin-flagged', document.querySelector('[onclick*="clin-flagged"]'));
+  }
 }
 
 function addNextButtons() {
@@ -6066,6 +6178,19 @@ function loadClientIntoForm(id) {
   renderFceDefaults(client);
   renderPefaDefaults(client);
   renderFceClassifications(client);
+  // PEMA module default: the DAS toggle in Assessment Modules is the one
+  // live toggle on that panel (the rest of the panel is informational)
+  var dasCb = document.getElementById('pema-das-default');
+  if (dasCb) dasCb.checked = !!(client.defaultConfig && client.defaultConfig.pema && client.defaultConfig.pema.das);
+}
+
+function togglePemaDasDefault(on) {
+  var client = getClients().find(function(c) { return c.id === getCurrentClientId(); });
+  if (!client) return;
+  client.defaultConfig = client.defaultConfig || {};
+  client.defaultConfig.pema = client.defaultConfig.pema || {};
+  client.defaultConfig.pema.das = on;
+  queueClientCloudSave(client.id);
 }
 
 function renderPefaDefaults(client) {
@@ -7604,8 +7729,17 @@ function generateFindingsBullets() {
     bullets.push({key:'vitals', label:'BMI', text: 'BMI ' + bmi + ' kg/m² — ' + bmiCat + '. Employer to note for roles with significant physical demand.'});
   }
 
-  const dasBreath = document.querySelector('#clin-vitals ~ [id] .form-control')?.value;
-  // DAS only in findings if positive screen detected
+  // DAS: any band above <0.02, and any non-negative initial drug screen,
+  // is a key assessment finding (factual wording — no interpretation)
+  if (window._pemaDasEnabled) {
+    const dasBand = document.getElementById('das-breath')?.value || '';
+    if (dasBand && dasBand !== '<0.02') {
+      bullets.push({key:'das-breath', label:'Drug & Alcohol Screen', text:'Breath alcohol screen returned a result ' + (dasBand === '>0.05' ? 'above 0.05' : 'between 0.02 and 0.05') + '.'});
+    }
+    if ((document.getElementById('das-drug')?.value || '') === 'Non-negative') {
+      bullets.push({key:'das-drug', label:'Drug & Alcohol Screen', text:'Initial drug screen returned a non-negative result — confirmatory laboratory analysis pending, result to be forwarded separately on receipt.'});
+    }
+  }
 
   const audioTA = document.querySelector('#clin-audiometry .smart-textarea');
   if (audioTA?.value?.trim()) {
@@ -8116,6 +8250,13 @@ var NAVDOT_RULES = {
                  !!Array.from(sec.querySelectorAll('.smart-textarea')).find(function(t) { return /colour/i.test(t.placeholder || '') && t.value.trim(); });
     return _ndVerdict(_ndAnyEntry(sec), acuity && colour);
   },
+  // DAS: only exists when the booking enables it (null hides the dot and
+  // keeps it out of the finalise reminder); green = both parts answered
+  'clin-das': function(sec) {
+    if (!window._pemaDasEnabled) return null;
+    var both = _ndFilled('das-breath') && _ndFilled('das-drug');
+    return _ndVerdict(_ndAnyEntry(sec) || _ndFilled('das-breath') || _ndFilled('das-drug'), both);
+  },
   'clin-rom': function(sec) { var c = _ndChipsAll(sec, '.rom-options'); return _ndVerdict(c.sel > 0 || _ndAnyEntry(sec), c.total > 0 && c.sel === c.total); },
   'clin-postural': function(sec) { var c = _ndChipsAll(sec, '.rom-options'); return _ndVerdict(c.sel > 0 || _ndAnyEntry(sec), c.total > 0 && c.sel === c.total); },
   'clin-msk': function(sec) {
@@ -8251,6 +8392,12 @@ var NAVDOT_PENDING = {
     var colour = !!sec.querySelector('.ish-plate.selected-normal, .ish-plate.selected-fail') ||
                  !!Array.from(sec.querySelectorAll('.smart-textarea')).find(function(t) { return /colour/i.test(t.placeholder || '') && t.value.trim(); });
     if (!colour) m.push('colour vision result (plates or interpretation)');
+    return m;
+  },
+  'clin-das': function() {
+    var m = [];
+    if (!_ndFilled('das-breath')) m.push('breath alcohol band');
+    if (!_ndFilled('das-drug')) m.push('drug screen result');
     return m;
   },
   'clin-rom': function(sec) { var c = _ndChipsAll(sec, '.rom-options'); return c.sel < c.total ? [(c.total - c.sel) + ' of ' + c.total + ' joints unrated'] : []; },
@@ -9000,6 +9147,14 @@ function buildPDF() {
   secHeader('Urinalysis');
   threeCol('Blood',getChip('urine-blood','—'),'Protein',getChip('urine-protein','—'),'Glucose',getChip('urine-glucose','—'));
   fullRow('Comments',getSmart('clin-urinalysis','All parameters within normal limits'));
+
+  // Drug & Alcohol Screen — only when the booking enables it (pema_config.das)
+  if(window._pemaDasEnabled){
+    secHeader('Drug & Alcohol Screen');
+    twoCol('Breath Alcohol',val('das-breath')||'—','Drug Screen (Initial)',val('das-drug')||'—');
+    fullRow('Breath Alcohol Comments',(document.getElementById('das-breath-comments')?.value||'').trim()||'—');
+    fullRow('Drug Screen Comments',(document.getElementById('das-drug-comments')?.value||'').trim()||'—');
+  }
 
   secHeader('Vision & Colour Vision');
   const vW=[30,27,27,27,27,27,27];
@@ -9966,7 +10121,7 @@ function populateApptClassificationDropdown() {
   classSel.innerHTML = classes.map(function(cls) {
     return '<option value="' + cls + '">' + cls + '</option>';
   }).join('');
-  if (isClinOnlyType(getApptAssessmentType())) renderApptFceConfig();
+  renderApptFceConfig(); // all three types have per-booking options now
 }
 
 function getApptAssessmentType() {
@@ -9980,7 +10135,9 @@ function onApptTypeChange() {
   var type = getApptAssessmentType();
   var clinOnly = isClinOnlyType(type);
   var panel = document.getElementById('appt-fce-config');
-  if (panel) panel.style.display = clinOnly ? 'block' : 'none';
+  if (panel) panel.style.display = 'block'; // PEMA shows its module options too (DAS)
+  var cfgTitle = document.getElementById('appt-config-title');
+  if (cfgTitle) cfgTitle.textContent = type === 'fce' ? 'FCE Sections & Tasks for this Referral' : type === 'pefa' ? 'PEFA Sections for this Referral' : 'PEMA Modules for this Referral';
   var btn = document.getElementById('generate-appt-btn');
   if (btn) btn.textContent = type === 'fce' ? 'Create FCE Appointment' : type === 'pefa' ? 'Create PEFA Appointment' : 'Generate Questionnaire Link';
   var smsBox = document.getElementById('appt-sms-box');
@@ -10018,6 +10175,15 @@ function renderApptFceConfig() {
   var clientId = (document.getElementById('appt-client') || {}).value || '';
   var client = getClients().find(function(c) { return c.id === clientId; });
   var cfg = (client && client.defaultConfig) || {};
+  if (getApptAssessmentType() === 'pema') {
+    // PEMA: the only per-booking module is the Drug & Alcohol Screen,
+    // defaulted from the client profile (off unless the client enables it)
+    var dasDefault = !!(cfg.pema && cfg.pema.das);
+    body.innerHTML =
+      '<label style="display:flex;align-items:center;gap:10px;padding:6px 0;cursor:pointer"><input type="checkbox" data-pema-das' + (dasDefault ? ' checked' : '') + '> Drug &amp; Alcohol Screen (DAS)</label>' +
+      '<div style="color:var(--mid);font-size:11px;margin-top:4px">Breath alcohol band and initial drug screen. All other PEMA sections are always included.</div>';
+    return;
+  }
   var classCfg = getApptClassCfg(client);
   if (getApptAssessmentType() === 'pefa') {
     // PEFA: optional section toggles only — no task list, no protocol overrides
@@ -10151,6 +10317,12 @@ async function createAppointment() {
     };
     if (assessmentType === 'fce') row.fce_config = collectApptFceConfig();
     if (assessmentType === 'pefa') row.pefa_config = collectApptPefaConfig();
+    // Resolved at creation and immutable afterwards, like fce/pefa_config.
+    // Requires the pema_config column (supabase/pema_das.sql) before deploy.
+    if (assessmentType === 'pema') {
+      var dasCb = document.querySelector('#appt-fce-config-body [data-pema-das]');
+      row.pema_config = { das: !!(dasCb && dasCb.checked) };
+    }
     await sbInsert('appointments', row);
 
     // FCE/PEFA: no patient questionnaire — no token SMS, straight to the queue
@@ -10637,7 +10809,14 @@ async function startPEMA(btnEl, token) {
     window._currentToken = token;
     localStorage.setItem('aim_patient_data', JSON.stringify(data));
 
-    var apptRows = await sbSelect('appointments', 'token=eq.' + token + '&select=client_name,client_classification');
+    var apptRows = null;
+    try {
+      apptRows = await sbSelect('appointments', 'token=eq.' + token + '&select=client_name,client_classification,pema_config');
+    } catch(e) {
+      // pema_config column not yet added (run supabase/pema_das.sql) — load
+      // without it and treat DAS as off rather than blocking the assessment
+      apptRows = await sbSelect('appointments', 'token=eq.' + token + '&select=client_name,client_classification');
+    }
     var apptCls = '';
     if (apptRows && apptRows.length) {
       apptCls = apptRows[0].client_classification || '';
@@ -10645,6 +10824,10 @@ async function startPEMA(btnEl, token) {
       var match = getClients().find(function(c) { return c.name === clientName; });
       if (match) applyClientToAssessment(match.id);
     }
+    // DAS is resolved into pema_config at booking and immutable afterwards;
+    // bookings created before the column existed default to off
+    window._pemaDasEnabled = !!(apptRows && apptRows[0] && apptRows[0].pema_config && apptRows[0].pema_config.das);
+    applyDasVisibility();
 
     // Manual handling weights resolve from the booking's classification via
     // the shared MH_TABLES — no table entry means no assessment, never a
@@ -14338,6 +14521,10 @@ function saveClinicianDataToStorage() {
     if (comments) data['ptol_comments_' + idx] = comments.value;
   });
 
+  // DAS enablement travels with the save so a local-banner resume shows the
+  // section again without re-reading the appointment
+  data._dasEnabled = !!window._pemaDasEnabled;
+
   localStorage.setItem('aim_clinician_data',      JSON.stringify(data));
   localStorage.setItem('aim_clinician_timestamp', new Date().toISOString());
   if (window._currentToken) syncClinicianDataToSupabase(window._currentToken, data);
@@ -14418,6 +14605,11 @@ function restoreClinicianData(data) {
       if (ph) ph.style.display = 'none';
     }
   }
+  // DAS: re-apply enablement from the save, restyle chips from the hidden
+  // inputs (stable keys), and rebuild its finding flags
+  if (data._dasEnabled !== undefined) { window._pemaDasEnabled = !!data._dasEnabled; applyDasVisibility(); }
+  if (typeof syncDasChips === 'function') { syncDasChips(); preFillDas(); }
+
   // 6. Re-run all derived calculations
   if (typeof calcBMI            === 'function') calcBMI();
   if (typeof calcSpiroPct       === 'function') calcSpiroPct();
