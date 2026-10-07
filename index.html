@@ -3146,6 +3146,15 @@
       <div class="clinician-section" id="clin-postural-tol">
         <div class="section-title" style="margin-bottom:4px">Postural Tolerance</div>
         <div class="section-desc">Each posture sustained for 2 minutes (kneeling: 2 min). Assessment ceases if pain exceeds 0/10 with functional significance, HR exceeds maximum, or safety is compromised.</div>
+        <!-- Sitting & Standing are observed throughout the assessment, not
+             timed — back-ported from the FCE/PEFA (Item 35b) -->
+        <div class="clin-card" style="margin-bottom:12px">
+          <div class="clin-card-header"><h3>Sitting &amp; Standing</h3></div>
+          <div class="clin-card-body">
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;margin-bottom:10px"><input type="checkbox" id="ptol-observed" onchange="onPtolObserved(this)"> Observed throughout assessment</label>
+            <textarea class="smart-textarea" id="ptol-observed-comments" placeholder="Sitting / standing observations..."></textarea>
+          </div>
+        </div>
         <div class="clin-card">
           <div class="clin-card-header"><h3>2-Minute Postural Tests</h3></div>
           <div class="clin-card-body">
@@ -3219,8 +3228,8 @@
           <div class="clin-card-header"><h3>Step-Up — 500mm</h3></div>
           <div class="clin-card-body">
             <div class="mh-grid" style="margin-bottom:14px">
-              <div class="mh-field"><label>Occasional (1 rep)</label><select><option>Able</option><option>Unable</option></select></div>
-              <div class="mh-field"><label>Frequent (5 in 1 min)</label><select><option>Able</option><option>Unable</option></select></div>
+              <div class="mh-field"><label>Occasional (1 rep)</label><select id="stepup-occ"><option>Able</option><option>Unable</option></select></div>
+              <div class="mh-field"><label>Frequent (5 in 1 min)</label><select id="stepup-freq"><option>Able</option><option>Unable</option></select></div>
               <div class="mh-field"><label>Pain (0–10)</label><input placeholder="0" id="stepup-pain"></div>
               <div class="mh-field"><label>Peak HR (bpm)</label><input placeholder="—" id="stepup-hr" data-hr-field="peak"></div>
               <div class="mh-field"><label>Knee Control</label><select id="stepup-knee"><option>Controlled</option><option>Mild valgus</option><option>Significant valgus</option></select></div>
@@ -7233,33 +7242,47 @@ function preFillClimbing() {
   const stepupTA = document.getElementById('stepup-notes');
   const ladderTA = document.getElementById('ladder-notes');
 
+  // Item 35(a): generate from the fields the PEMA actually has. The old code
+  // read stepup-occ (which had no id here) and fell back to the Knee Control
+  // select, so "occasional demand not achieved" could never fire; the ladder
+  // branch read ladder-occ/ladder-freq (PEFA-only fields), so a clean ladder
+  // pass generated nothing and an Unable result was never flagged.
   if (stepupTA && !stepupTA.value.trim()) {
-    const occ = document.getElementById('stepup-occ')?.value || document.querySelector('[id^="stepup"] select')?.value;
+    const occ = getSelectVal('stepup-occ');
+    const freq = getSelectVal('stepup-freq');
     const knee = getSelectVal('stepup-knee');
+    const pattern = getSelectVal('stepup-pattern');
     const pain = parseFloat(getInputVal('stepup-pain')) || 0;
     let text = '';
-    if (pain === 0) {
-      text = `Step-up (500mm) completed${occ === 'Unable' ? ' — occasional demand not achieved' : ' without difficulty'}. ${knee ? `Knee control: ${knee.toLowerCase()}.` : ''} 0/10 pain throughout.`;
+    if (occ === 'Unable') {
+      text = `Step-up (500mm) — occasional demand not achieved.${pain > 0 ? ` Pain ${pain}/10 reported.` : ''} Employer to consider step and stair access requirements for the role.`;
+      window._findingFlags = window._findingFlags || [];
+      window._findingFlags.push({section:'Climbing', finding:'Step-up (500mm) — occasional demand not achieved', rec:'Employer to consider step and stair access requirements for the role.'});
+    } else if (pain === 0) {
+      text = `Step-up (500mm) completed${freq === 'Unable' ? ' at occasional demand — frequent demand not achieved' : ' without difficulty'}. ${knee ? `Knee control: ${knee.toLowerCase()}.` : ''}${pattern ? ` Movement pattern: ${pattern.toLowerCase()}.` : ''} 0/10 pain throughout.`;
     } else {
-      text = `Step-up (500mm) completed. Pain ${pain}/10 reported. Knee control: ${knee ? knee.toLowerCase() : 'assessed'}. Finding documented.`;
+      text = `Step-up (500mm) completed${freq === 'Unable' ? ' at occasional demand only' : ''}. Pain ${pain}/10 reported. Knee control: ${knee ? knee.toLowerCase() : 'assessed'}. Finding documented.`;
     }
     if (text) stepupTA.value = text;
   }
 
   if (ladderTA && !ladderTA.value.trim()) {
     const contact = getSelectVal('ladder-contact');
+    const pattern = getSelectVal('ladder-pattern');
+    const result = getSelectVal('ladder-result');
+    const reps = getInputVal('ladder-const');
     const pain = parseFloat(getInputVal('ladder-pain')) || 0;
-    const occ = getSelectVal('ladder-occ');
-    const freq = getSelectVal('ladder-freq');
-    const constant = getSelectVal('ladder-const');
     let text = '';
-    if (occ === 'Able' && freq === 'Able' && pain === 0) {
-      text = `Ladder climbing completed at occasional and frequent demand levels. 3-point contact ${contact ? contact.toLowerCase() : 'maintained'}. Correct movement patterns demonstrated. 0/10 pain.${constant === 'Able' ? ' Constant demand also achieved.' : ''}`;
-    } else if (occ === 'Unable') {
-      text = 'Ladder climbing — occasional demand not achieved. Safety concern identified. Employer to determine suitability for roles requiring ladder access.';
+    if (result === 'Unable to complete') {
+      text = 'Ladder climbing — unable to complete the endurance protocol. Safety concern identified. Employer to determine suitability for roles requiring ladder access.';
       window._findingFlags = window._findingFlags || [];
-      window._findingFlags.push({section:'Climbing', finding:'Ladder climbing — occasional demand not achieved', rec:'Employer to determine suitability for roles requiring ladder access.'});
-    } else if (pain > 0) {
+      window._findingFlags.push({section:'Climbing', finding:'Ladder climbing — unable to complete the endurance protocol', rec:'Employer to determine suitability for roles requiring ladder access.'});
+    } else if (pain === 0) {
+      const resultBit = result === 'Partial — reps noted above'
+        ? `partial completion — ${reps || '—'} reps recorded`
+        : `target reps achieved${reps ? ` (${reps})` : ''}`;
+      text = `Ladder climbing completed — ${resultBit}. 3-point contact ${contact ? contact.toLowerCase() : 'maintained'}. ${pattern === 'Compensatory' ? 'Compensatory movement pattern noted. ' : 'Correct movement patterns demonstrated. '}0/10 pain.`;
+    } else {
       text = `Ladder climbing completed. Pain ${pain}/10 reported. 3-point contact ${contact ? contact.toLowerCase() : 'assessed'}. Finding documented for employer awareness.`;
     }
     if (text) ladderTA.value = text;
@@ -8016,10 +8039,12 @@ var NAVDOT_RULES = {
   },
   'clin-grip': function(sec) { return _ndVerdict(_ndAnyEntry(sec), _ndFilled('grip-r1') && _ndFilled('grip-l1')); },
   'clin-postural-tol': function(sec) {
+    var obs = document.getElementById('ptol-observed');
+    var obsDone = !!(obs && (obs.checked || _ndFilled('ptol-observed-comments')));
     var cards = sec.querySelectorAll('.postural-test-card');
     var done = 0;
     cards.forEach(function(c) { if (c.querySelector('.option-chip.selected-normal') || (c.querySelector('input') || {}).value) done++; });
-    return _ndVerdict(done > 0 || _ndAnyEntry(sec), cards.length > 0 && done === cards.length);
+    return _ndVerdict(done > 0 || _ndAnyEntry(sec), obsDone && cards.length > 0 && done === cards.length);
   },
   'clin-steptest': function(sec) { return _ndVerdict(_ndAnyEntry(sec), !!sec.querySelector('.option-chip.selected-normal') && !!Array.from(sec.querySelectorAll('.vital-input')).find(function(el) { return el.tagName === 'INPUT' && el.value.trim(); })); },
   'clin-mh': function(sec) { return _ndMhCards(sec); },
@@ -8158,6 +8183,8 @@ var NAVDOT_PENDING = {
   },
   'clin-postural-tol': function(sec) {
     var missing = [];
+    var obs = document.getElementById('ptol-observed');
+    if (!(obs && (obs.checked || _ndFilled('ptol-observed-comments')))) missing.push('sitting & standing (observed)');
     sec.querySelectorAll('.postural-test-card').forEach(function(c) {
       if (!c.querySelector('.option-chip.selected-normal') && !(c.querySelector('input') || {}).value) missing.push((c.querySelector('.postural-test-name') || {}).textContent || 'a test');
     });
@@ -8961,6 +8988,10 @@ function buildPDF() {
   secHeader('Postural Tolerance — 2-Minute Tests');
   doc.setFontSize(7.5); doc.setFont('helvetica','italic'); doc.setTextColor(...MID);
   doc.text('Each posture sustained 2 minutes. Ceases if pain >0/10, HR exceeds max, or safety compromised.',ML,y); y+=7;
+  // Sitting & Standing — observed throughout, not timed (Item 35b)
+  const ptolObs=document.getElementById('ptol-observed')?.checked;
+  const ptolObsComments=(document.getElementById('ptol-observed-comments')?.value||'').trim();
+  fullRow('Sitting & Standing (observed throughout)', ptolObs ? ('Observed throughout assessment' + (ptolObsComments ? ' — ' + ptolObsComments : '')) : (ptolObsComments || '—'));
   const ptW=[52,24,24,24,58];
   tblRow(['Test','Result','Time','Pain/10','Peak HR (bpm)'],ptW,true);
   const ptolNotes=[];
@@ -11152,6 +11183,13 @@ function onFcePtolObserved(cb) {
   saveFceDataDebounced();
 }
 
+// PEMA counterpart (Item 35b) — same text, PEMA's own autosave
+function onPtolObserved(cb) {
+  var ta = document.getElementById('ptol-observed-comments');
+  if (ta && cb.checked && !ta.value.trim()) ta.value = FCE_PTOL_OBSERVED_TEXT;
+  saveClinicianDataToStorage();
+}
+
 // ─── FCE baseline calcs (mirrors PEMA logic; own state so PEMA is untouched) ─
 function calcFceBMI() {
   var h = parseFloat((document.getElementById('fce-height') || {}).value);
@@ -12698,7 +12736,7 @@ function renderPefaScreen(appt) {
           [['eo-l', 'Eyes Open — Left (sec)'], ['eo-r', 'Eyes Open — Right (sec)'], ['ec-l', 'Eyes Closed — Left (sec)'], ['ec-r', 'Eyes Closed — Right (sec)']].map(function(p) {
             return '<div><label style="font-size:10px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.04em;display:block;margin-bottom:4px">' + p[1] + '</label><input class="form-control" id="pefa-slb-' + p[0] + '" placeholder="—" style="padding:8px 10px"></div>';
           }).join('') + '</div>' +
-          '<div style="margin-bottom:10px;font-size:11px;color:var(--mid);font-style:italic;padding:8px;background:var(--olive-ultra);border-radius:6px">Reference: Eyes open — capped at 30 sec; 30 sec = within normal limits, 15–29 sec = reduced, &lt;15 sec = significant deficit. Eyes closed — 9 sec or greater = within normal limits, 5–8 sec = employer fall risk note, &lt;5 sec = restriction consideration.</div>'
+          '<div style="margin-bottom:10px;font-size:11px;color:var(--mid);font-style:italic;padding:8px;background:var(--olive-ultra);border-radius:6px">Reference: Eyes open — capped at 30 sec; 30 sec = within normal limits, 15–29 sec = reduced, &lt;15 sec = significant deficit. Eyes closed — 9 sec or greater = within normal limits, 5–8 sec = employer fall risk note, &lt;5 sec = restriction consideration. &gt;20% L/R asymmetry = clinically significant.</div>'
         ) : '';
         var optsHtml = t.opts.map(function(o, oi) {
           return isSLR
@@ -14152,7 +14190,7 @@ function saveClinicianDataToStorage() {
   var data = {};
   // 1. All identified inputs, selects, textareas
   document.querySelectorAll('#screen-clinician input, #screen-clinician select, #screen-clinician textarea').forEach(function(el) {
-    if (el.id) data[el.id] = el.value;
+    if (el.id) data[el.id] = (el.type === 'checkbox') ? (el.checked ? '1' : '') : el.value;
   });
   // 2. Audiometry table inputs (no IDs — save by row/col position)
   document.querySelectorAll('.audio-table tbody tr').forEach(function(tr, rowIdx) {
@@ -14238,7 +14276,10 @@ function restoreClinicianData(data) {
     if (key.startsWith('chip_') || key.startsWith('sig_') || key.startsWith('audio_') ||
         key === 'outcome_selected' || key.charAt(0) === '_') return;
     var el = document.getElementById(key);
-    if (el && data[key] !== undefined) el.value = data[key];
+    if (el && data[key] !== undefined) {
+      if (el.type === 'checkbox') el.checked = data[key] === '1';
+      else el.value = data[key];
+    }
   });
   // 2. Audiometry table inputs
   document.querySelectorAll('.audio-table tbody tr').forEach(function(tr, rowIdx) {
