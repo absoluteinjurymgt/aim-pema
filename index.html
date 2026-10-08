@@ -3273,12 +3273,12 @@
           <div class="clin-card-header"><h3>Step-Up — 500mm</h3></div>
           <div class="clin-card-body">
             <div class="mh-grid" style="margin-bottom:14px">
-              <div class="mh-field"><label>Occasional (1 rep)</label><select id="stepup-occ"><option>Able</option><option>Unable</option></select></div>
-              <div class="mh-field"><label>Frequent (5 in 1 min)</label><select id="stepup-freq"><option>Able</option><option>Unable</option></select></div>
+              <div class="mh-field"><label>Occasional (1 rep)</label><select id="stepup-occ"><option value=""></option><option>Able</option><option>Unable</option></select></div>
+              <div class="mh-field"><label>Frequent (5 in 1 min)</label><select id="stepup-freq"><option value=""></option><option>Able</option><option>Unable</option></select></div>
               <div class="mh-field"><label>Pain (0–10)</label><input placeholder="—" id="stepup-pain"></div>
               <div class="mh-field"><label>Peak HR (bpm)</label><input placeholder="—" id="stepup-hr" data-hr-field="peak"></div>
-              <div class="mh-field"><label>Knee Control</label><select id="stepup-knee"><option>Controlled</option><option>Mild valgus</option><option>Significant valgus</option></select></div>
-              <div class="mh-field"><label>Movement Pattern</label><select id="stepup-pattern"><option>Correct</option><option>Compensatory</option></select></div>
+              <div class="mh-field"><label>Knee Control</label><select id="stepup-knee"><option value=""></option><option>Controlled</option><option>Mild valgus</option><option>Significant valgus</option></select></div>
+              <div class="mh-field"><label>Movement Pattern</label><select id="stepup-pattern"><option value=""></option><option>Correct</option><option>Compensatory</option></select></div>
             </div>
             <div class="smart-field">
               <label style="font-size:11px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.04em;display:block;margin-bottom:6px">Step-Up Notes</label>
@@ -3305,9 +3305,9 @@
               <div class="mh-field"><label>Pain (0–10)</label><input placeholder="—" id="ladder-pain"></div>
               <div class="mh-field"><label>Peak HR (bpm)</label><input placeholder="—" id="ladder-hr" data-hr-field="peak"></div>
               <div class="mh-field"><label>RPE (0–10)</label><input placeholder="—" id="ladder-rpe"></div>
-              <div class="mh-field"><label>3-Point Contact</label><select id="ladder-contact"><option>Maintained throughout</option><option>Occasional breaks — noted</option><option>Not maintained</option></select></div>
-              <div class="mh-field"><label>Movement Pattern</label><select id="ladder-pattern"><option>Correct</option><option>Compensatory</option></select></div>
-              <div class="mh-field"><label>Result</label><select id="ladder-result"><option>Target reps achieved</option><option>Partial — reps noted above</option><option>Unable to complete</option></select></div>
+              <div class="mh-field"><label>3-Point Contact</label><select id="ladder-contact"><option value=""></option><option>Maintained throughout</option><option>Occasional breaks — noted</option><option>Not maintained</option></select></div>
+              <div class="mh-field"><label>Movement Pattern</label><select id="ladder-pattern"><option value=""></option><option>Correct</option><option>Compensatory</option></select></div>
+              <div class="mh-field"><label>Result</label><select id="ladder-result"><option value=""></option><option>Target reps achieved</option><option>Partial — reps noted above</option><option>Unable to complete</option></select></div>
             </div>
             <div class="smart-field">
               <label style="font-size:11px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.04em;display:block;margin-bottom:6px">Ladder Notes</label>
@@ -7479,6 +7479,9 @@ function preFillManualHandling(containerId) {
 
     const p1Sel = phases[0].querySelector('select')?.value;
     const p2Sel = phases[1].querySelector('select')?.value;
+    // Untouched card (blank Result selects): generate nothing — an
+    // unassessed task must never produce a narrative (Item 54)
+    if (!p1Sel && !p2Sel) return;
     const p1Pain = parseFloat(phases[0].querySelectorAll('input')[1]?.value) || 0;
     const p2Pain = parseFloat(phases[1].querySelectorAll('input')[1]?.value) || 0;
     const p1HR = phases[0].querySelectorAll('input')[2]?.value || '—';
@@ -7526,7 +7529,9 @@ function preFillClimbing() {
     const pattern = getSelectVal('stepup-pattern');
     const pain = parseFloat(getInputVal('stepup-pain')) || 0;
     let text = '';
-    if (occ === 'Unable') {
+    if (!occ && !freq) {
+      // Untouched step-up (blank selects): no narrative for an unassessed test
+    } else if (occ === 'Unable') {
       text = `Step-up (500mm) — occasional demand not achieved.${pain > 0 ? ` Pain ${pain}/10 reported.` : ''} Employer to consider step and stair access requirements for the role.`;
       window._findingFlags = window._findingFlags || [];
       window._findingFlags.push({section:'Climbing', finding:'Step-up (500mm) — occasional demand not achieved', rec:'Employer to consider step and stair access requirements for the role.'});
@@ -7545,7 +7550,9 @@ function preFillClimbing() {
     const reps = getInputVal('ladder-const');
     const pain = parseFloat(getInputVal('ladder-pain')) || 0;
     let text = '';
-    if (result === 'Unable to complete') {
+    if (!result) {
+      // Untouched ladder (blank Result): no narrative for an unassessed test
+    } else if (result === 'Unable to complete') {
       text = 'Ladder climbing — unable to complete the endurance protocol. Safety concern identified. Employer to determine suitability for roles requiring ladder access.';
       window._findingFlags = window._findingFlags || [];
       window._findingFlags.push({section:'Climbing', finding:'Ladder climbing — unable to complete the endurance protocol', rec:'Employer to determine suitability for roles requiring ladder access.'});
@@ -9364,8 +9371,11 @@ function buildPDF() {
     const card=allCards[i]; let p1='—',p2='—',pain='—',hr='—',notes='—';
     if(card){
       const phases=card.querySelectorAll('.mh-phase');
-      if(phases[0]){ p1=phases[0].querySelector('select')?.value==='Demonstrated'?'Yes':'No'; pain=phases[0].querySelectorAll('input')[1]?.value||'—'; hr=phases[0].querySelectorAll('input')[2]?.value||'—'; }
-      if(phases[1]){ p2=phases[1].querySelector('select')?.value==='Demonstrated'?'Yes':'No'; }
+      // Tri-state: a blank Result select prints an em-dash — the report must
+      // never assert Yes or No for a test that was not assessed (Item 54)
+      const triState=v=>v==='Demonstrated'?'Yes':v==='Not demonstrated'?'No':'—';
+      if(phases[0]){ p1=triState(phases[0].querySelector('select')?.value); pain=phases[0].querySelectorAll('input')[1]?.value||'—'; hr=phases[0].querySelectorAll('input')[2]?.value||'—'; }
+      if(phases[1]){ p2=triState(phases[1].querySelector('select')?.value); }
       notes=card.querySelector('.smart-textarea')?.value?.trim()||'—'; // full text — tblRow wraps
     }
     tblRow([name,p1,p2,pain,hr,notes],mhW,false,i%2===1);
@@ -9510,13 +9520,19 @@ function renderROM() {
         '<button class="option-chip" onclick="selectROM(this,\'pain-limited\',\'rom-' + i + '\',\'pain-row-' + i + '\')">Pain + Limited</button>' +
       '</div>' +
       '<div style="flex:1">' +
-        '<input style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:\'DM Sans\',sans-serif;outline:none;margin-bottom:4px" placeholder="' + placeholder + '">' +
+        '<input id="rom-' + pemaSlug(joint) + '-detail" style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:\'DM Sans\',sans-serif;outline:none;margin-bottom:4px" placeholder="' + placeholder + '">' +
         '<div id="pain-row-' + i + '" style="display:none;margin-top:3px">' +
-          '<input style="width:90px;padding:5px 8px;border:1.5px solid var(--error);border-radius:6px;font-size:12px;font-family:\'DM Sans\',sans-serif;outline:none" placeholder="Pain /10" type="number" min="0" max="10">' +
+          '<input id="rom-' + pemaSlug(joint) + '-pain" style="width:90px;padding:5px 8px;border:1.5px solid var(--error);border-radius:6px;font-size:12px;font-family:\'DM Sans\',sans-serif;outline:none" placeholder="Pain /10" type="number" min="0" max="10">' +
         '</div>' +
       '</div>';
     body.appendChild(row);
   });
+}
+
+// Stable autosave id fragment from a display name — 'Lumbar/Low Back' →
+// 'lumbar'. Name-derived, never index-derived (Item 54).
+function pemaSlug(name) {
+  return String(name || '').split('/')[0].toLowerCase().replace(/[^a-z]/g, '');
 }
 function selectROM(btn, type, group, painRowId) {
   const row = btn.closest('.rom-row');
@@ -9549,7 +9565,7 @@ function renderPostural() {
         <button class="option-chip" onclick="selectROM(this,'pain','post-${i}')">Abnormal</button>
       </div>
       <div>
-        <input style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:'DM Sans',sans-serif;outline:none" placeholder="Details if abnormal...">
+        <input id="post-${pemaSlug(r)}-detail" style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:'DM Sans',sans-serif;outline:none" placeholder="Details if abnormal...">
       </div>
     </div>
   `).join('');
@@ -9683,9 +9699,9 @@ function renderPosturalTol() {
         '<button class="option-chip" onclick="selectChip(this,\'pt-' + safeId + '\');toggleUnableReason(\'unable-' + safeId + '\',false)">Able</button>' +
         '<button class="option-chip" onclick="selectChip(this,\'pt-' + safeId + '\');toggleUnableReason(\'unable-' + safeId + '\',true)">Unable</button>' +
       '</div>' +
-      '<div class="postural-field"><label>Time Achieved</label><input placeholder="2:00"></div>' +
-      '<div class="postural-field"><label>Pain (0–10)</label><input placeholder="—" oninput="preFillPosturalTol()"></div>' +
-      '<div class="postural-field"><label>Peak HR (bpm)</label><input placeholder="—" data-hr-field="peak"></div>' +
+      '<div class="postural-field"><label>Time Achieved</label><input id="ptol-' + safeId + '-time" placeholder="2:00"></div>' +
+      '<div class="postural-field"><label>Pain (0–10)</label><input id="ptol-' + safeId + '-pain" placeholder="—" oninput="preFillPosturalTol()"></div>' +
+      '<div class="postural-field"><label>Peak HR (bpm)</label><input id="ptol-' + safeId + '-hr" placeholder="—" data-hr-field="peak"></div>' +
       '<div id="unable-' + safeId + '" style="display:none;margin-top:8px;padding:8px;background:var(--olive-ultra);border-radius:6px;border:1px solid var(--border)">' +
         '<label style="font-size:10px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.04em;display:block;margin-bottom:6px">Reason Unable</label>' +
         '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">' +
@@ -9717,10 +9733,10 @@ window._pemaMhTable = null;
 window._pemaClassification = null;
 function pemaMhPlaceholders() {
   return [
-    { name: 'Lifting: Floor to Bench (800mm)', occ: '—', freq: '—' },
-    { name: 'Carrying (5m bilateral, from 800mm bench)', occ: '—', freq: '—' },
-    { name: 'Lifting: Bench (800mm) to Overhead', occ: '—', freq: '—' },
-    { name: 'Pulling (resistance band, 2× length, controlled return)', occ: '—', freq: '—' }
+    { key: 'floor', name: 'Lifting: Floor to Bench (800mm)', occ: '—', freq: '—' },
+    { key: 'carry', name: 'Carrying (5m bilateral, from 800mm bench)', occ: '—', freq: '—' },
+    { key: 'overhead', name: 'Lifting: Bench (800mm) to Overhead', occ: '—', freq: '—' },
+    { key: 'pull', name: 'Pulling (resistance band, 2× length, controlled return)', occ: '—', freq: '—' }
   ];
 }
 // Re-renders both PEMA MH sections from the resolved table (or placeholders),
@@ -9740,9 +9756,15 @@ function renderPemaMhSections() {
   if (typeof applyNumericInputModes === 'function') applyNumericInputModes();
 }
 
-function getTechChips(testName) {
+function getTechChips(testName, stateId) {
   const name = (testName || '').toLowerCase();
-  const chip = function(label) { return '<button class="option-chip" onclick="this.classList.toggle(\'selected-normal\')">' + label + '</button>'; };
+  // With a stateId the chips persist DAS-style (PEMA, Item 54); without one
+  // the legacy classList-toggle onclick is emitted UNCHANGED — the PEFA
+  // renderer rewrites exactly that string to its own handler, so it must
+  // stay byte-identical for the default path.
+  const chip = stateId
+    ? function(label) { return '<button class="option-chip" onclick="toggleMhTech(this,\'' + stateId + '\')">' + label + '</button>'; }
+    : function(label) { return '<button class="option-chip" onclick="this.classList.toggle(\'selected-normal\')">' + label + '</button>'; };
   if (name.includes('carrying')) {
     return chip('Load close to body') + chip('Neutral spine maintained') + chip('Maintains balance') + chip('Avoids trunk rotation');
   } else if (name.includes('pulling')) {
@@ -9767,10 +9789,10 @@ function renderMHCard(tests, containerId) {
             <div class="mh-phase-weight">${t.occ} · 1 rep</div>
           </div>
           <div class="mh-grid">
-            <div class="mh-field"><label>Result</label><select><option>Demonstrated</option><option>Not demonstrated</option></select></div>
-            <div class="mh-field"><label>Max Weight Achieved (kg)</label><input placeholder="${t.occ}" value="${parseFloat(t.occ) || ''}"></div>
-            <div class="mh-field"><label>Pain (0–10)</label><input placeholder="—"></div>
-            <div class="mh-field"><label>Peak HR (bpm)</label><input placeholder="—" data-hr-field="peak"></div>
+            <div class="mh-field"><label>Result</label><select id="mh-${t.key}-p1-result"><option value=""></option><option>Demonstrated</option><option>Not demonstrated</option></select></div>
+            <div class="mh-field"><label>Max Weight Achieved (kg)</label><input id="mh-${t.key}-p1-weight" placeholder="${t.occ}" value="${parseFloat(t.occ) || ''}"></div>
+            <div class="mh-field"><label>Pain (0–10)</label><input id="mh-${t.key}-p1-pain" placeholder="—"></div>
+            <div class="mh-field"><label>Peak HR (bpm)</label><input id="mh-${t.key}-p1-hr" placeholder="—" data-hr-field="peak"></div>
           </div>
         </div>
         <div class="mh-phase">
@@ -9779,10 +9801,10 @@ function renderMHCard(tests, containerId) {
             <div class="mh-phase-weight">${t.freq} · 5 reps in 1 min</div>
           </div>
           <div class="mh-grid">
-            <div class="mh-field"><label>Result</label><select><option>Demonstrated</option><option>Not demonstrated</option></select></div>
-            <div class="mh-field"><label>Reps completed</label><input placeholder="—" value="5"></div>
-            <div class="mh-field"><label>Pain (0–10)</label><input placeholder="—"></div>
-            <div class="mh-field"><label>Peak HR (bpm)</label><input placeholder="—" data-hr-field="peak"></div>
+            <div class="mh-field"><label>Result</label><select id="mh-${t.key}-p2-result"><option value=""></option><option>Demonstrated</option><option>Not demonstrated</option></select></div>
+            <div class="mh-field"><label>Reps completed</label><input id="mh-${t.key}-p2-reps" placeholder="—" value="5"></div>
+            <div class="mh-field"><label>Pain (0–10)</label><input id="mh-${t.key}-p2-pain" placeholder="—"></div>
+            <div class="mh-field"><label>Peak HR (bpm)</label><input id="mh-${t.key}-p2-hr" placeholder="—" data-hr-field="peak"></div>
           </div>
         </div>
         <div style="margin-bottom:12px">
@@ -9792,7 +9814,7 @@ function renderMHCard(tests, containerId) {
         </div>
         <div class="smart-field">
           <label style="font-size:11px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.04em;display:block;margin-bottom:6px">Notes</label>
-          <textarea class="smart-textarea" style="min-height:60px" placeholder="Assessment notes..."></textarea>
+          <textarea class="smart-textarea" id="mh-${t.key}-notes" style="min-height:60px" placeholder="Assessment notes..."></textarea>
           <div class="prompt-chips">
             <div class="prompt-chip" onclick="insertPrompt(this,'Capacity demonstrated at occasional and frequent demand levels. 0/10 pain throughout. Technique within normal limits. Constant demand inferred.')">Full capacity — all tiers</div>
             <div class="prompt-chip" onclick="insertPrompt(this,'Occasional demand demonstrated. Frequent demand not fully achieved — reps limited by pain response. Employer advised.')">Occasional only</div>
@@ -9806,8 +9828,40 @@ function renderMHCard(tests, containerId) {
   const techAreas = container.querySelectorAll('.mh-tech-chips');
   tests.forEach(function(t, i) {
     // chipName keeps the overhead technique chips for Medium's
-    // bench-to-shoulder-height variant (same convention as the PEFA)
-    if (techAreas[i]) techAreas[i].innerHTML = getTechChips(t.chipName || t.name);
+    // bench-to-shoulder-height variant (same convention as the PEFA).
+    // The per-card state id gives each chip a unique handler and a stable
+    // autosave key (the shared classList-toggle onclick used to collapse
+    // every technique chip in the assessment onto ONE autosave key).
+    if (techAreas[i]) {
+      techAreas[i].innerHTML = getTechChips(t.chipName || t.name, 'mh-' + t.key + '-tech') +
+        '<input type="hidden" id="mh-' + t.key + '-tech">';
+    }
+  });
+}
+
+// Multi-select technique chips persisted DAS-style: the hidden input holds
+// the selected labels joined by ' | ' — a stable string key, not an
+// onclick-derived one. syncMhTechChips() restyles chips from that state
+// after a restore.
+function toggleMhTech(btn, stateId) {
+  btn.classList.toggle('selected-normal');
+  var state = document.getElementById(stateId);
+  if (state) {
+    var sel = [];
+    btn.closest('.mh-tech-chips').querySelectorAll('.option-chip.selected-normal').forEach(function(c) { sel.push(c.textContent.trim()); });
+    state.value = sel.join(' | ');
+  }
+  saveClinicianDataToStorage();
+}
+
+function syncMhTechChips() {
+  document.querySelectorAll('#mh-cards .mh-tech-chips').forEach(function(area) {
+    var state = area.querySelector('input[type="hidden"]');
+    if (!state) return;
+    var sel = state.value ? state.value.split(' | ') : [];
+    area.querySelectorAll('.option-chip').forEach(function(c) {
+      c.classList.toggle('selected-normal', sel.indexOf(c.textContent.trim()) >= 0);
+    });
   });
 }
 
@@ -12936,18 +12990,22 @@ const PEFA_OUTCOMES = [
 // The third lift's name differs by classification: 'Bench to Shoulder Height'
 // (Medium) vs 'Bench to Overhead' (Heavy); chipName keeps the overhead
 // technique-chip set for both variants.
+// `key` is the stable per-task identity used for PEMA autosave field ids —
+// position- and classification-independent (the third lift keeps key
+// 'overhead' even when its Medium display name is Shoulder Height). The PEFA
+// renders by name/occ/freq/chipName and ignores `key`.
 const MH_TABLES = {
   Medium: [
-    { name: 'Lifting: Floor to Bench (800mm)', occ: '19kg', freq: '12kg' },
-    { name: 'Carrying (5m bilateral, from 800mm bench)', occ: '19kg', freq: '12kg' },
-    { name: 'Lifting: Bench (800mm) to Shoulder Height', chipName: 'Lifting: Bench (800mm) to Overhead', occ: '10kg', freq: '6kg' },
-    { name: 'Pulling (resistance band, 2× length, controlled return)', occ: '14kg', freq: '10kg' }
+    { key: 'floor', name: 'Lifting: Floor to Bench (800mm)', occ: '19kg', freq: '12kg' },
+    { key: 'carry', name: 'Carrying (5m bilateral, from 800mm bench)', occ: '19kg', freq: '12kg' },
+    { key: 'overhead', name: 'Lifting: Bench (800mm) to Shoulder Height', chipName: 'Lifting: Bench (800mm) to Overhead', occ: '10kg', freq: '6kg' },
+    { key: 'pull', name: 'Pulling (resistance band, 2× length, controlled return)', occ: '14kg', freq: '10kg' }
   ],
   Heavy: [
-    { name: 'Lifting: Floor to Bench (800mm)', occ: '35kg', freq: '22kg' },
-    { name: 'Carrying (5m bilateral, from 800mm bench)', occ: '35kg', freq: '22kg' },
-    { name: 'Lifting: Bench (800mm) to Overhead', occ: '18kg', freq: '14kg' },
-    { name: 'Pulling (resistance band, 2× length, controlled return)', occ: '24kg', freq: '18kg' }
+    { key: 'floor', name: 'Lifting: Floor to Bench (800mm)', occ: '35kg', freq: '22kg' },
+    { key: 'carry', name: 'Carrying (5m bilateral, from 800mm bench)', occ: '35kg', freq: '22kg' },
+    { key: 'overhead', name: 'Lifting: Bench (800mm) to Overhead', occ: '18kg', freq: '14kg' },
+    { key: 'pull', name: 'Pulling (resistance band, 2× length, controlled return)', occ: '24kg', freq: '18kg' }
   ]
 };
 // Returns null for any classification without an MH_TABLES entry — callers
@@ -14730,6 +14788,7 @@ function restoreClinicianData(data) {
   if (data._dasEnabled !== undefined) { window._pemaDasEnabled = !!data._dasEnabled; applyDasVisibility(); }
   if (typeof syncDasChips === 'function') { syncDasChips(); preFillDas(); }
   if (typeof syncUrineNotCollected === 'function') syncUrineNotCollected();
+  if (typeof syncMhTechChips === 'function') syncMhTechChips();
 
   // 6. Re-run all derived calculations
   if (typeof calcBMI            === 'function') calcBMI();
