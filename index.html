@@ -2842,7 +2842,7 @@
                 </div>
               </div>
               <div style="font-size:11px;color:var(--mid);margin-bottom:8px;font-style:italic">
-                FEV1 and FVC in litres (L) · PEF in L/sec · FEV1/FVC as ratio · Enter predicted values from your spirometry software, in these same units
+                FEV1 and FVC in litres (L) · PEF in L/sec · FEV1/FVC as a percentage (%) · Enter predicted values from your spirometry software, in these same units
               </div>
               <table class="spiro-table" id="spiro-table" >
                 <thead>
@@ -2856,14 +2856,14 @@
                 </thead>
                 <tbody>
                   <tr><td><strong>FEV1</strong> <span style="font-size:10px;color:var(--mid)">L</span></td>
-                    <td><input id="spiro-fev1-meas" oninput="calcSpiroPct()"></td>
+                    <td><input id="spiro-fev1-meas" oninput="calcSpiroPct()" onchange="autoFillSpiroRatio()"></td>
                     <td><input id="spiro-fev1-pred" oninput="calcSpiroPct()"></td>
                     <td><input id="spiro-fev1-pct"></td>
                     <td class="postbroncho-col" style="display:none"><input id="spiro-fev1-post" oninput="calcSpiroPct()"></td>
                     <td class="postbroncho-col" style="display:none"><input id="spiro-fev1-post-pct"></td>
                     <td class="postbroncho-col" style="display:none"><input id="spiro-fev1-chg"></td></tr>
                   <tr><td><strong>FVC</strong> <span style="font-size:10px;color:var(--mid)">L</span></td>
-                    <td><input id="spiro-fvc-meas" oninput="calcSpiroPct()"></td>
+                    <td><input id="spiro-fvc-meas" oninput="calcSpiroPct()" onchange="autoFillSpiroRatio()"></td>
                     <td><input id="spiro-fvc-pred" oninput="calcSpiroPct()"></td>
                     <td><input id="spiro-fvc-pct"></td>
                     <td class="postbroncho-col" style="display:none"><input id="spiro-fvc-post" oninput="calcSpiroPct()"></td>
@@ -2922,7 +2922,12 @@
 
       <div class="clinician-section" id="clin-urinalysis">
         <div class="section-title" style="margin-bottom:4px">Urinalysis</div>
-        <div class="section-desc">Dipstick urinalysis for blood, protein, and glucose.</div>
+        <div class="section-desc">Dipstick urinalysis for blood, protein, and glucose. Normally run on the DAS sample once the drug screen is negative.</div>
+        <!-- Item 43: a non-negative drug screen sends the urine sample to the
+             laboratory, so the dipstick cannot be run -->
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;padding:10px 14px;background:var(--olive-ultra);border-radius:8px;border:1px solid var(--border)">
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;font-weight:600;color:var(--charcoal)"><input type="checkbox" id="urine-not-collected" onchange="onUrineNotCollected(this)"> Not completed — sample required for confirmatory drug &amp; alcohol testing</label>
+        </div>
         <div class="clin-card">
           <div class="clin-card-header"><h3>Urinalysis Results</h3></div>
           <div class="clin-card-body">
@@ -2992,6 +2997,8 @@
         <div class="clin-card">
           <div class="clin-card-header"><h3>Drug Screen (Initial)</h3></div>
           <div class="clin-card-body">
+            <!-- Item 44: the collection method is a stated fact, not a field -->
+            <div style="font-size:12px;color:var(--mid);margin-bottom:12px">Collection method: <strong>urine sample</strong>. Initial screening only — a non-negative result is forwarded for laboratory confirmation.</div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px" id="das-drug-chips">
               <button class="option-chip" onclick="selectDas(this,'das-drug','Negative')">Negative</button>
               <button class="option-chip" onclick="selectDas(this,'das-drug','Non-negative')">Non-negative</button>
@@ -3222,7 +3229,7 @@
           <div class="clin-card-body">
             <div class="vitals-grid">
               <div class="vital-item"><div class="vital-label">Max HR for Test</div><div class="vital-input" id="st-maxhr">—</div><div class="vital-unit">bpm</div></div>
-              <div class="vital-item"><div class="vital-label">Baseline HR</div><input class="vital-input" id="st-base" placeholder="72"><div class="vital-unit">bpm</div></div>
+              <div class="vital-item"><div class="vital-label">Baseline HR</div><input class="vital-input" id="st-base" placeholder="—"><div class="vital-unit">bpm</div></div>
               <div class="vital-item"><div class="vital-label">3-Minute HR</div><input class="vital-input" id="st-3min" data-hr-field="peak" placeholder="—"><div class="vital-unit">bpm</div></div>
               <div class="vital-item"><div class="vital-label">1-Min Post HR</div><input class="vital-input" id="st-post" data-hr-field="peak" placeholder="—"><div class="vital-unit">bpm</div></div>
               <div class="vital-item"><div class="vital-label">Pain Rating</div><input class="vital-input" id="st-pain" placeholder="0"><div class="vital-unit">/10</div></div>
@@ -3491,6 +3498,7 @@ var CLINIC = {
   name: 'Absolute Injury Management',
   phone: '(03) 5174 7250',
   address: '15 Breed Street, Traralgon',
+  email: 'info@absoluteim.com.au',
   web: 'absoluteim.com.au'
 };
 // Second footer line on every report: address · phone · website.
@@ -5106,6 +5114,15 @@ function loadPatientDataIntoClinician() {
   try {
     const data = JSON.parse(stored);
 
+    // Patient consent signature (Item 47): captured on the patient's device
+    // and stored in the questionnaire response under 'sig_sig-consent' — but
+    // this loader always SKIPPED sig_ keys, so the canvas on the clinician's
+    // device stayed blank and the report printed "Signature not captured".
+    // Redraw it so getSig('sig-consent') finds ink at build time.
+    if (data['sig_sig-consent']) {
+      setTimeout(function() { drawFceSig('sig-consent', data['sig_sig-consent']); }, 150);
+    }
+
     // 1. Restore plain input/select/textarea values
     Object.keys(data).forEach(function(key) {
       if (key.startsWith('yn_') || key.startsWith('checked_') || key.startsWith('sig_') || key.startsWith('cond_') || /_row_\d+$/.test(key)) return;
@@ -5383,7 +5400,20 @@ function calcHearingLossAMA() {
     });
     if (elClass) { elClass.textContent = cls + ' (PTA ' + Math.round(pta) + ' dB)'; elClass.style.color = color; }
     if (elDetail) elDetail.textContent = elevated.length ? 'Elevated: ' + elevated.join(', ') : '';
-    return { cls: cls, pta: Math.round(pta), elevated: elevated };
+    // Noise-notch screen (Item 39): flag 3000/4000/6000 Hz sitting 20 dB or
+    // more below the better (lower) of 1000 and 2000 Hz — the classic
+    // noise-induced pattern that four-frequency averaging conceals. The
+    // classification itself is unchanged; this is an additive observation.
+    var refCandidates = [parseFloat(inputs[1] ? inputs[1].value : ''), parseFloat(inputs[3] ? inputs[3].value : '')].filter(function(v) { return !isNaN(v); });
+    var ref = refCandidates.length ? Math.min.apply(null, refCandidates) : null;
+    var dips = [];
+    if (ref !== null) {
+      [[4, 3000], [5, 4000], [6, 6000]].forEach(function(p) {
+        var v = parseFloat(inputs[p[0]] ? inputs[p[0]].value : '');
+        if (!isNaN(v) && v - ref >= 20) dips.push({ f: p[1], v: v });
+      });
+    }
+    return { cls: cls, pta: Math.round(pta), elevated: elevated, dips: dips, ref: ref };
   }
 
   window._audioClassLeft  = classifyEar(rows[0], document.getElementById('audio-class-left'),  document.getElementById('audio-class-left-detail'));
@@ -5472,6 +5502,21 @@ function readSpiroRatioPct(id) {
   return { state: 'ok', value: pct, raw: raw, converted: converted };
 }
 
+// Item 41: the ratio auto-fill runs when FEV1/FVC measured values are
+// COMMITTED (the change event, i.e. on blur) rather than on every keystroke —
+// typing "5.5" used to fill the ratio from the first digit ("5") and then
+// never recalculate because the field was no longer empty. Only an empty
+// ratio field is ever auto-filled; a typed value is never overwritten.
+function autoFillSpiroRatio() {
+  const fev1 = parseFloat(document.getElementById('spiro-fev1-meas')?.value);
+  const fvc = parseFloat(document.getElementById('spiro-fvc-meas')?.value);
+  const el = document.getElementById('spiro-ratio-meas');
+  if (el && !el.value && !isNaN(fev1) && !isNaN(fvc) && fvc > 0) {
+    el.value = Math.round(fev1 / fvc * 100); // percentage form
+    calcSpiroPct();
+  }
+}
+
 function showSpiroRatioNote(r) {
   const note = document.getElementById('spiro-ratio-note');
   if (!note) return;
@@ -5539,12 +5584,8 @@ function calcSpiroPct() {
   calcPostPct('spiro-fev1-post','spiro-fev1-pred','spiro-fev1-post-pct','spiro-fev1-chg','spiro-fev1-meas');
   calcPostPct('spiro-fvc-post','spiro-fvc-pred','spiro-fvc-post-pct','spiro-fvc-chg','spiro-fvc-meas');
 
-  const fev1Meas = parseFloat(document.getElementById('spiro-fev1-meas')?.value);
-  const fvcMeas = parseFloat(document.getElementById('spiro-fvc-meas')?.value);
-  const ratioEl = document.getElementById('spiro-ratio-meas');
-  if (!isNaN(fev1Meas) && !isNaN(fvcMeas) && fvcMeas > 0 && ratioEl && !ratioEl.value) {
-    ratioEl.value = Math.round(fev1Meas / fvcMeas * 100); // percentage form
-  }
+  // Auto-fill of the ratio from FEV1/FVC happens on change (blur), not here —
+  // firing on every keystroke filled it from the first digit (Item 41)
   const ratioR = readSpiroRatioPct('spiro-ratio-meas');
   showSpiroRatioNote(ratioR);
 
@@ -5825,6 +5866,11 @@ function selectDas(btn, key, value) {
   state.value = value;
   syncDasChips();
   preFillDas();
+  // Item 43: the sample goes to the laboratory on a non-negative result, so
+  // the dipstick usually cannot be run — remind rather than auto-select
+  if (key === 'das-drug' && value === 'Non-negative' && !document.getElementById('urine-not-collected')?.checked) {
+    showToast('Sample going to the laboratory? Mark Urinalysis as "Not completed" if the dipstick could not be run.');
+  }
   saveClinicianDataToStorage();
   if (typeof updateNavDots === 'function') updateNavDots('screen-clinician');
 }
@@ -6809,6 +6855,22 @@ function preFillAudiometry() {
       window._findingFlags.push({section:'Audiometry', finding:side.charAt(0).toUpperCase()+side.slice(1)+' ear: '+lr.cls+' hearing loss (PTA '+lr.pta+' dB)', rec:'Hearing PPE required. Audiometric surveillance recommended.'});
     }
   }
+  // Item 39: a 3–6 kHz threshold dip is reported even when the averaged
+  // classification is Normal — the classification sentence above stays
+  // exactly as it is and runs first; this observation is additive.
+  function dipSentences(ear, side) {
+    if (!ear || !ear.dips || !ear.dips.length) return '';
+    return ear.dips.map(function(d) {
+      window._findingFlags.push({ section: 'Audiometry', finding: side.charAt(0).toUpperCase() + side.slice(1) + ' ear: threshold dip at ' + d.f + ' Hz (' + d.v + ' dB)', rec: 'Monitor on subsequent audiometric review.' });
+      var adjacent = ear.ref !== null && ear.ref <= 25
+        ? 'with thresholds at adjacent frequencies within normal limits'
+        : 'relative to the 1000–2000 Hz reference (' + ear.ref + ' dB)';
+      return 'A threshold dip is noted at ' + d.f + ' Hz in the ' + side + ' ear (' + d.v + ' dB), ' + adjacent + '. This pattern warrants monitoring on subsequent audiometric review.';
+    }).join(' ');
+  }
+  var dipText = [dipSentences(L, 'left'), dipSentences(R, 'right')].filter(Boolean).join(' ');
+  if (dipText) text = text ? text + ' ' + dipText : dipText;
+
   // Otoscopy sits alongside the threshold result, carrying its own validity
   // caveat. Its key-findings entries are raised in generateAbnormalFindings(),
   // which is the live path for this section.
@@ -7379,13 +7441,22 @@ function preFillStepTest() {
     ? ' Note: patient has disclosed beta-blocker medication — heart rate response and fitness classification are pharmacologically blunted and should be interpreted with caution.'
     : '';
 
+  // The 85% breach line is owned by checkHRBreach(). When it is present, the
+  // fitness-band wording must not also claim a normal heart-rate response —
+  // "85% max HR exceeded" followed by "within expected parameters" is a
+  // contradiction (Item 40).
+  const existingLines = (ta.value || '').split('\n');
+  const breachLines   = existingLines.filter(l => /^85% max HR exceeded/.test(l.trim()));
+  const exertionLines = existingLines.filter(l => /^Signs of exertion observed:/.test(l.trim()));
+  const hadBreach = breachLines.length > 0 || !!hrNote;
+
   let text = '';
   if (notCompleted) {
     text = '3-minute step test not completed. Reason documented above.';
   } else if (result === 'Excellent' || result === 'Good') {
-    text = '3-minute step test completed without difficulty — result: ' + result + '. Heart rate response appropriate for age. Good cardiovascular fitness demonstrated. No symptoms reported throughout testing.' + hrNote + betaBlockerNote;
+    text = '3-minute step test completed without difficulty — result: ' + result + '. ' + (hadBreach ? 'Heart rate response documented above.' : 'Heart rate response appropriate for age.') + ' Good cardiovascular fitness demonstrated. No symptoms reported throughout testing.' + hrNote + betaBlockerNote;
   } else if (result === 'Average') {
-    text = '3-minute step test completed — result: Average. Heart rate response within expected parameters. Adequate cardiovascular fitness for role requirements demonstrated.' + hrNote + betaBlockerNote;
+    text = '3-minute step test completed — result: Average. ' + (hadBreach ? 'Heart rate response documented above.' : 'Heart rate response within expected parameters.') + ' Adequate cardiovascular fitness for role requirements demonstrated.' + hrNote + betaBlockerNote;
   } else if (result === 'Fair' || result === 'Poor') {
     text = '3-minute step test completed — result: ' + result + '. Heart rate response noted — see values above. Below-average cardiovascular fitness identified.' + betaBlockerNote + ' Employer to consider cardiovascular fitness requirements of the role.';
     window._findingFlags = window._findingFlags || [];
@@ -7396,10 +7467,7 @@ function preFillStepTest() {
     // and selectExertion(). Overwriting the textarea wholesale used to erase
     // them, so carry them across instead — front and back respectively, which
     // is the order selectExertion() rebuilds them in.
-    const lines = (ta.value || '').split('\n');
-    const breach   = lines.filter(l => /^85% max HR exceeded/.test(l.trim()));
-    const exertion = lines.filter(l => /^Signs of exertion observed:/.test(l.trim()));
-    ta.value = breach.concat(text).concat(exertion).join('\n');
+    ta.value = breachLines.concat(text).concat(exertionLines).join('\n');
     ta.classList.add('prefilled');
   }
   // Appended last, so it sits after the prefill, the 85% HR breach line and
@@ -8237,6 +8305,9 @@ var NAVDOT_RULES = {
   // Urinalysis: the three dipstick chip groups are the section's substance;
   // chips are buttons, which the generic input-counting check never saw.
   'clin-urinalysis': function(sec) {
+    // Sample sent for confirmatory DAS testing: urinalysis is complete-by-
+    // exclusion — the dot must stop waiting on the dipstick (Item 43)
+    if (document.getElementById('urine-not-collected')?.checked) return 'complete';
     var groups = ['urine-blood', 'urine-protein', 'urine-glucose'];
     var done = groups.filter(function(g) { return !!sec.querySelector('.option-chip.selected-normal[onclick*="' + g + '"]'); }).length;
     return _ndVerdict(done > 0 || _ndAnyEntry(sec), done === groups.length);
@@ -8382,6 +8453,7 @@ var NAVDOT_PENDING = {
     return m;
   },
   'clin-urinalysis': function(sec) {
+    if (document.getElementById('urine-not-collected')?.checked) return [];
     return [['urine-blood', 'blood'], ['urine-protein', 'protein'], ['urine-glucose', 'glucose']]
       .filter(function(p) { return !sec.querySelector('.option-chip.selected-normal[onclick*="' + p[0] + '"]'); })
       .map(function(p) { return p[1] + ' dipstick result'; });
@@ -9145,13 +9217,17 @@ function buildPDF() {
   y+=4; twoCol('Pattern',getChip('spiro-pattern','—'),'Interpretation',getSmart('clin-spirometry','Not recorded'));
 
   secHeader('Urinalysis');
-  threeCol('Blood',getChip('urine-blood','—'),'Protein',getChip('urine-protein','—'),'Glucose',getChip('urine-glucose','—'));
-  fullRow('Comments',getSmart('clin-urinalysis','All parameters within normal limits'));
+  if(document.getElementById('urine-not-collected')?.checked){
+    fullRow('Urinalysis',URINE_DAS_TEXT);
+  } else {
+    threeCol('Blood',getChip('urine-blood','—'),'Protein',getChip('urine-protein','—'),'Glucose',getChip('urine-glucose','—'));
+    fullRow('Comments',getSmart('clin-urinalysis','All parameters within normal limits'));
+  }
 
   // Drug & Alcohol Screen — only when the booking enables it (pema_config.das)
   if(window._pemaDasEnabled){
     secHeader('Drug & Alcohol Screen');
-    twoCol('Breath Alcohol',val('das-breath')||'—','Drug Screen (Initial)',val('das-drug')||'—');
+    threeCol('Breath Alcohol',val('das-breath')||'—','Drug Screen (Initial)',val('das-drug')||'—','Collection Method','Urine sample');
     fullRow('Breath Alcohol Comments',(document.getElementById('das-breath-comments')?.value||'').trim()||'—');
     fullRow('Drug Screen Comments',(document.getElementById('das-drug-comments')?.value||'').trim()||'—');
   }
@@ -11231,7 +11307,7 @@ function renderFceScreen(appt) {
       '<div class="clin-card"><div class="clin-card-body">' +
         '<div class="vitals-grid">' +
           '<div class="vital-item"><div class="vital-label">Max HR for Test</div><div class="vital-input" id="fce-st-maxhr">—</div><div class="vital-unit">bpm</div></div>' +
-          '<div class="vital-item"><div class="vital-label">Baseline HR</div><input class="vital-input" id="fce-st-base" placeholder="72"><div class="vital-unit">bpm</div></div>' +
+          '<div class="vital-item"><div class="vital-label">Baseline HR</div><input class="vital-input" id="fce-st-base" placeholder="—"><div class="vital-unit">bpm</div></div>' +
           '<div class="vital-item"><div class="vital-label">3-Minute HR</div><input class="vital-input" id="fce-st-3min" data-fce-hr="1" placeholder="—"><div class="vital-unit">bpm</div></div>' +
           '<div class="vital-item"><div class="vital-label">1-Min Post HR</div><input class="vital-input" id="fce-st-post" data-fce-hr="1" placeholder="—"><div class="vital-unit">bpm</div></div>' +
           '<div class="vital-item"><div class="vital-label">Pain Rating</div><input class="vital-input" id="fce-st-pain" placeholder="0"><div class="vital-unit">/10</div></div>' +
@@ -11464,6 +11540,38 @@ function onPtolObserved(cb) {
   var ta = document.getElementById('ptol-observed-comments');
   if (ta && cb.checked && !ta.value.trim()) ta.value = FCE_PTOL_OBSERVED_TEXT;
   saveClinicianDataToStorage();
+}
+
+// Item 43: urinalysis cannot be performed when the DAS urine sample is sent
+// away for confirmatory testing. The checkbox clears the dipstick selections
+// (the test was not performed), disables the chips, and writes the statement
+// into the comments; the completion dot and the report both respect it.
+var URINE_DAS_TEXT = 'Urinalysis not completed — sample required for confirmatory drug and alcohol testing.';
+function onUrineNotCollected(cb) {
+  var sec = document.getElementById('clin-urinalysis');
+  if (cb.checked && sec) {
+    sec.querySelectorAll('.option-chip.selected-normal').forEach(function(c) { c.classList.remove('selected-normal'); });
+  }
+  syncUrineNotCollected();
+  var ta = sec ? sec.querySelector('.smart-textarea') : null;
+  if (ta) {
+    if (cb.checked && canOverwrite(ta)) { ta.value = URINE_DAS_TEXT; ta.classList.add('prefilled'); }
+    else if (!cb.checked && ta.value === URINE_DAS_TEXT) { ta.value = ''; ta.classList.remove('prefilled'); }
+  }
+  saveClinicianDataToStorage();
+  if (typeof updateNavDots === 'function') updateNavDots('screen-clinician');
+}
+
+// Visual state only (also applied after a restore): chips unusable while the
+// sample is away, without touching recorded data
+function syncUrineNotCollected() {
+  var cb = document.getElementById('urine-not-collected');
+  var sec = document.getElementById('clin-urinalysis');
+  if (!cb || !sec) return;
+  sec.querySelectorAll('.option-chip').forEach(function(c) {
+    c.style.pointerEvents = cb.checked ? 'none' : '';
+    c.style.opacity = cb.checked ? '0.4' : '';
+  });
 }
 
 // ─── FCE baseline calcs (mirrors PEMA logic; own state so PEMA is untouched) ─
@@ -13087,7 +13195,7 @@ function renderPefaScreen(appt) {
       '<div class="clin-card"><div class="clin-card-header"><h3>Step Test Results</h3></div><div class="clin-card-body">' +
         '<div class="vitals-grid">' +
           '<div class="vital-item"><div class="vital-label">Max HR for Test</div><div class="vital-input" id="pefa-st-maxhr">—</div><div class="vital-unit">bpm</div></div>' +
-          '<div class="vital-item"><div class="vital-label">Baseline HR</div><input class="vital-input" id="pefa-st-base" placeholder="72"><div class="vital-unit">bpm</div></div>' +
+          '<div class="vital-item"><div class="vital-label">Baseline HR</div><input class="vital-input" id="pefa-st-base" placeholder="—"><div class="vital-unit">bpm</div></div>' +
           '<div class="vital-item"><div class="vital-label">3-Minute HR</div><input class="vital-input" id="pefa-st-3min" data-pefa-hr="1" placeholder="—"><div class="vital-unit">bpm</div></div>' +
           '<div class="vital-item"><div class="vital-label">1-Min Post HR</div><input class="vital-input" id="pefa-st-post" data-pefa-hr="1" placeholder="—"><div class="vital-unit">bpm</div></div>' +
           '<div class="vital-item"><div class="vital-label">Pain Rating</div><input class="vital-input" id="pefa-st-pain" placeholder="0"><div class="vital-unit">/10</div></div>' +
@@ -14609,6 +14717,7 @@ function restoreClinicianData(data) {
   // inputs (stable keys), and rebuild its finding flags
   if (data._dasEnabled !== undefined) { window._pemaDasEnabled = !!data._dasEnabled; applyDasVisibility(); }
   if (typeof syncDasChips === 'function') { syncDasChips(); preFillDas(); }
+  if (typeof syncUrineNotCollected === 'function') syncUrineNotCollected();
 
   // 6. Re-run all derived calculations
   if (typeof calcBMI            === 'function') calcBMI();
@@ -14786,9 +14895,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const today = clinicToday();
   document.querySelectorAll('input[type="date"]').forEach(el => { if (!el.value) el.value = today; });
 
-  // Clinic identity prefilled from CLINIC (editable; a restore overwrites).
-  // CLINIC carries no email — that field stays manual rather than inventing one.
-  [['assessor-clinic', CLINIC.name], ['assessor-phone', CLINIC.phone], ['assessor-address', CLINIC.address]].forEach(p => {
+  // Clinic identity prefilled from CLINIC (editable; a restore overwrites)
+  [['assessor-clinic', CLINIC.name], ['assessor-phone', CLINIC.phone], ['assessor-address', CLINIC.address], ['assessor-email', CLINIC.email]].forEach(p => {
     const el = document.getElementById(p[0]);
     if (el && !el.value) el.value = p[1];
   });
