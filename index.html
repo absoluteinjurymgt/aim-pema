@@ -2677,26 +2677,26 @@
               <div class="vital-item">
                 <div class="vital-label">Blood Pressure</div>
                 <div style="display:flex;align-items:center;gap:4px">
-                  <input class="vital-input" id="v-bp-sys" placeholder="120" style="width:50px" oninput="checkBP()">
+                  <input class="vital-input" id="v-bp-sys" placeholder="e.g. 120" style="width:50px" oninput="checkBP()">
                   <span style="font-size:18px;color:var(--mid)">/</span>
-                  <input class="vital-input" id="v-bp-dia" placeholder="80" style="width:50px" oninput="checkBP()">
+                  <input class="vital-input" id="v-bp-dia" placeholder="e.g. 80" style="width:50px" oninput="checkBP()">
                 </div>
                 <div class="vital-unit">mmHg</div>
                 <div class="vital-calc" id="bp-warning"></div>
               </div>
               <div class="vital-item">
                 <div class="vital-label">Resting HR</div>
-                <input class="vital-input" id="v-hr" placeholder="72" oninput="calcMaxHR()">
+                <input class="vital-input" id="v-hr" placeholder="—" oninput="calcMaxHR()">
                 <div class="vital-unit">bpm</div>
               </div>
               <div class="vital-item">
                 <div class="vital-label">Height</div>
-                <input class="vital-input" id="v-height" placeholder="1.75" oninput="calcBMI()">
+                <input class="vital-input" id="v-height" placeholder="e.g. 1.75" oninput="calcBMI()">
                 <div class="vital-unit">metres</div>
               </div>
               <div class="vital-item">
                 <div class="vital-label">Weight</div>
-                <input class="vital-input" id="v-weight" placeholder="80" oninput="calcBMI()">
+                <input class="vital-input" id="v-weight" placeholder="e.g. 80" oninput="calcBMI()">
                 <div class="vital-unit">kg</div>
               </div>
               <div class="vital-item">
@@ -3231,8 +3231,8 @@
               <div class="vital-item"><div class="vital-label">Baseline HR</div><input class="vital-input" id="st-base" placeholder="—"><div class="vital-unit">bpm</div></div>
               <div class="vital-item"><div class="vital-label">3-Minute HR</div><input class="vital-input" id="st-3min" data-hr-field="peak" placeholder="—"><div class="vital-unit">bpm</div></div>
               <div class="vital-item"><div class="vital-label">1-Min Post HR</div><input class="vital-input" id="st-post" data-hr-field="peak" placeholder="—"><div class="vital-unit">bpm</div></div>
-              <div class="vital-item"><div class="vital-label">Pain Rating</div><input class="vital-input" id="st-pain" placeholder="0"><div class="vital-unit">/10</div></div>
-              <div class="vital-item"><div class="vital-label">RPE</div><input class="vital-input" id="st-rpe" placeholder="0"><div class="vital-unit">/10</div></div>
+              <div class="vital-item"><div class="vital-label">Pain Rating</div><input class="vital-input" id="st-pain" placeholder="—"><div class="vital-unit">/10</div></div>
+              <div class="vital-item"><div class="vital-label">RPE</div><input class="vital-input" id="st-rpe" placeholder="—"><div class="vital-unit">/10</div></div>
             </div>
             <div style="margin-top:16px">
               <label style="font-size:12px;font-weight:700;color:var(--charcoal);text-transform:uppercase;display:block;margin-bottom:8px">Result</label>
@@ -3275,7 +3275,7 @@
             <div class="mh-grid" style="margin-bottom:14px">
               <div class="mh-field"><label>Occasional (1 rep)</label><select id="stepup-occ"><option>Able</option><option>Unable</option></select></div>
               <div class="mh-field"><label>Frequent (5 in 1 min)</label><select id="stepup-freq"><option>Able</option><option>Unable</option></select></div>
-              <div class="mh-field"><label>Pain (0–10)</label><input placeholder="0" id="stepup-pain"></div>
+              <div class="mh-field"><label>Pain (0–10)</label><input placeholder="—" id="stepup-pain"></div>
               <div class="mh-field"><label>Peak HR (bpm)</label><input placeholder="—" id="stepup-hr" data-hr-field="peak"></div>
               <div class="mh-field"><label>Knee Control</label><select id="stepup-knee"><option>Controlled</option><option>Mild valgus</option><option>Significant valgus</option></select></div>
               <div class="mh-field"><label>Movement Pattern</label><select id="stepup-pattern"><option>Correct</option><option>Compensatory</option></select></div>
@@ -3302,9 +3302,9 @@
             </div>
             <div class="mh-grid" style="margin-bottom:14px">
               <div class="mh-field"><label id="ladder-reps-label">Constant reps completed</label><input id="ladder-const" placeholder="e.g. 20"></div>
-              <div class="mh-field"><label>Pain (0–10)</label><input placeholder="0" id="ladder-pain"></div>
+              <div class="mh-field"><label>Pain (0–10)</label><input placeholder="—" id="ladder-pain"></div>
               <div class="mh-field"><label>Peak HR (bpm)</label><input placeholder="—" id="ladder-hr" data-hr-field="peak"></div>
-              <div class="mh-field"><label>RPE (0–10)</label><input placeholder="0" id="ladder-rpe"></div>
+              <div class="mh-field"><label>RPE (0–10)</label><input placeholder="—" id="ladder-rpe"></div>
               <div class="mh-field"><label>3-Point Contact</label><select id="ladder-contact"><option>Maintained throughout</option><option>Occasional breaks — noted</option><option>Not maintained</option></select></div>
               <div class="mh-field"><label>Movement Pattern</label><select id="ladder-pattern"><option>Correct</option><option>Compensatory</option></select></div>
               <div class="mh-field"><label>Result</label><select id="ladder-result"><option>Target reps achieved</option><option>Partial — reps noted above</option><option>Unable to complete</option></select></div>
@@ -9684,7 +9684,7 @@ function renderPosturalTol() {
         '<button class="option-chip" onclick="selectChip(this,\'pt-' + safeId + '\');toggleUnableReason(\'unable-' + safeId + '\',true)">Unable</button>' +
       '</div>' +
       '<div class="postural-field"><label>Time Achieved</label><input placeholder="2:00"></div>' +
-      '<div class="postural-field"><label>Pain (0–10)</label><input placeholder="0" oninput="preFillPosturalTol()"></div>' +
+      '<div class="postural-field"><label>Pain (0–10)</label><input placeholder="—" oninput="preFillPosturalTol()"></div>' +
       '<div class="postural-field"><label>Peak HR (bpm)</label><input placeholder="—" data-hr-field="peak"></div>' +
       '<div id="unable-' + safeId + '" style="display:none;margin-top:8px;padding:8px;background:var(--olive-ultra);border-radius:6px;border:1px solid var(--border)">' +
         '<label style="font-size:10px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.04em;display:block;margin-bottom:6px">Reason Unable</label>' +
@@ -9769,7 +9769,7 @@ function renderMHCard(tests, containerId) {
           <div class="mh-grid">
             <div class="mh-field"><label>Result</label><select><option>Demonstrated</option><option>Not demonstrated</option></select></div>
             <div class="mh-field"><label>Max Weight Achieved (kg)</label><input placeholder="${t.occ}" value="${parseFloat(t.occ) || ''}"></div>
-            <div class="mh-field"><label>Pain (0–10)</label><input placeholder="0"></div>
+            <div class="mh-field"><label>Pain (0–10)</label><input placeholder="—"></div>
             <div class="mh-field"><label>Peak HR (bpm)</label><input placeholder="—" data-hr-field="peak"></div>
           </div>
         </div>
@@ -9780,8 +9780,8 @@ function renderMHCard(tests, containerId) {
           </div>
           <div class="mh-grid">
             <div class="mh-field"><label>Result</label><select><option>Demonstrated</option><option>Not demonstrated</option></select></div>
-            <div class="mh-field"><label>Reps completed</label><input placeholder="5" value="5"></div>
-            <div class="mh-field"><label>Pain (0–10)</label><input placeholder="0"></div>
+            <div class="mh-field"><label>Reps completed</label><input placeholder="—" value="5"></div>
+            <div class="mh-field"><label>Pain (0–10)</label><input placeholder="—"></div>
             <div class="mh-field"><label>Peak HR (bpm)</label><input placeholder="—" data-hr-field="peak"></div>
           </div>
         </div>
@@ -11114,7 +11114,7 @@ function fceTaskCardHtml(t, i) {
         fceChips('fce-task-' + i + '-disc', ['None', 'Awareness', 'Pain']) +
       '</div>' +
       '<div class="mh-grid" style="margin-bottom:4px">' +
-        '<div class="mh-field"><label>Pain Rating (0–10)</label><input id="fce-task-' + i + '-pain" type="number" min="0" max="10" placeholder="0"></div>' +
+        '<div class="mh-field"><label>Pain Rating (0–10)</label><input id="fce-task-' + i + '-pain" type="number" min="0" max="10" placeholder="—"></div>' +
       '</div>' +
       mhHtml +
       '<div class="smart-field" style="margin-top:12px">' +
@@ -11218,13 +11218,13 @@ function renderFceScreen(appt) {
       '<div class="vitals-grid">' +
         '<div class="vital-item"><div class="vital-label">Blood Pressure</div>' +
           '<div style="display:flex;align-items:center;gap:4px">' +
-          '<input class="vital-input" id="fce-bp-sys" placeholder="120" style="width:50px" type="number" oninput="checkFceBP()">' +
+          '<input class="vital-input" id="fce-bp-sys" placeholder="e.g. 120" style="width:50px" type="number" oninput="checkFceBP()">' +
           '<span style="font-size:18px;color:var(--mid)">/</span>' +
-          '<input class="vital-input" id="fce-bp-dia" placeholder="80" style="width:50px" type="number" oninput="checkFceBP()">' +
+          '<input class="vital-input" id="fce-bp-dia" placeholder="e.g. 80" style="width:50px" type="number" oninput="checkFceBP()">' +
           '</div><div class="vital-unit">mmHg</div></div>' +
-        '<div class="vital-item"><div class="vital-label">Resting HR</div><input class="vital-input" id="fce-resthr" placeholder="72"><div class="vital-unit">bpm</div></div>' +
-        '<div class="vital-item"><div class="vital-label">Height</div><input class="vital-input" id="fce-height" placeholder="1.75" oninput="calcFceBMI()"><div class="vital-unit">m</div></div>' +
-        '<div class="vital-item"><div class="vital-label">Weight</div><input class="vital-input" id="fce-weight" placeholder="80" oninput="calcFceBMI()"><div class="vital-unit">kg</div></div>' +
+        '<div class="vital-item"><div class="vital-label">Resting HR</div><input class="vital-input" id="fce-resthr" placeholder="—"><div class="vital-unit">bpm</div></div>' +
+        '<div class="vital-item"><div class="vital-label">Height</div><input class="vital-input" id="fce-height" placeholder="e.g. 1.75" oninput="calcFceBMI()"><div class="vital-unit">m</div></div>' +
+        '<div class="vital-item"><div class="vital-label">Weight</div><input class="vital-input" id="fce-weight" placeholder="e.g. 80" oninput="calcFceBMI()"><div class="vital-unit">kg</div></div>' +
         '<div class="vital-item"><div class="vital-label">BMI</div><div class="vital-input" id="fce-bmi">—</div><div class="vital-unit" id="fce-bmi-cat">—</div></div>' +
         '<div class="vital-item"><div class="vital-label">Max HR (220−age)</div><div class="vital-input" id="fce-maxhr" style="font-size:20px">—</div><div class="vital-unit">bpm</div></div>' +
         '<div class="vital-item"><div class="vital-label">85% Max HR</div><div class="vital-input" id="fce-maxhr85" style="font-size:20px">—</div><div class="vital-unit">bpm</div></div>' +
@@ -11322,8 +11322,8 @@ function renderFceScreen(appt) {
           '<div class="vital-item"><div class="vital-label">Baseline HR</div><input class="vital-input" id="fce-st-base" placeholder="—"><div class="vital-unit">bpm</div></div>' +
           '<div class="vital-item"><div class="vital-label">3-Minute HR</div><input class="vital-input" id="fce-st-3min" data-fce-hr="1" placeholder="—"><div class="vital-unit">bpm</div></div>' +
           '<div class="vital-item"><div class="vital-label">1-Min Post HR</div><input class="vital-input" id="fce-st-post" data-fce-hr="1" placeholder="—"><div class="vital-unit">bpm</div></div>' +
-          '<div class="vital-item"><div class="vital-label">Pain Rating</div><input class="vital-input" id="fce-st-pain" placeholder="0"><div class="vital-unit">/10</div></div>' +
-          '<div class="vital-item"><div class="vital-label">RPE</div><input class="vital-input" id="fce-st-rpe" placeholder="0"><div class="vital-unit">/10</div></div>' +
+          '<div class="vital-item"><div class="vital-label">Pain Rating</div><input class="vital-input" id="fce-st-pain" placeholder="—"><div class="vital-unit">/10</div></div>' +
+          '<div class="vital-item"><div class="vital-label">RPE</div><input class="vital-input" id="fce-st-rpe" placeholder="—"><div class="vital-unit">/10</div></div>' +
         '</div>' +
         '<div style="margin-top:16px"><label style="font-size:12px;font-weight:700;color:var(--charcoal);text-transform:uppercase;display:block;margin-bottom:8px">Result</label>' +
         // Worst-to-best, matching the tick row in the FCE PDF. Order is load-bearing:
@@ -11350,7 +11350,7 @@ function renderFceScreen(appt) {
           '<div class="mh-field"><label>Time Achieved</label><input id="fce-ptol-' + i + '-time" placeholder="e.g. 2:00"></div>' +
           '<div class="mh-field"><label>1 min HR (bpm)</label><input id="fce-ptol-' + i + '-hr1" type="number" data-fce-hr="1" placeholder="—"></div>' +
           '<div class="mh-field"><label>2 min HR (bpm)</label><input id="fce-ptol-' + i + '-hr2" type="number" data-fce-hr="1" placeholder="—"></div>' +
-          '<div class="mh-field"><label>Pain (0–10)</label><input id="fce-ptol-' + i + '-pain" type="number" min="0" max="10" placeholder="0"></div>' +
+          '<div class="mh-field"><label>Pain (0–10)</label><input id="fce-ptol-' + i + '-pain" type="number" min="0" max="10" placeholder="—"></div>' +
           '</div></div></div>';
       }).join('') +
       '<div class="clin-card"><div class="clin-card-body">' +
@@ -13078,13 +13078,13 @@ function renderPefaScreen(appt) {
       '<div class="vitals-grid">' +
         '<div class="vital-item"><div class="vital-label">Blood Pressure</div>' +
           '<div style="display:flex;align-items:center;gap:4px">' +
-          '<input class="vital-input" id="pefa-bp-sys" placeholder="120" style="width:50px" oninput="checkPefaBP()">' +
+          '<input class="vital-input" id="pefa-bp-sys" placeholder="e.g. 120" style="width:50px" oninput="checkPefaBP()">' +
           '<span style="font-size:18px;color:var(--mid)">/</span>' +
-          '<input class="vital-input" id="pefa-bp-dia" placeholder="80" style="width:50px" oninput="checkPefaBP()">' +
+          '<input class="vital-input" id="pefa-bp-dia" placeholder="e.g. 80" style="width:50px" oninput="checkPefaBP()">' +
           '</div><div class="vital-unit">mmHg</div><div class="vital-calc" id="pefa-bp-warning"></div></div>' +
-        '<div class="vital-item"><div class="vital-label">Resting HR</div><input class="vital-input" id="pefa-resthr" placeholder="72"><div class="vital-unit">bpm</div></div>' +
-        '<div class="vital-item"><div class="vital-label">Height</div><input class="vital-input" id="pefa-height" placeholder="1.75" oninput="calcPefaBMI()"><div class="vital-unit">metres</div></div>' +
-        '<div class="vital-item"><div class="vital-label">Weight</div><input class="vital-input" id="pefa-weight" placeholder="80" oninput="calcPefaBMI()"><div class="vital-unit">kg</div></div>' +
+        '<div class="vital-item"><div class="vital-label">Resting HR</div><input class="vital-input" id="pefa-resthr" placeholder="—"><div class="vital-unit">bpm</div></div>' +
+        '<div class="vital-item"><div class="vital-label">Height</div><input class="vital-input" id="pefa-height" placeholder="e.g. 1.75" oninput="calcPefaBMI()"><div class="vital-unit">metres</div></div>' +
+        '<div class="vital-item"><div class="vital-label">Weight</div><input class="vital-input" id="pefa-weight" placeholder="e.g. 80" oninput="calcPefaBMI()"><div class="vital-unit">kg</div></div>' +
         '<div class="vital-item"><div class="vital-label">BMI</div><div class="vital-input" id="pefa-bmi" style="font-size:20px">—</div><div class="vital-unit">kg/m²</div><div class="vital-calc" id="pefa-bmi-cat"></div></div>' +
         '<div class="vital-item"><div class="vital-label">Max HR (100%)</div><div class="vital-input" id="pefa-maxhr" style="font-size:20px">—</div><div class="vital-unit">220 − age (bpm)</div></div>' +
         '<div class="vital-item"><div class="vital-label">85% Max HR</div><div class="vital-input" id="pefa-maxhr85" style="font-size:20px">—</div><div class="vital-unit">aerobic threshold (bpm)</div></div>' +
@@ -13187,8 +13187,8 @@ function renderPefaScreen(appt) {
             '<button class="option-chip" onclick="selectPefaChip(this,\'pefa-pt-' + i + '\',0);togglePefaUnable(' + i + ',false)">Able</button>' +
             '<button class="option-chip" onclick="selectPefaChip(this,\'pefa-pt-' + i + '\',1);togglePefaUnable(' + i + ',true)">Unable</button>' +
           '</div>' +
-          '<div class="postural-field"><label>Time Achieved</label><input id="pefa-pt-' + i + '-time" placeholder="2:00"></div>' +
-          '<div class="postural-field"><label>Pain (0–10)</label><input id="pefa-pt-' + i + '-pain" placeholder="0"></div>' +
+          '<div class="postural-field"><label>Time Achieved</label><input id="pefa-pt-' + i + '-time" placeholder="e.g. 2:00"></div>' +
+          '<div class="postural-field"><label>Pain (0–10)</label><input id="pefa-pt-' + i + '-pain" placeholder="—"></div>' +
           '<div class="postural-field"><label>Peak HR (bpm)</label><input id="pefa-pt-' + i + '-hr" placeholder="—" data-pefa-hr="1"></div>' +
           '<div id="pefa-pt-' + i + '-unable" style="display:none;margin-top:8px;padding:8px;background:var(--olive-ultra);border-radius:6px;border:1px solid var(--border)">' +
             '<label style="font-size:10px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.04em;display:block;margin-bottom:6px">Reason Unable</label>' +
@@ -13210,8 +13210,8 @@ function renderPefaScreen(appt) {
           '<div class="vital-item"><div class="vital-label">Baseline HR</div><input class="vital-input" id="pefa-st-base" placeholder="—"><div class="vital-unit">bpm</div></div>' +
           '<div class="vital-item"><div class="vital-label">3-Minute HR</div><input class="vital-input" id="pefa-st-3min" data-pefa-hr="1" placeholder="—"><div class="vital-unit">bpm</div></div>' +
           '<div class="vital-item"><div class="vital-label">1-Min Post HR</div><input class="vital-input" id="pefa-st-post" data-pefa-hr="1" placeholder="—"><div class="vital-unit">bpm</div></div>' +
-          '<div class="vital-item"><div class="vital-label">Pain Rating</div><input class="vital-input" id="pefa-st-pain" placeholder="0"><div class="vital-unit">/10</div></div>' +
-          '<div class="vital-item"><div class="vital-label">RPE</div><input class="vital-input" id="pefa-st-rpe" placeholder="0"><div class="vital-unit">/10</div></div>' +
+          '<div class="vital-item"><div class="vital-label">Pain Rating</div><input class="vital-input" id="pefa-st-pain" placeholder="—"><div class="vital-unit">/10</div></div>' +
+          '<div class="vital-item"><div class="vital-label">RPE</div><input class="vital-input" id="pefa-st-rpe" placeholder="—"><div class="vital-unit">/10</div></div>' +
         '</div>' +
         '<div style="margin-top:16px"><label style="font-size:12px;font-weight:700;color:var(--charcoal);text-transform:uppercase;display:block;margin-bottom:8px">Result</label>' +
         pefaChips('pefa-st-result', fitnessRatingLabels(true)) + '</div>' +
@@ -13239,13 +13239,13 @@ function renderPefaScreen(appt) {
         return '<div class="clin-card" style="margin-bottom:14px"><div class="clin-card-header"><h3>' + escFce(t.name) + '</h3></div><div class="clin-card-body">' +
           // 4th tuple element prefills the field (target weight / 5 reps) — editable, stored as recorded data
           [['p1', 'Phase 1 — Capacity (Occasional demand)', t.occ + ' · 1 rep', ['Max Weight Achieved (kg)', 'weight', t.occ, parseFloat(t.occ) || '']],
-           ['p2', 'Phase 2 — Endurance (Frequent demand)', t.freq + ' · 5 reps in 1 min', ['Reps completed', 'reps', '5', '5']]].map(function(ph) {
+           ['p2', 'Phase 2 — Endurance (Frequent demand)', t.freq + ' · 5 reps in 1 min', ['Reps completed', 'reps', '—', '5']]].map(function(ph) {
             var p = 'pefa-mh-' + i + '-' + ph[0];
             return '<div class="mh-phase"><div class="mh-phase-header"><div class="mh-phase-title">' + ph[1] + '</div><div class="mh-phase-weight">' + escFce(ph[2]) + '</div></div>' +
               '<div class="mh-grid">' +
               '<div class="mh-field"><label>Result</label><select id="' + p + '-result"><option value=""></option><option>Demonstrated</option><option>Not demonstrated</option></select></div>' +
               '<div class="mh-field"><label>' + ph[3][0] + '</label><input id="' + p + '-' + ph[3][1] + '" placeholder="' + ph[3][2] + '" value="' + ph[3][3] + '"></div>' +
-              '<div class="mh-field"><label>Pain (0–10)</label><input id="' + p + '-pain" placeholder="0"></div>' +
+              '<div class="mh-field"><label>Pain (0–10)</label><input id="' + p + '-pain" placeholder="—"></div>' +
               '<div class="mh-field"><label>Peak HR (bpm)</label><input id="' + p + '-hr" placeholder="—" data-pefa-hr="1"></div>' +
               '</div></div>';
           }).join('') +
@@ -13270,7 +13270,7 @@ function renderPefaScreen(appt) {
         '<div class="mh-grid" style="margin-bottom:14px">' +
           '<div class="mh-field"><label>Occasional (1 rep)</label><select id="pefa-stepup-occ"><option value=""></option><option>Able</option><option>Unable</option></select></div>' +
           '<div class="mh-field"><label>Frequent (5 in 1 min)</label><select id="pefa-stepup-freq"><option value=""></option><option>Able</option><option>Unable</option></select></div>' +
-          '<div class="mh-field"><label>Pain (0–10)</label><input id="pefa-stepup-pain" placeholder="0"></div>' +
+          '<div class="mh-field"><label>Pain (0–10)</label><input id="pefa-stepup-pain" placeholder="—"></div>' +
           '<div class="mh-field"><label>Peak HR (bpm)</label><input id="pefa-stepup-hr" placeholder="—" data-pefa-hr="1"></div>' +
           '<div class="mh-field"><label>Knee Control</label><select id="pefa-stepup-knee"><option value=""></option><option>Controlled</option><option>Mild valgus</option><option>Significant valgus</option></select></div>' +
           '<div class="mh-field"><label>Movement Pattern</label><select id="pefa-stepup-pattern"><option value=""></option><option>Correct</option><option>Compensatory</option></select></div>' +
@@ -13286,9 +13286,9 @@ function renderPefaScreen(appt) {
         '<div class="alert alert-info" style="margin-bottom:12px">Continuous ascent/descent of 2 steps maintaining 3-point contact. Target for this classification: ' + ladderReps + ' continuous reps.</div>' +
         '<div class="mh-grid" style="margin-bottom:14px">' +
           '<div class="mh-field"><label>Constant reps completed (target ' + ladderReps + ')</label><input id="pefa-ladder-const" placeholder="e.g. ' + ladderReps + '" value="' + ladderReps + '"></div>' +
-          '<div class="mh-field"><label>Pain (0–10)</label><input id="pefa-ladder-pain" placeholder="0"></div>' +
+          '<div class="mh-field"><label>Pain (0–10)</label><input id="pefa-ladder-pain" placeholder="—"></div>' +
           '<div class="mh-field"><label>Peak HR (bpm)</label><input id="pefa-ladder-hr" placeholder="—" data-pefa-hr="1"></div>' +
-          '<div class="mh-field"><label>RPE (0–10)</label><input id="pefa-ladder-rpe" placeholder="0"></div>' +
+          '<div class="mh-field"><label>RPE (0–10)</label><input id="pefa-ladder-rpe" placeholder="—"></div>' +
           '<div class="mh-field"><label>3-Point Contact</label><select id="pefa-ladder-contact"><option value=""></option><option>Maintained throughout</option><option>Occasional breaks — noted</option><option>Not maintained</option></select></div>' +
           '<div class="mh-field"><label>Movement Pattern</label><select id="pefa-ladder-pattern"><option value=""></option><option>Correct</option><option>Compensatory</option></select></div>' +
           '<div class="mh-field"><label>Result</label><select id="pefa-ladder-result"><option value=""></option><option>Target reps achieved</option><option>Partial — reps noted above</option><option>Unable to complete</option></select></div>' +
