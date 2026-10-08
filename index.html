@@ -3036,7 +3036,7 @@
                 </thead>
                 <tbody>
                   <tr>
-                    <td><strong>Distance</strong></td>
+                    <td><strong>Distance</strong> <span style="font-size:10px;color:var(--mid)">Snellen (6/x)</span></td>
                     <td><input placeholder="6/" id="vis-dist-ua-r" oninput="preFillVision()"></td>
                     <td><input placeholder="6/" id="vis-dist-ua-l" oninput="preFillVision()"></td>
                     <td><input placeholder="6/" id="vis-dist-ua-b" oninput="preFillVision()"></td>
@@ -3045,7 +3045,7 @@
                     <td class="vision-aided-col" style="display:none"><input placeholder="6/" id="vis-dist-a-b"></td>
                   </tr>
                   <tr>
-                    <td><strong>Near (40cm)</strong></td>
+                    <td><strong>Near (40cm)</strong> <span style="font-size:10px;color:var(--mid)">N notation</span></td>
                     <td><input placeholder="N" id="vis-near-ua-r"></td>
                     <td><input placeholder="N" id="vis-near-ua-l"></td>
                     <td><input placeholder="N" id="vis-near-ua-b"></td>
@@ -8634,6 +8634,9 @@ function pdfSafeText(t) {
       .replace(/≥/g, '>=').replace(/≤/g, '<=')
       .replace(/✓/g, 'Y').replace(/✗/g, 'N')
       .replace(/⚠️?\s*/g, '').replace(/✦\s*/g, '')
+      // The superscript two renders unreliably in the field (prints as a
+      // missing glyph on the clinic's viewer) — "kg/m2" beats "kg/m" (Item 49)
+      .replace(/²/g, '2')
       .replace(/Physiotherpist/gi, 'Physiotherapist');
   }
   if (Array.isArray(t)) return t.map(function(x) { return typeof x === 'string' ? fix(x) : x; });
@@ -8706,14 +8709,16 @@ function buildPDF() {
 
   function secHeader(title){
     secMark();
-    checkY(14);
+    // Keep-with-next: reserve room for the heading AND the first row of its
+    // content, so a heading is never orphaned at the foot of a page (Item 48)
+    checkY(28);
     doc.setFillColor(...OLIVE); doc.roundedRect(ML,y,CW,9,1,1,'F');
     doc.setFontSize(9); doc.setFont('helvetica','bold'); doc.setTextColor(...WHITE);
     doc.text(title.toUpperCase(),ML+4,y+6); y+=13;
   }
 
   function subHdr(title){
-    checkY(10);
+    checkY(24); // keep-with-next — never a bare sub-heading at a page foot
     doc.setFillColor(...LIGHT_BG); doc.setDrawColor(...BORDER_COL); doc.setLineWidth(0.3);
     doc.roundedRect(ML,y,CW,7,0.5,0.5,'FD');
     doc.setFontSize(8.5); doc.setFont('helvetica','bold'); doc.setTextColor(...CHARCOAL);
@@ -9238,11 +9243,15 @@ function buildPDF() {
   // The clinician types the full acuity (e.g. "6/6", "N6"), so the value is
   // printed as entered; the aided columns stay em-dashed when no glasses or
   // lenses were worn.
-  const vV=id=>{const el=document.getElementById(id);const v=(el?.value||'').trim();return v===''?'—':v;};
-  tblRow(['Distance (6/)',vV('vis-dist-ua-r'),vV('vis-dist-ua-l'),vV('vis-dist-ua-b'),
-                          vV('vis-dist-a-r'),vV('vis-dist-a-l'),vV('vis-dist-a-b')],vW,false,false);
-  tblRow(['Near 40cm (N)',vV('vis-near-ua-r'),vV('vis-near-ua-l'),vV('vis-near-ua-b'),
-                          vV('vis-near-a-r'),vV('vis-near-a-l'),vV('vis-near-a-b')],vW,false,true);
+  // Item 42: both scales are stated explicitly — distance is Snellen metre
+  // notation (a bare denominator prints as 6/x), near is N notation (a bare
+  // number prints as Nx); an entry already carrying its notation is kept.
+  const vDist=id=>{const v=(document.getElementById(id)?.value||'').trim();if(!v)return '—';return /^\d+$/.test(v)?'6/'+v:v;};
+  const vNear=id=>{const v=(document.getElementById(id)?.value||'').trim();if(!v)return '—';return /^\d+$/.test(v)?'N'+v:v;};
+  tblRow(['Distance — Snellen (6/x)',vDist('vis-dist-ua-r'),vDist('vis-dist-ua-l'),vDist('vis-dist-ua-b'),
+                          vDist('vis-dist-a-r'),vDist('vis-dist-a-l'),vDist('vis-dist-a-b')],vW,false,false);
+  tblRow(['Near 40cm — N notation',vNear('vis-near-ua-r'),vNear('vis-near-ua-l'),vNear('vis-near-ua-b'),
+                          vNear('vis-near-a-r'),vNear('vis-near-a-l'),vNear('vis-near-a-b')],vW,false,true);
   // The vision section holds TWO narratives: #vision-comments (visual acuity)
   // and the Ishihara card's textarea (colour vision). getSmart() returned the
   // FIRST textarea, so acuity text printed under the Colour Vision heading.
@@ -9251,7 +9260,7 @@ function buildPDF() {
   y+=4; fullRow('Visual Acuity',acuityText);
   fullRow('Colour Vision',colourText);
 
-  newPage();
+  // flows on (Item 48)
   secHeader('Range of Motion');
   doc.setFontSize(7.5); doc.setFont('helvetica','italic'); doc.setTextColor(...MID);
   doc.text('Pain rated 0–10. Limitation documented with degrees where measurable.',ML,y); y+=7;
@@ -9284,7 +9293,7 @@ function buildPDF() {
     tblRow([region,status,details],postW,false,i%2===1);
   });
 
-  newPage();
+  // flows on (Item 48)
   secHeader('Special Musculoskeletal Tests');
   doc.setFontSize(7.5); doc.setFont('helvetica','italic'); doc.setTextColor(...MID);
   doc.text('Pain 0–10. Weakness Oxford Scale 1–5. Laxity and restriction assessed accordingly.',ML,y); y+=7;
@@ -9308,7 +9317,7 @@ function buildPDF() {
   tblRow(['Left',val('grip-l1')||'—',val('grip-l2')||'—',val('grip-l3')||'—',val('grip-l-avg')||'—',val('grip-l-norm')||'—'],gW,false,true);
   y+=4; fullRow('Interpretation',getSmart('clin-grip','Not recorded'));
 
-  newPage();
+  // flows on (Item 48)
   secHeader('Postural Tolerance — 2-Minute Tests');
   doc.setFontSize(7.5); doc.setFont('helvetica','italic'); doc.setTextColor(...MID);
   doc.text('Each posture sustained 2 minutes. Ceases if pain >0/10, HR exceeds max, or safety compromised.',ML,y); y+=7;
@@ -9347,7 +9356,7 @@ function buildPDF() {
   }
   y+=2;
 
-  newPage();
+  // flows on (Item 48)
   secHeader('Manual Handling — Top-Down Protocol');
   doc.setFontSize(7.5); doc.setFont('helvetica','italic'); doc.setTextColor(...MID);
   const proto='Phase 1: 1 rep at occasional weight. Phase 2: 5 reps/1min at frequent weight. Constant capacity inferred if Phase 2 complete with 0/10 pain, good technique, HR within limits. Testing ceases if HR exceeds max, pain >0/10, or technique unsafe.';
@@ -9395,7 +9404,7 @@ function buildPDF() {
   fullRow('Result',getChip('step-result','—'));
   fullRow('Notes',getSmart('clin-steptest','Not recorded'));
 
-  newPage();
+  // flows on (Item 48)
   secHeader('Key Assessment Findings');
   txtBlock(getSmart('clin-findings','Not recorded'));
   y+=4;
@@ -9477,8 +9486,15 @@ function buildPDF() {
   doc.text('CONFIDENTIAL MEDICAL DOCUMENT',PW/2,y+10,{align:'center'});
   drawFooter();
 
-  const dateStr = clinicToday();
-  const filename = 'AIM_PEMA_' + (ptLast.replace(/\s+/g, '_') || 'Applicant') + '_' + dateStr + '.pdf';
+  // Filename matches the PEFA convention (Item 50):
+  // 'SURNAME F PEMA CLIENT CLASSIFICATION DDMMYY.pdf'
+  const fnSurname = (ptLast || 'UNKNOWN').toUpperCase().replace(/[^A-Z ]/g, '').trim() || 'UNKNOWN';
+  const fnInitial = ((ptFirst || '').charAt(0) || '').toUpperCase();
+  const fnClient = ((window._activeClient?.name) || '').toUpperCase().replace(/[^A-Z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+  const fnClass = ((window._pemaClassification) || '').toUpperCase().replace(/[^A-Z0-9 ]/g, '').trim();
+  const dpF = clinicToday().split('-');
+  const fnDate = dpF[2] + dpF[1] + dpF[0].slice(2);
+  const filename = [fnSurname, fnInitial, 'PEMA', fnClient, fnClass, fnDate].filter(Boolean).join(' ') + '.pdf';
   secClose();
   return { doc: doc, filename: filename };
 }
