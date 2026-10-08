@@ -5293,12 +5293,19 @@ function toggleUnableReason(detailId, show) {
   detail.style.display = show ? 'block' : 'none';
   const card = detail.closest('.postural-test-card');
   if (!card) return;
+  // Item 55: Able auto-completes the 2:00 target into an EMPTY time field,
+  // marked with the app's prefilled treatment so it is visibly
+  // machine-entered until the clinician touches it. Looked up by the stable
+  // id — the placeholder is no longer load-bearing.
+  const safeId = detailId.replace('unable-', '');
+  const timeInput = document.getElementById('ptol-' + safeId + '-time');
   if (!show) {
-    const timeInput = card.querySelector('input[placeholder="2:00"]');
-    if (timeInput && !timeInput.value) timeInput.value = '2:00';
+    if (timeInput && !timeInput.value) {
+      timeInput.value = '2:00';
+      timeInput.classList.add('prefilled');
+    }
   } else {
-    const timeInput = card.querySelector('input[placeholder="2:00"]');
-    if (timeInput) timeInput.value = '';
+    if (timeInput) { timeInput.value = ''; timeInput.classList.remove('prefilled'); }
   }
   const painDetail = card.querySelector('.postural-pain-detail');
   if (painDetail) {
@@ -8031,6 +8038,12 @@ prefilledStyle.textContent = `
     border-color: var(--charcoal) !important;
     background: white !important;
   }
+  /* Machine-entered input values (e.g. the 2:00 tolerance target written on
+     Able) carry the same visual treatment until the clinician touches them */
+  .postural-field input.prefilled {
+    border-color: var(--olive-light) !important;
+    background: linear-gradient(to bottom, var(--olive-ultra), white) !important;
+  }
 `;
 document.head.appendChild(prefilledStyle);
 
@@ -9699,7 +9712,7 @@ function renderPosturalTol() {
         '<button class="option-chip" onclick="selectChip(this,\'pt-' + safeId + '\');toggleUnableReason(\'unable-' + safeId + '\',false)">Able</button>' +
         '<button class="option-chip" onclick="selectChip(this,\'pt-' + safeId + '\');toggleUnableReason(\'unable-' + safeId + '\',true)">Unable</button>' +
       '</div>' +
-      '<div class="postural-field"><label>Time Achieved</label><input id="ptol-' + safeId + '-time" placeholder="2:00"></div>' +
+      '<div class="postural-field"><label>Time Achieved</label><input id="ptol-' + safeId + '-time" placeholder="e.g. 2:00"></div>' +
       '<div class="postural-field"><label>Pain (0–10)</label><input id="ptol-' + safeId + '-pain" placeholder="—" oninput="preFillPosturalTol()"></div>' +
       '<div class="postural-field"><label>Peak HR (bpm)</label><input id="ptol-' + safeId + '-hr" placeholder="—" data-hr-field="peak"></div>' +
       '<div id="unable-' + safeId + '" style="display:none;margin-top:8px;padding:8px;background:var(--olive-ultra);border-radius:6px;border:1px solid var(--border)">' +
@@ -14703,6 +14716,11 @@ function saveClinicianDataToStorage() {
   // section again without re-reading the appointment
   data._dasEnabled = !!window._pemaDasEnabled;
 
+  // Which id'd fields currently hold machine-entered (prefilled) values, so
+  // a restored assessment still distinguishes them from typed ones (Item 55)
+  data._prefilledIds = Array.from(document.querySelectorAll('#screen-clinician .prefilled'))
+    .map(function(el) { return el.id; }).filter(Boolean);
+
   localStorage.setItem('aim_clinician_data',      JSON.stringify(data));
   localStorage.setItem('aim_clinician_timestamp', new Date().toISOString());
   if (window._currentToken) syncClinicianDataToSupabase(window._currentToken, data);
@@ -14789,6 +14807,14 @@ function restoreClinicianData(data) {
   if (typeof syncDasChips === 'function') { syncDasChips(); preFillDas(); }
   if (typeof syncUrineNotCollected === 'function') syncUrineNotCollected();
   if (typeof syncMhTechChips === 'function') syncMhTechChips();
+  // Re-mark machine-entered values (Item 55) — a typed 2:00 restores plain,
+  // an auto-filled one restores with its prefilled treatment
+  if (Array.isArray(data._prefilledIds)) {
+    data._prefilledIds.forEach(function(id) {
+      var el = document.getElementById(id);
+      if (el && el.value) el.classList.add('prefilled');
+    });
+  }
 
   // 6. Re-run all derived calculations
   if (typeof calcBMI            === 'function') calcBMI();
@@ -14955,6 +14981,11 @@ document.addEventListener('DOMContentLoaded', () => {
         e.target.classList.remove('user-edited');
       }
       return; // Don't trigger prefill when user is typing
+    }
+    // A machine-entered input value stops being marked the moment the
+    // clinician edits it (Item 55)
+    if (e.target.tagName === 'INPUT' && e.target.classList.contains('prefilled')) {
+      e.target.classList.remove('prefilled');
     }
     // Input in other fields (chips, numbers) — trigger prefill
     clearTimeout(section._prefillTimer);
