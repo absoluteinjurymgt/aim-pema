@@ -2566,7 +2566,6 @@
         <div class="clinician-nav-label">Functional</div>
         <div class="clinician-nav-item" onclick="showClinSection('clin-postural-tol',this)"><span class="nav-dot"></span>Postural Tolerance</div>
         <div class="clinician-nav-item" onclick="showClinSection('clin-mh',this)"><span class="nav-dot"></span>Manual Handling</div>
-        <div class="clinician-nav-item" onclick="showClinSection('clin-carrying',this)"><span class="nav-dot"></span>Carrying, Overhead & Pulling</div>
         <div class="clinician-nav-item" onclick="showClinSection('clin-climbing',this)"><span class="nav-dot"></span>Climbing / Stepping</div>
         <div class="clinician-nav-item" onclick="showClinSection('clin-steptest',this)"><span class="nav-dot"></span>Step Test</div>
       </div>
@@ -3253,21 +3252,15 @@
       </div>
 
 
+      <!-- Item 51: one Manual Handling section holding all four task cards,
+           matching the PEFA. The classification cap note is rendered by
+           renderPemaMhSections() from the resolved MH_TABLES entry (the old
+           static note carried retired band-derived weights). -->
       <div class="clinician-section" id="clin-mh">
-        <div class="section-title" style="margin-bottom:4px">Manual Handling — Lifting</div>
-        <div class="section-desc">Top-Down Protocol: Phase 1 — 1 rep at occasional weight. Phase 2 — 5 reps within 1 min at frequent weight. Constant capacity inferred if Phase 2 complete with 0/10 pain, good technique, HR within limits. Testing ceases if HR exceeds maximum, pain >0/10, or technique is unsafe.</div>
-        <div class="alert alert-info">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
-          <div><strong>Medium Classification:</strong> Medium: Occasional 9–23 kg · Frequent 4.5–11 kg · Constant 0–4.5 kg. Do not exceed occasional weight regardless of demonstrated capacity.</div>
-        </div>
-        <div id="mh-lifting-cards"></div>
-      </div>
-
-
-      <div class="clinician-section" id="clin-carrying">
-        <div class="section-title" style="margin-bottom:4px">Manual Handling — Carrying, Overhead & Pulling</div>
-        <div class="section-desc">Same Top-Down Protocol applies, in performed order: carrying (5 metre bilateral from 800mm bench), overhead lift, then pulling (resistance band, walk backward to 2× original length, controlled return).</div>
-        <div id="mh-carrying-cards"></div>
+        <div class="section-title" style="margin-bottom:4px">Manual Handling</div>
+        <div class="section-desc">Top-Down Protocol: Phase 1 — 1 rep at occasional weight. Phase 2 — 5 reps within 1 min at frequent weight. Constant capacity inferred if Phase 2 complete with 0/10 pain, good technique, HR within limits. Testing ceases if HR exceeds maximum, pain >0/10, or technique is unsafe. Performed order: floor lift, carrying (5m bilateral from 800mm bench), overhead lift, then pulling (resistance band, 2× length, controlled return).</div>
+        <div id="mh-cap-note"></div>
+        <div id="mh-cards"></div>
       </div>
 
 
@@ -5666,7 +5659,7 @@ function checkBP() {
 }
 
 function lockFunctionalSections(lock) {
-  const functionalIds = ['clin-postural-tol','clin-steptest','clin-mh','clin-carrying','clin-climbing'];
+  const functionalIds = ['clin-postural-tol','clin-steptest','clin-mh','clin-climbing'];
   functionalIds.forEach(id => {
     const sec = document.getElementById(id);
     if (!sec) return;
@@ -5690,7 +5683,7 @@ function lockFunctionalSections(lock) {
       if (overlay) overlay.style.display = 'none';
     }
   });
-  const navItems = document.querySelectorAll('[onclick*="clin-postural-tol"],[onclick*="clin-steptest"],[onclick*="clin-mh"],[onclick*="clin-carrying"],[onclick*="clin-climbing"]');
+  const navItems = document.querySelectorAll('[onclick*="clin-postural-tol"],[onclick*="clin-steptest"],[onclick*="clin-mh"],[onclick*="clin-climbing"]');
   navItems.forEach(el => {
     if (lock) {
       el.style.opacity = '0.4';
@@ -5829,7 +5822,7 @@ const clinSectionOrder = [
   'clin-flagged','clin-vitals','clin-audiometry','clin-spirometry',
   'clin-vision','clin-urinalysis','clin-das','clin-rom','clin-postural','clin-msk',
   'clin-grip','clin-postural-tol','clin-mh',
-  'clin-carrying','clin-climbing','clin-steptest','clin-findings','clin-outcome','clin-signature'
+  'clin-climbing','clin-steptest','clin-findings','clin-outcome','clin-signature'
 ];
 
 function goNextSection() {
@@ -6794,8 +6787,7 @@ function preFillSection(sectionId) {
     case 'clin-grip':         calcGrip('r'); calcGrip('l'); preFillGrip(); break;
     case 'clin-postural-tol': preFillPosturalTol(); break;
     case 'clin-steptest':     preFillStepTest(); break;
-    case 'clin-mh':           preFillManualHandling('mh-lifting-cards'); break;
-    case 'clin-carrying':     preFillManualHandling('mh-carrying-cards'); break;
+    case 'clin-mh':           preFillManualHandling('mh-cards'); break;
     case 'clin-climbing':     preFillClimbing(); break;
     case 'clin-findings':     preFillKeyFindings(); break;
     case 'clin-outcome':      preFillRecommendations(); autoSuggestOutcome(); break;
@@ -7580,7 +7572,7 @@ function generateAbnormalFindings() {
   window._posturalTolFindings = [];
   ['clin-audiometry','clin-spirometry','clin-vision','clin-urinalysis',
    'clin-rom','clin-msk','clin-grip','clin-postural-tol','clin-steptest',
-   'clin-mh','clin-carrying','clin-climbing'].forEach(function(id) {
+   'clin-mh','clin-climbing'].forEach(function(id) {
     try { preFillSection(id); } catch(e) { console.warn('[PEMA] preFillSection skip:', id, e.message); }
   });
 
@@ -8347,7 +8339,6 @@ var NAVDOT_RULES = {
   },
   'clin-steptest': function(sec) { return _ndVerdict(_ndAnyEntry(sec), !!sec.querySelector('.option-chip.selected-normal') && !!Array.from(sec.querySelectorAll('.vital-input')).find(function(el) { return el.tagName === 'INPUT' && el.value.trim(); })); },
   'clin-mh': function(sec) { return _ndMhCards(sec); },
-  'clin-carrying': function(sec) { return _ndMhCards(sec); },
   'clin-climbing': function(sec) { return _ndVerdict(_ndAnyEntry(sec), _ndFilled('stepup-hr') || _ndFilled('ladder-hr')); },
   'clin-findings': function(sec) { return _ndVerdict(_ndAnyEntry(sec), !!(sec.querySelector('.smart-textarea') || {}).value && sec.querySelector('.smart-textarea').value.trim() !== ''); },
   // Outcome: match what the PDF prints — a tapped selection, an accepted
@@ -8503,7 +8494,6 @@ var NAVDOT_PENDING = {
     return m;
   },
   'clin-mh': function(sec) { return _ndMhPending(sec); },
-  'clin-carrying': function(sec) { return _ndMhPending(sec); },
   'clin-climbing': function() { return (!_ndFilled('stepup-hr') && !_ndFilled('ladder-hr')) ? ['step-up or ladder peak HR'] : []; },
   'clin-findings': function() { return ['key findings summary']; },
   'clin-outcome': function() { return ['outcome selection (A–D)']; },
@@ -9369,7 +9359,7 @@ function buildPDF() {
   const mhNames=window._pemaMhTable.map(t=>t.name+' — Occ:'+t.occ+' Freq:'+t.freq);
   const mhW=[52,18,18,16,16,62];
   tblRow(['Task','Phase 1','Phase 2','Pain/10','Peak HR','Notes'],mhW,true);
-  const allCards=document.querySelectorAll('#mh-lifting-cards .clin-card, #mh-carrying-cards .clin-card');
+  const allCards=document.querySelectorAll('#mh-cards .clin-card');
   mhNames.forEach((name,i)=>{
     const card=allCards[i]; let p1='—',p2='—',pain='—',hr='—',notes='—';
     if(card){
@@ -9738,8 +9728,14 @@ function pemaMhPlaceholders() {
 // table[1..3] the carrying/overhead/pulling section.
 function renderPemaMhSections() {
   var t = window._pemaMhTable || pemaMhPlaceholders();
-  renderMHCard([t[0]], 'mh-lifting-cards');
-  renderMHCard(t.slice(1), 'mh-carrying-cards');
+  // Classification cap note, rendered from the resolved table (PEFA style)
+  var note = document.getElementById('mh-cap-note');
+  if (note) {
+    note.innerHTML = window._pemaMhTable
+      ? '<div class="alert alert-info"><div><strong>' + (window._pemaClassification || '') + ' Classification (occasional maxima):</strong> Floor lift / carry ' + t[0].occ + ' · ' + t[2].name.replace('Lifting: ', '') + ' ' + t[2].occ + ' · Pulling ' + t[3].occ + '. Do not exceed the occasional weight for each test regardless of demonstrated capacity.</div></div>'
+      : '<div class="alert alert-info"><div>Weights are resolved from the booking’s classification when the assessment is started.</div></div>';
+  }
+  renderMHCard(t, 'mh-cards');
   if (typeof addPainZeroButtons === 'function') addPainZeroButtons();
   if (typeof applyNumericInputModes === 'function') applyNumericInputModes();
 }
