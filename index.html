@@ -8091,6 +8091,16 @@ async function finaliseAssessmentAsync() {
   }
 
   if (token) {
+    // Amend support (Item 59, matching the FCE): the questionnaire response
+    // and the clinician write-up are KEPT after finalise so the assessment
+    // can be reopened and refinalised — both are purged with the appointment
+    // by the 30-day retention sweep. Superseded PDF: a refinalise on a later
+    // date changes the filename, so exactly one current report exists.
+    var prevPdf = null;
+    try {
+      var prevRows = await sbSelect('appointments', 'token=eq.' + token + '&select=pdf_path');
+      prevPdf = (prevRows && prevRows[0] && prevRows[0].pdf_path) || null;
+    } catch(e) {}
     try {
       await sbUpdate('appointments', 'token=eq.' + token, { status: 'finalised', pdf_path: path, finalised_at: new Date().toISOString() });
     } catch(e) {
@@ -8098,8 +8108,9 @@ async function finaliseAssessmentAsync() {
       out.doc.save(out.filename); // status update failed — report would be stranded invisible in storage, so also download locally
       alert('The PDF was uploaded, but the appointment record could not be updated (' + e.message + ').\n\nA local copy has been downloaded so the report is not lost. If this mentions a missing column, the database migration has not been run.');
     }
-    try { await sbDelete('questionnaire_responses', 'token=eq.' + token); } catch(e) { console.warn('[PEMA] questionnaire cleanup failed:', e); }
-    try { await sbDelete('clinician_progress', 'token=eq.' + token); } catch(e) { console.warn('[PEMA] progress cleanup failed:', e); }
+    if (prevPdf && prevPdf !== path) {
+      try { await sbStorageDelete(prevPdf); } catch(e) { console.warn('[PEMA] superseded PDF cleanup failed:', e); }
+    }
   }
 
   clearPatientSession();
@@ -10815,12 +10826,17 @@ async function loadUpcomingAppointments() {
     // the same window keyed off finalised_at) older than 30 days
     var cutoff = Date.now() - 30 * 24 * 3600 * 1000;
     (rows || []).forEach(function(a) {
-      var retires = a.status === 'finalised' || (a.status === 'exported' && isClinOnlyType(a.assessment_type));
+      // All three types keep their Amend data after finalise/export; the
+      // sweep is where it is purged (Item 59)
+      var retires = a.status === 'finalised' || a.status === 'exported';
       if (retires && a.finalised_at && new Date(a.finalised_at).getTime() < cutoff) {
         if (a.pdf_path) sbStorageDelete(a.pdf_path).catch(function(e) { console.warn('[PEMA] expiry delete failed:', e); });
         sbUpdate('appointments', 'token=eq.' + a.token, { status: 'expired', pdf_path: null }).catch(function() {});
-        // FCE keeps its clinician_progress row after finalise (for Amend) — purge it with the appointment. No-op for PEMA (deleted at finalise).
+        // Amend data (clinician write-up + PEMA questionnaire response) is
+        // kept after finalise on all three types — purged here with the
+        // appointment.
         sbDelete('clinician_progress', 'token=eq.' + a.token).catch(function() {});
+        sbDelete('questionnaire_responses', 'token=eq.' + a.token).catch(function() {});
         a.status = 'expired';
       }
     });
@@ -10836,7 +10852,8 @@ async function loadUpcomingAppointments() {
     });
     renderApptQueue((rows || []).filter(function(a) {
       if (a.status === 'expired') return false;
-      if (a.status === 'exported') return isClinOnlyType(a.assessment_type);
+      // Exported assessments of every type stay listed for re-download and
+      // Amend until the 30-day sweep retires them (Item 59)
       return true;
     }));
   } catch(e) {
@@ -10873,12 +10890,12 @@ function renderApptQueue(appts) {
       : '<span style="display:inline-block;background:rgba(255,255,255,0.12);color:var(--light);padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;letter-spacing:0.5px;vertical-align:middle;margin-left:8px">PEMA</span>';
 
     var isFieldworkDone = a.status === 'fieldwork_complete';
-    var isExported = a.status === 'exported'; // only FCE exported rows reach the queue
+    var isExported = a.status === 'exported'; // exported rows of every type stay in the queue (Item 59)
 
     // FCE status progression: Pending → Fieldwork Complete → Finalised → Exported
     var badge = isFinalised
       ? '<span style="display:inline-block;background:#6d6f57;color:white;padding:3px 9px;border-radius:4px;font-size:11px;font-weight:600">📄 Finalised — report ready</span>'
-      : (isClinOnly && isExported)
+      : isExported
       ? '<span style="display:inline-block;background:rgba(255,255,255,0.12);color:var(--light);padding:3px 9px;border-radius:4px;font-size:11px;font-weight:600">✓ Exported</span>'
       : isFieldworkDone
       ? '<span style="display:inline-block;background:#b8860b;color:white;padding:3px 9px;border-radius:4px;font-size:11px;font-weight:600">⏱ Fieldwork Complete — awaiting write-up</span>'
@@ -10910,12 +10927,12 @@ function renderApptQueue(appts) {
       startBtn =
         '<button onclick="exportReportPDF(this,\'' + a.token + '\')" style="background:var(--olive);border:none;color:white;padding:10px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:\'DM Sans\',sans-serif;min-height:44px;white-space:nowrap">Export PDF ⬇</button>' +
         '<button onclick="markReportExported(this,\'' + a.token + '\')" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);color:var(--light);padding:8px 14px;border-radius:8px;font-size:12px;cursor:pointer;font-family:\'DM Sans\',sans-serif;white-space:nowrap">Mark Exported</button>' +
-        (isClinOnly ? '<button onclick="amendFCE(this,\'' + a.token + '\')" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);color:var(--light);padding:8px 14px;border-radius:8px;font-size:12px;cursor:pointer;font-family:\'DM Sans\',sans-serif;white-space:nowrap">Amend ✎</button>' : '');
+        ('<button onclick="amendFCE(this,\'' + a.token + '\')" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);color:var(--light);padding:8px 14px;border-radius:8px;font-size:12px;cursor:pointer;font-family:\'DM Sans\',sans-serif;white-space:nowrap">Amend ✎</button>');
     }
 
     // Exported FCE/PEFA: re-download stays available while the PDF survives
     // the 72-hour grace window; Amend always remains
-    if (isClinOnly && isExported) {
+    if (isExported) {
       startBtn =
         (a.pdf_path ? '<button onclick="exportReportPDF(this,\'' + a.token + '\')" style="background:var(--olive);border:none;color:white;padding:10px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:\'DM Sans\',sans-serif;min-height:44px;white-space:nowrap">Export PDF ⬇</button>' : '') +
         '<button onclick="amendFCE(this,\'' + a.token + '\')" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);color:var(--light);padding:10px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:\'DM Sans\',sans-serif;min-height:44px;white-space:nowrap">Amend ✎</button>';
@@ -12914,6 +12931,7 @@ async function amendFCE(btnEl, token) {
     showToast('Reopened for amendment — refinalise when the changes are done.');
     loadUpcomingAppointments();
     if (aType === 'pefa') await startPEFA(null, token);
+    else if (aType === 'pema') await startPEMA(null, token);
     else await startFCE(null, token);
   } catch(e) {
     alert('Could not reopen for amendment: ' + e.message);
