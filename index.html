@@ -2524,7 +2524,7 @@
 
 
   <div class="patient-summary-bar" id="patient-summary-bar" style="cursor:pointer" onclick="toggleSummaryBar()" title="Click to collapse">
-    <div class="ps-item"><div class="ps-label">Patient</div><div class="ps-value" id="clin-pt-name">—</div></div>
+    <div class="ps-item"><div class="ps-label">Patient</div><div class="ps-value" id="clin-pt-name">—</div><button onclick="event.stopPropagation();editPatientName()" title="Correct the patient's name" style="background:none;border:none;color:var(--mid);cursor:pointer;font-size:13px;padding:2px 6px;vertical-align:middle">✎</button></div>
     <div class="ps-item"><div class="ps-label">DOB</div><div class="ps-value" id="clin-pt-dob">—</div></div>
     <div class="ps-item"><div class="ps-label">Role</div><div class="ps-value" id="clin-pt-role">—</div></div>
     <div class="ps-item"><div class="ps-label">Classification</div><div class="ps-value">Medium</div></div>
@@ -4202,6 +4202,61 @@ function autoCollapseSummary() {
   const collapsed = document.getElementById('summary-collapsed');
   if (bar && bar.style.display !== 'none') {
   }
+}
+
+// Item 60: the clinician can correct the patient's name from inside the
+// assessment. The correction is written to the appointment record (queue,
+// future loads), the local patient data, the live DOM fields the report and
+// filename read from, and the clinician autosave (so a resume on another
+// device keeps it — the questionnaire response itself cannot be updated
+// under RLS and still holds the patient's original entry).
+function editPatientName() {
+  var curFirst = document.getElementById('pt-firstname')?.value || '';
+  var curLast = document.getElementById('pt-surname')?.value || '';
+  var overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:10000;display:flex;align-items:center;justify-content:center;padding:20px';
+  overlay.innerHTML =
+    '<div style="background:white;border-radius:12px;max-width:380px;width:100%;padding:22px;font-family:\'DM Sans\',sans-serif">' +
+      '<h3 style="margin:0 0 6px;font-family:\'DM Serif Display\',serif;color:#1a1a18;font-size:20px">Correct patient name</h3>' +
+      '<p style="color:#6b6b65;font-size:13px;margin:0 0 14px">Updates the appointment, the report and the export filename.</p>' +
+      '<label style="font-size:11px;font-weight:700;color:#6b6b65;text-transform:uppercase;display:block;margin-bottom:4px">First name</label>' +
+      '<input id="edit-pt-first" class="form-control" style="margin-bottom:10px" value="' + curFirst.replace(/"/g, '&quot;') + '">' +
+      '<label style="font-size:11px;font-weight:700;color:#6b6b65;text-transform:uppercase;display:block;margin-bottom:4px">Surname</label>' +
+      '<input id="edit-pt-last" class="form-control" style="margin-bottom:16px" value="' + curLast.replace(/"/g, '&quot;') + '">' +
+      '<div style="display:flex;gap:10px;justify-content:flex-end">' +
+        '<button id="edit-pt-cancel" style="background:rgba(0,0,0,0.06);border:none;padding:10px 16px;border-radius:8px;font-size:13px;cursor:pointer;font-family:inherit">Cancel</button>' +
+        '<button id="edit-pt-save" style="background:#6d6f57;color:white;border:none;padding:10px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Save correction</button>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(overlay);
+  overlay.querySelector('#edit-pt-cancel').onclick = function() { overlay.remove(); };
+  overlay.querySelector('#edit-pt-save').onclick = async function() {
+    var f = overlay.querySelector('#edit-pt-first').value.trim();
+    var l = overlay.querySelector('#edit-pt-last').value.trim();
+    if (!f || !l) { alert('Both names are required.'); return; }
+    this.textContent = 'Saving…'; this.disabled = true;
+    // Live DOM — the report, filename and summary all read from here
+    var fEl = document.getElementById('pt-firstname'), lEl = document.getElementById('pt-surname');
+    if (fEl) fEl.value = f;
+    if (lEl) lEl.value = l;
+    // Local patient data copy, so a local reload keeps the correction
+    try {
+      var pd = JSON.parse(localStorage.getItem('aim_patient_data') || 'null');
+      if (pd) { pd['pt-firstname'] = f; pd['pt-surname'] = l; localStorage.setItem('aim_patient_data', JSON.stringify(pd)); }
+    } catch(e) {}
+    // Appointment record — the queue and any future load reflect it
+    if (window._currentToken) {
+      try {
+        await sbUpdate('appointments', 'token=eq.' + window._currentToken, { patient_first_name: f, patient_last_name: l });
+      } catch(e) {
+        alert('The name was corrected in this assessment, but the appointment record could not be updated: ' + e.message);
+      }
+    }
+    updatePatientSummary();
+    saveClinicianDataToStorage();
+    showToast('Patient name corrected — ' + f + ' ' + l);
+    overlay.remove();
+  };
 }
 
 function confirmID(btn) {
@@ -12887,8 +12942,14 @@ async function finaliseFCEAsync() {
   if (token) {
     try {
       // Refinalise always lands on 'finalised' — a previously exported report
-      // shows as needing re-export in the queue
-      await sbUpdate('appointments', 'token=eq.' + token, { status: 'finalised', pdf_path: path, finalised_at: new Date().toISOString() });
+      // shows as needing re-export in the queue. The on-screen name fields
+      // are the editable truth, so corrections flow back to the appointment
+      // record (Item 60).
+      var fceUpd = { status: 'finalised', pdf_path: path, finalised_at: new Date().toISOString() };
+      var fceF = (document.getElementById('fce-firstname') || {}).value, fceL = (document.getElementById('fce-surname') || {}).value;
+      if (fceF && fceF.trim()) fceUpd.patient_first_name = fceF.trim();
+      if (fceL && fceL.trim()) fceUpd.patient_last_name = fceL.trim();
+      await sbUpdate('appointments', 'token=eq.' + token, fceUpd);
     } catch(e) {
       console.warn('[FCE] finalise status update failed:', e);
       out.doc.save(out.filename);
@@ -14030,7 +14091,11 @@ async function finalisePEFAAsync() {
   }
   if (token) {
     try {
-      await sbUpdate('appointments', 'token=eq.' + token, { status: 'finalised', pdf_path: path, finalised_at: new Date().toISOString() });
+      var pefaUpd = { status: 'finalised', pdf_path: path, finalised_at: new Date().toISOString() };
+      var pefaF = (document.getElementById('pefa-firstname') || {}).value, pefaL = (document.getElementById('pefa-surname') || {}).value;
+      if (pefaF && pefaF.trim()) pefaUpd.patient_first_name = pefaF.trim();
+      if (pefaL && pefaL.trim()) pefaUpd.patient_last_name = pefaL.trim();
+      await sbUpdate('appointments', 'token=eq.' + token, pefaUpd); // name corrections flow back (Item 60)
     } catch(e) {
       console.warn('[PEFA] finalise status update failed:', e);
       out.doc.save(out.filename);
@@ -14718,6 +14783,11 @@ function saveClinicianDataToStorage() {
   var fname = document.getElementById('pt-firstname') ? document.getElementById('pt-firstname').value : '';
   var lname = document.getElementById('pt-surname')   ? document.getElementById('pt-surname').value   : '';
   data['_patientName'] = (fname + ' ' + lname).trim() || null;
+  // Clinician name corrections travel with the save (Item 60): the
+  // questionnaire response cannot be updated under RLS, so a resume restores
+  // these over the response's original spelling
+  data['_ptFirst'] = fname || null;
+  data['_ptLast']  = lname || null;
 
   // 6. Manual flags — serialise as array of {title, source, notes}
   var manualFlags = [];
@@ -14836,6 +14906,15 @@ function restoreClinicianData(data) {
   if (typeof syncDasChips === 'function') { syncDasChips(); preFillDas(); }
   if (typeof syncUrineNotCollected === 'function') syncUrineNotCollected();
   if (typeof syncMhTechChips === 'function') syncMhTechChips();
+  // Clinician name corrections win over the questionnaire response's
+  // original spelling (Item 60)
+  if (data._ptFirst || data._ptLast) {
+    var fEl = document.getElementById('pt-firstname'), lEl = document.getElementById('pt-surname');
+    if (fEl && data._ptFirst) fEl.value = data._ptFirst;
+    if (lEl && data._ptLast) lEl.value = data._ptLast;
+    if (typeof updatePatientSummary === 'function') updatePatientSummary();
+  }
+
   // Re-mark machine-entered values (Item 55) — a typed 2:00 restores plain,
   // an auto-filled one restores with its prefilled treatment
   if (Array.isArray(data._prefilledIds)) {
