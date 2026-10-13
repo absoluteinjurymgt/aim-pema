@@ -2603,12 +2603,17 @@
                 <div style="font-size:14px;color:var(--black);font-weight:500" id="clin-id-expiry-display">—</div>
               </div>
             </div>
-            <div style="display:flex;align-items:center;gap:12px">
+            <!-- Item 61: identity must be EXPLICITLY answered — yes, or no
+                 with a reason. Finalisation hard-stops until it is. -->
+            <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
               <div style="font-size:13px;font-weight:600;color:var(--charcoal)">Therapist ID Verification:</div>
-              <button class="yn-btn" id="id-confirmed-btn" onclick="confirmID(this)" style="flex:none;padding:8px 20px">
-                ✓ Confirm ID Sighted & Matches
-              </button>
-              <input type="hidden" id="id-confirmed" value="no">
+              <button class="yn-btn" id="id-confirmed-btn" onclick="setIdVerification('yes')" style="flex:none;padding:8px 20px">✓ ID Sighted &amp; Matches</button>
+              <button class="yn-btn" id="id-unverified-btn" onclick="setIdVerification('no')" style="flex:none;padding:8px 20px">✗ Unable to Verify</button>
+              <input type="hidden" id="id-confirmed" value="">
+            </div>
+            <div id="id-unverified-wrap" style="display:none;margin-top:10px">
+              <label style="font-size:11px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.04em;display:block;margin-bottom:4px">Reason identity could not be verified</label>
+              <input class="form-control" id="id-unverified-reason" placeholder="e.g. No photo ID presented at assessment">
             </div>
           </div>
         </div>
@@ -4259,21 +4264,28 @@ function editPatientName() {
   };
 }
 
-function confirmID(btn) {
+// Item 61: identity verification is an explicit tri-state — '' (unanswered,
+// blocks finalisation), 'yes', or 'no' (requires a reason). Tapping the
+// active answer again clears it back to unanswered.
+function setIdVerification(value) {
   const hidden = document.getElementById('id-confirmed');
-  const isConfirmed = hidden.value === 'yes';
-  if (isConfirmed) {
-    hidden.value = 'no';
-    btn.textContent = '✓ Confirm ID Sighted & Matches';
-    btn.classList.remove('selected-yes');
-  } else {
-    hidden.value = 'yes';
-    btn.textContent = '✓ ID Confirmed — Sighted & Matches';
-    btn.classList.add('selected-yes');
-    btn.style.background = '#eaf2ed';
-    btn.style.borderColor = '#4a7c59';
-    btn.style.color = '#4a7c59';
+  if (!hidden) return;
+  hidden.value = hidden.value === value ? '' : value;
+  syncIdVerification();
+  saveClinicianDataToStorage();
+}
+
+function syncIdVerification() {
+  const v = (document.getElementById('id-confirmed') || {}).value || '';
+  const yesBtn = document.getElementById('id-confirmed-btn');
+  const noBtn = document.getElementById('id-unverified-btn');
+  const wrap = document.getElementById('id-unverified-wrap');
+  if (yesBtn) {
+    yesBtn.classList.toggle('selected-yes', v === 'yes');
+    yesBtn.textContent = v === 'yes' ? '✓ ID Confirmed — Sighted & Matches' : '✓ ID Sighted & Matches';
   }
+  if (noBtn) noBtn.classList.toggle('selected-no', v === 'no');
+  if (wrap) wrap.style.display = v === 'no' ? 'block' : 'none';
 }
 
 function updateIDDisplay() {
@@ -8103,7 +8115,21 @@ prefilledStyle.textContent = `
 document.head.appendChild(prefilledStyle);
 
 function finaliseAssessment() {
-  // Non-blocking incompleteness reminder first — proceeds exactly as before
+  // Item 61: identity confirmation is a HARD STOP, not a reminder — the
+  // report asserts whether the assessor verified the person assessed. It must
+  // be an explicit yes, or an explicit no with a recorded reason.
+  var idv = (document.getElementById('id-confirmed') || {}).value || '';
+  if (idv !== 'yes' && idv !== 'no') {
+    alert('Identity confirmation has not been answered.\n\nConfirm that photo ID was sighted and matches — or record that identity could not be verified, with the reason — before finalising.');
+    showClinSection('clin-flagged', document.querySelector('[onclick*="clin-flagged"]'));
+    return;
+  }
+  if (idv === 'no' && !((document.getElementById('id-unverified-reason') || {}).value || '').trim()) {
+    alert('Identity was marked as unable to verify — record the reason before finalising.');
+    showClinSection('clin-flagged', document.querySelector('[onclick*="clin-flagged"]'));
+    return;
+  }
+  // Non-blocking incompleteness reminder for everything else
   warnIncompleteThen('screen-clinician', function(id) { showClinSection(id); }, doFinaliseAssessment);
 }
 
@@ -9028,10 +9054,12 @@ function buildPDF() {
     doc.setFontSize(8); doc.setFont('helvetica','bold'); doc.setTextColor(...SUCCESS);
     doc.text('Photo ID sighted and verified by assessor — identity confirmed.',ML+4,y+6);
   } else {
+    // Explicit negative — never silent, never implying verification occurred
+    const idReason=(document.getElementById('id-unverified-reason')?.value||'').trim();
     doc.setFillColor(253,240,238); doc.setDrawColor(...WARNING); doc.setLineWidth(0.4);
     doc.roundedRect(ML,y,CW,9,1,1,'FD');
     doc.setFontSize(8); doc.setFont('helvetica','bold'); doc.setTextColor(...WARNING);
-    doc.text('ID verification not yet confirmed by assessor.',ML+4,y+6);
+    doc.text('Identity NOT verified by assessor'+(idReason?' — '+idReason:'')+'.',ML+4,y+6);
   }
   y+=14;
 
@@ -14906,6 +14934,7 @@ function restoreClinicianData(data) {
   if (typeof syncDasChips === 'function') { syncDasChips(); preFillDas(); }
   if (typeof syncUrineNotCollected === 'function') syncUrineNotCollected();
   if (typeof syncMhTechChips === 'function') syncMhTechChips();
+  if (typeof syncIdVerification === 'function') syncIdVerification();
   // Clinician name corrections win over the questionnaire response's
   // original spelling (Item 60)
   if (data._ptFirst || data._ptLast) {
