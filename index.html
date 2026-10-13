@@ -8297,7 +8297,15 @@ function _ndGenericStatus(sec) {
 
 var NAVDOT_RULES = {
   // ── PEMA ──
-  'clin-flagged': function(sec) { return _ndVerdict(_ndAnyEntry(sec), !!Array.from(sec.querySelectorAll('.smart-textarea')).find(function(t) { return t.value.trim(); })); },
+  // Item 58: zero flagged responses means nothing to review — complete, not
+  // amber (the ID-confirm button used to register as "entry started" and
+  // strand the dot at partial with no textareas to ever fill)
+  'clin-flagged': function(sec) {
+    var cards = sec.querySelectorAll('#flagged-items .clin-card');
+    if (!cards.length) return 'complete';
+    var noted = !!Array.from(sec.querySelectorAll('#flagged-items .smart-textarea')).find(function(t) { return t.value.trim(); });
+    return _ndVerdict(_ndAnyEntry(sec), noted);
+  },
   'clin-vitals': function(sec) { return _ndVerdict(_ndAnyEntry(sec), _ndFilled('v-bp-sys') && _ndFilled('v-bp-dia') && _ndFilled('v-height') && _ndFilled('v-weight')); },
   'clin-audiometry': function(sec) {
     var t = 0, a = 0;
@@ -9504,7 +9512,10 @@ function buildPDF() {
   const fnSurname = (ptLast || 'UNKNOWN').toUpperCase().replace(/[^A-Z ]/g, '').trim() || 'UNKNOWN';
   const fnInitial = ((ptFirst || '').charAt(0) || '').toUpperCase();
   const fnClient = ((window._activeClient?.name) || '').toUpperCase().replace(/[^A-Z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
-  const fnClass = ((window._pemaClassification) || '').toUpperCase().replace(/[^A-Z0-9 ]/g, '').trim();
+  // Band only — 'Heavy (23-45 kg occasional)' contributes HEAVY, never the
+  // parenthetical range (Item 56). Normalised here only: the stored string is
+  // what the manual handling table lookup matches on.
+  const fnClass = ((window._pemaClassification) || '').replace(/\(.*$/, '').toUpperCase().replace(/[^A-Z0-9 ]/g, '').trim();
   const dpF = clinicToday().split('-');
   const fnDate = dpF[2] + dpF[1] + dpF[0].slice(2);
   const filename = [fnSurname, fnInitial, 'PEMA', fnClient, fnClass, fnDate].filter(Boolean).join(' ') + '.pdf';
