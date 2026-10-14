@@ -6874,7 +6874,8 @@ function preFillVitals() {
   const hr = getInputVal('v-hr');
   const bmi = document.getElementById('v-bmi')?.textContent?.trim();
   const bmiCat = document.getElementById('bmi-cat')?.textContent?.trim();
-  window._vitalsFlag = sys > 160 ? 'BP ELEVATED — medical clearance required' : null;
+  // Identical condition to the checkBP() clearance gate (Item 62)
+  window._vitalsFlag = (sys > 160 || dia > 100) ? 'BP ELEVATED — medical clearance required' : null;
 }
 
 function preFillAudiometry() {
@@ -7858,13 +7859,16 @@ function generateFindingsBullets() {
   });
 
   const bpSys = parseInt(getInputVal('v-bp-sys'));
+  const bpDiaF = parseInt(getInputVal('v-bp-dia'));
   const bmi = document.getElementById('v-bmi')?.textContent?.trim();
   const bmiCat = document.getElementById('bmi-cat')?.textContent?.trim();
-  if (bpSys && bpSys > 160) {
+  // Identical condition to the checkBP() clearance gate (Item 62): a
+  // diastolic-only breach locks testing, so the findings must say why
+  if ((bpSys > 160) || (bpDiaF > 100)) {
     bullets.push({
       key:'vitals',
       label:'Vitals — Elevated BP',
-      text: 'Blood pressure elevated at ' + bpSys + '/' + getInputVal('v-bp-dia') + ' mmHg — medical clearance was required prior to physical testing.' + (bmi ? ' BMI ' + bmi + ' kg/m² (' + bmiCat + ').' : '')
+      text: 'Blood pressure elevated at ' + (bpSys || '—') + '/' + (getInputVal('v-bp-dia') || '—') + ' mmHg — medical clearance was required prior to physical testing.' + (bmi ? ' BMI ' + bmi + ' kg/m² (' + bmiCat + ').' : '')
     });
   } else if (bmi && bmiCat && (bmiCat.toLowerCase().includes('obese') || bmiCat.toLowerCase().includes('overweight'))) {
     bullets.push({key:'vitals', label:'BMI', text: 'BMI ' + bmi + ' kg/m² — ' + bmiCat + '. Employer to note for roles with significant physical demand.'});
@@ -9281,7 +9285,9 @@ function buildPDF() {
   threeCol('Blood Pressure',bpSys&&bpDia?bpSys+'/'+bpDia+' mmHg':'—','Resting Heart Rate',hr?hr+' bpm':'—','Max HR for Testing',maxHR);
   threeCol('Height',ht?ht+' m':'—','Weight',wt?wt+' kg':'—','BMI',bmi!=='—'?bmi+' kg/m² — '+bmiCat:'—');
   fullRow('Max MH Testing Weight',maxMH);
-  if(bpSys&&parseInt(bpSys)>160){
+  // Identical condition to the checkBP() clearance gate (Item 62) — this box
+  // claimed the 160/100 rule but previously tested systolic only
+  if((bpSys&&parseInt(bpSys)>160)||(bpDia&&parseInt(bpDia)>100)){
     checkY(10); doc.setFillColor(254,240,238); doc.setDrawColor(...WARNING); doc.setLineWidth(0.4);
     doc.roundedRect(ML,y,CW,8,1,1,'FD'); doc.setFontSize(8); doc.setFont('helvetica','bold'); doc.setTextColor(...WARNING);
     doc.text('ALERT: Blood pressure exceeds 160/100 mmHg — medical clearance required.',ML+4,y+5); y+=12;
