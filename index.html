@@ -1875,11 +1875,11 @@
         <div class="config-card-body">
           <div class="toggle-row">
             <div class="toggle-info"><h4>Audiometry</h4><p>Pure tone audiogram at 500–8000Hz, bilateral</p></div>
-            <label class="toggle"><input type="checkbox" checked><span class="toggle-slider"></span></label>
+            <label class="toggle"><input type="checkbox" checked id="pema-mod-audiometry" onchange="togglePemaModuleDefault('audiometry', this.checked)"><span class="toggle-slider"></span></label>
           </div>
           <div class="toggle-row">
             <div class="toggle-info"><h4>Spirometry</h4><p>FEV1, FVC, PEF with predicted values</p></div>
-            <label class="toggle"><input type="checkbox" checked><span class="toggle-slider"></span></label>
+            <label class="toggle"><input type="checkbox" checked id="pema-mod-spirometry" onchange="togglePemaModuleDefault('spirometry', this.checked)"><span class="toggle-slider"></span></label>
           </div>
           <div class="toggle-row">
             <div class="toggle-info"><h4>Drug & Alcohol Screen (DAS)</h4><p>Breath alcohol band + initial drug screen — default for this client, adjustable per booking</p></div>
@@ -1887,31 +1887,29 @@
           </div>
           <div class="toggle-row">
             <div class="toggle-info"><h4>Vision & Colour Vision</h4><p>Snellen acuity + Ishihara 14-plate concise edition</p></div>
-            <label class="toggle"><input type="checkbox" checked><span class="toggle-slider"></span></label>
+            <label class="toggle"><input type="checkbox" checked id="pema-mod-vision" onchange="togglePemaModuleDefault('vision', this.checked)"><span class="toggle-slider"></span></label>
           </div>
           <div class="toggle-row">
             <div class="toggle-info"><h4>Urinalysis</h4><p>Blood, protein, glucose dipstick</p></div>
-            <label class="toggle"><input type="checkbox" checked><span class="toggle-slider"></span></label>
+            <label class="toggle"><input type="checkbox" checked id="pema-mod-urinalysis" onchange="togglePemaModuleDefault('urinalysis', this.checked)"><span class="toggle-slider"></span></label>
           </div>
           <div class="toggle-row">
             <div class="toggle-info"><h4>3-Minute Step Test</h4><p>Cardiovascular fitness assessment</p></div>
-            <label class="toggle"><input type="checkbox" checked><span class="toggle-slider"></span></label>
+            <label class="toggle"><input type="checkbox" checked id="pema-mod-step_test" onchange="togglePemaModuleDefault('step_test', this.checked)"><span class="toggle-slider"></span></label>
           </div>
+          <!-- One toggle since the Item 51 merge: all four manual handling
+               task cards live in a single section -->
           <div class="toggle-row">
-            <div class="toggle-info"><h4>Manual Handling — Lifting</h4><p>Floor-to-bench and bench-to-overhead assessments</p></div>
-            <label class="toggle"><input type="checkbox" checked><span class="toggle-slider"></span></label>
-          </div>
-          <div class="toggle-row">
-            <div class="toggle-info"><h4>Manual Handling — Carrying, Overhead & Pulling</h4><p>Bilateral carry, overhead lift and resistance band pull</p></div>
-            <label class="toggle"><input type="checkbox" checked><span class="toggle-slider"></span></label>
+            <div class="toggle-info"><h4>Manual Handling</h4><p>Floor lift, carry, overhead and pulling — Top-Down Protocol</p></div>
+            <label class="toggle"><input type="checkbox" checked id="pema-mod-manual_handling" onchange="togglePemaModuleDefault('manual_handling', this.checked)"><span class="toggle-slider"></span></label>
           </div>
           <div class="toggle-row">
             <div class="toggle-info"><h4>Climbing / Stepping</h4><p>500mm step-up, ladder protocol</p></div>
-            <label class="toggle"><input type="checkbox" checked><span class="toggle-slider"></span></label>
+            <label class="toggle"><input type="checkbox" checked id="pema-mod-climbing" onchange="togglePemaModuleDefault('climbing', this.checked)"><span class="toggle-slider"></span></label>
           </div>
           <div class="toggle-row">
             <div class="toggle-info"><h4>Full MSK Examination</h4><p>ROM, postural analysis, special tests</p></div>
-            <label class="toggle"><input type="checkbox" checked><span class="toggle-slider"></span></label>
+            <label class="toggle"><input type="checkbox" checked id="pema-mod-msk_exam" onchange="togglePemaModuleDefault('msk_exam', this.checked)"><span class="toggle-slider"></span></label>
           </div>
           <div class="toggle-row">
             <div class="toggle-info"><h4>AUDIT Questionnaire</h4><p>10-item alcohol use screening tool</p></div>
@@ -5998,10 +5996,12 @@ function goNextSection() {
   let idx = clinSectionOrder.indexOf(current.id);
   if (idx < 0 || idx >= clinSectionOrder.length - 1) return;
   let nextId = clinSectionOrder[idx + 1];
-  // DAS is per-booking: skip it entirely when this booking has it off
-  if (nextId === 'clin-das' && !window._pemaDasEnabled) {
-    if (idx + 2 >= clinSectionOrder.length) return;
-    nextId = clinSectionOrder[idx + 2];
+  // Sections disabled for this booking (DAS and the Item 64 modules) are
+  // skipped entirely by the Next flow
+  while (nextId && !pemaSectionEnabledById(nextId)) {
+    idx++;
+    if (idx + 1 >= clinSectionOrder.length) return;
+    nextId = clinSectionOrder[idx + 1];
   }
   const nextNavItem = document.querySelector(`[onclick*="${nextId}"]`);
   showClinSection(nextId, nextNavItem);
@@ -6067,6 +6067,53 @@ function preFillDas() {
   if (drug === 'Non-negative') {
     window._findingFlags.push({ section: 'Drug & Alcohol Screen', finding: 'Initial drug screen non-negative — confirmatory laboratory result pending', rec: null });
   }
+}
+
+// Item 64: PEMA assessment modules, configurable per client default and per
+// booking — the same pattern as DAS. ABSENT MEANS ON at every level: a
+// missing key, a missing pema_config, a missing default_config, or a null
+// anywhere resolves to the section being PRESENT; only an explicit false
+// hides it, so bookings frozen before these flags existed are untouched.
+// The four patient-questionnaire modules (AUDIT, K10, Epworth, Work History)
+// are deliberately NOT wired: hiding them for the patient requires the
+// patient_get_appointment RPC to expose the booking's flags to the token
+// page — an SQL change reported for decision rather than made here.
+var PEMA_MODULES = [
+  { key: 'audiometry', label: 'Audiometry', sections: ['clin-audiometry'] },
+  { key: 'spirometry', label: 'Spirometry', sections: ['clin-spirometry'] },
+  { key: 'vision', label: 'Vision & Colour Vision', sections: ['clin-vision'] },
+  { key: 'urinalysis', label: 'Urinalysis', sections: ['clin-urinalysis'] },
+  { key: 'step_test', label: '3-Minute Step Test', sections: ['clin-steptest'] },
+  { key: 'manual_handling', label: 'Manual Handling', sections: ['clin-mh'] },
+  { key: 'climbing', label: 'Climbing / Stepping', sections: ['clin-climbing'] },
+  { key: 'msk_exam', label: 'Full MSK Examination', sections: ['clin-rom', 'clin-postural', 'clin-msk'] }
+];
+
+function pemaSectionOn(key) {
+  var cfg = window._pemaSections;
+  return !cfg || cfg[key] !== false;
+}
+
+function pemaSectionEnabledById(secId) {
+  if (secId === 'clin-das') return !!window._pemaDasEnabled;
+  for (var i = 0; i < PEMA_MODULES.length; i++) {
+    if (PEMA_MODULES[i].sections.indexOf(secId) >= 0) return pemaSectionOn(PEMA_MODULES[i].key);
+  }
+  return true; // sections without a toggle are always present
+}
+
+function applyPemaSectionVisibility() {
+  PEMA_MODULES.forEach(function(m) {
+    var on = pemaSectionOn(m.key);
+    m.sections.forEach(function(secId) {
+      var nav = document.querySelector('#screen-clinician .clinician-nav-item[onclick*="\'' + secId + '\',"]');
+      if (nav) nav.style.display = on ? '' : 'none';
+      var sec = document.getElementById(secId);
+      if (sec && sec.classList.contains('active') && !on) {
+        showClinSection('clin-flagged', document.querySelector('[onclick*="clin-flagged"]'));
+      }
+    });
+  });
 }
 
 // Shows or hides the whole DAS surface for the loaded booking
@@ -6384,10 +6431,14 @@ function loadClientIntoForm(id) {
   renderFceDefaults(client);
   renderPefaDefaults(client);
   renderFceClassifications(client);
-  // PEMA module default: the DAS toggle in Assessment Modules is the one
-  // live toggle on that panel (the rest of the panel is informational)
+  // PEMA module defaults: DAS is opt-in; every other module defaults ON and
+  // is only off when the client's default_config explicitly says false
   var dasCb = document.getElementById('pema-das-default');
   if (dasCb) dasCb.checked = !!(client.defaultConfig && client.defaultConfig.pema && client.defaultConfig.pema.das);
+  PEMA_MODULES.forEach(function(m) {
+    var cb = document.getElementById('pema-mod-' + m.key);
+    if (cb) cb.checked = !(client.defaultConfig && client.defaultConfig.pema && client.defaultConfig.pema[m.key] === false);
+  });
 }
 
 function togglePemaDasDefault(on) {
@@ -6396,6 +6447,17 @@ function togglePemaDasDefault(on) {
   client.defaultConfig = client.defaultConfig || {};
   client.defaultConfig.pema = client.defaultConfig.pema || {};
   client.defaultConfig.pema.das = on;
+  queueClientCloudSave(client.id);
+}
+
+// Item 64: section-module defaults, written only when the toggle is actually
+// changed — a client's default_config is never touched otherwise
+function togglePemaModuleDefault(key, on) {
+  var client = getClients().find(function(c) { return c.id === getCurrentClientId(); });
+  if (!client) return;
+  client.defaultConfig = client.defaultConfig || {};
+  client.defaultConfig.pema = client.defaultConfig.pema || {};
+  client.defaultConfig.pema[key] = on;
   queueClientCloudSave(client.id);
 }
 
@@ -8749,6 +8811,9 @@ function _ndMhCards(sec) {
 function sectionStatus(id) {
   var sec = document.getElementById(id);
   if (!sec) return null; // section not rendered (disabled by config)
+  // PEMA modules disabled for this booking have no dot and never appear in
+  // the finalise reminder (Item 64)
+  if (id.indexOf('clin-') === 0 && typeof pemaSectionEnabledById === 'function' && !pemaSectionEnabledById(id)) return null;
   var rule = NAVDOT_RULES[id];
   try { return rule ? rule(sec) : _ndGenericStatus(sec); } catch(e) { return 'empty'; }
 }
@@ -9386,6 +9451,10 @@ function buildPDF() {
     doc.text('ALERT: Blood pressure exceeds 160/100 mmHg — medical clearance required.',ML+4,y+5); y+=12;
   }
 
+  // Item 64: each module prints only when the booking's pema_config enables it
+  // (absent config or absent key means ON — bookings made before the toggles
+  // existed keep printing everything)
+  if(pemaSectionOn('audiometry')){
   secHeader('Audiometry');
   const freqs=['500','1000','1500','2000','3000','4000','6000','8000'];
   const aW=[22,21,21,21,21,21,21,21,21];
@@ -9408,7 +9477,9 @@ function buildPDF() {
          'Otoscopy — Right',otoLabels('right').join(', ')||'Not recorded');
   if(otoFree) fullRow('Otoscopy — Other',otoFree);
   fullRow('Interpretation',getSmart('clin-audiometry','Not recorded'));
+  }
 
+  if(pemaSectionOn('spirometry')){
   secHeader('Spirometry');
   const spW=[28,27,27,27,27,27,27];
   // Blank stays an em-dash so an unrecorded test never reads as a zero result.
@@ -9431,13 +9502,16 @@ function buildPDF() {
           spRatioV('spiro-ratio-post'),spV('spiro-ratio-post-pct'),spV('spiro-ratio-chg')],spW,false,false);
   tblRow(spRow('PEF','spiro-pefr'),spW,false,true);
   y+=4; twoCol('Pattern',getChip('spiro-pattern','—'),'Interpretation',getSmart('clin-spirometry','Not recorded'));
+  }
 
+  if(pemaSectionOn('urinalysis')){
   secHeader('Urinalysis');
   if(document.getElementById('urine-not-collected')?.checked){
     fullRow('Urinalysis',URINE_DAS_TEXT);
   } else {
     threeCol('Blood',getChip('urine-blood','—'),'Protein',getChip('urine-protein','—'),'Glucose',getChip('urine-glucose','—'));
     fullRow('Comments',getSmart('clin-urinalysis','All parameters within normal limits'));
+  }
   }
 
   // Drug & Alcohol Screen — only when the booking enables it (pema_config.das)
@@ -9448,6 +9522,7 @@ function buildPDF() {
     fullRow('Drug Screen Comments',(document.getElementById('das-drug-comments')?.value||'').trim()||'—');
   }
 
+  if(pemaSectionOn('vision')){
   secHeader('Vision & Colour Vision');
   const vW=[30,27,27,27,27,27,27];
   tblRow(['Distance','Unaided R','Unaided L','Unaided Both','Aided R','Aided L','Aided Both'],vW,true);
@@ -9470,7 +9545,11 @@ function buildPDF() {
   const colourText=(Array.from(document.querySelectorAll('#clin-vision .smart-textarea')).find(t=>/colour/i.test(t.placeholder||''))?.value||'').trim()||'Not recorded';
   y+=4; fullRow('Visual Acuity',acuityText);
   fullRow('Colour Vision',colourText);
+  }
 
+  // Item 64: one flag covers ROM + Postural Analysis + Special MSK — the
+  // three sections the Full MSK Examination module comprises
+  if(pemaSectionOn('msk_exam')){
   // flows on (Item 48)
   secHeader('Range of Motion');
   doc.setFontSize(7.5); doc.setFont('helvetica','italic'); doc.setTextColor(...MID);
@@ -9520,6 +9599,7 @@ function buildPDF() {
     subHdr(test.name+' '+test.method);
     twoCol('Finding',finding,'Notes',notes);
   });
+  }
 
   secHeader('Grip Strength');
   const gW=[40,25,25,25,25,42];
@@ -9567,6 +9647,9 @@ function buildPDF() {
   }
   y+=2;
 
+  // Item 64: the wrap includes the no-table throw — a booking with manual
+  // handling switched off must never fail on a missing weight table
+  if(pemaSectionOn('manual_handling')){
   // flows on (Item 48)
   secHeader('Manual Handling — Top-Down Protocol');
   doc.setFontSize(7.5); doc.setFont('helvetica','italic'); doc.setTextColor(...MID);
@@ -9594,6 +9677,8 @@ function buildPDF() {
     }
     tblRow([name,p1,p2,pain,hr,notes],mhW,false,i%2===1);
   });
+  }
+  if(pemaSectionOn('climbing')){
   checkY(20);
   const stepUpNotes=val('stepup-notes')||getSmart('clin-climbing','Not recorded');
   secHeader('Climbing / Stepping');
@@ -9606,7 +9691,9 @@ function buildPDF() {
   subHdr('Ladder Climbing');
   fullRow('Notes',ladderNotes);
   y+=6;
+  }
 
+  if(pemaSectionOn('step_test')){
   // Step test follows climbing, per performed order
   secHeader('3-Minute Step Test');
   doc.setFontSize(7.5); doc.setFont('helvetica','italic'); doc.setTextColor(...MID);
@@ -9617,6 +9704,7 @@ function buildPDF() {
   threeCol('1-Min Post HR',stV('st-post'),'Pain Rating',stScore('st-pain'),'RPE',stScore('st-rpe'));
   fullRow('Result',getChip('step-result','—'));
   fullRow('Notes',getSmart('clin-steptest','Not recorded'));
+  }
 
   // flows on (Item 48)
   secHeader('Key Assessment Findings');
@@ -10535,12 +10623,18 @@ function renderApptFceConfig() {
   var client = getClients().find(function(c) { return c.id === clientId; });
   var cfg = (client && client.defaultConfig) || {};
   if (getApptAssessmentType() === 'pema') {
-    // PEMA: the only per-booking module is the Drug & Alcohol Screen,
-    // defaulted from the client profile (off unless the client enables it)
-    var dasDefault = !!(cfg.pema && cfg.pema.das);
-    body.innerHTML =
-      '<label style="display:flex;align-items:center;gap:10px;padding:6px 0;cursor:pointer"><input type="checkbox" data-pema-das' + (dasDefault ? ' checked' : '') + '> Drug &amp; Alcohol Screen (DAS)</label>' +
-      '<div style="color:var(--mid);font-size:11px;margin-top:4px">Breath alcohol band and initial drug screen. All other PEMA sections are always included.</div>';
+    // PEMA modules for this booking (Item 64): sections default ON unless the
+    // client profile explicitly turned them off; DAS stays off by default
+    var pcfg = (cfg.pema) || {};
+    var dasDefault = !!pcfg.das;
+    var pRowStyle = 'display:flex;align-items:center;gap:10px;padding:6px 0;cursor:pointer';
+    var pemaHtml = '<div style="color:var(--olive-light);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px">Assessment Modules</div>';
+    PEMA_MODULES.forEach(function(m) {
+      pemaHtml += '<label style="' + pRowStyle + '"><input type="checkbox" data-pema-sec="' + m.key + '"' + (pcfg[m.key] !== false ? ' checked' : '') + '> ' + m.label + '</label>';
+    });
+    pemaHtml += '<label style="' + pRowStyle + '"><input type="checkbox" data-pema-das' + (dasDefault ? ' checked' : '') + '> Drug &amp; Alcohol Screen (DAS)</label>';
+    pemaHtml += '<div style="color:var(--mid);font-size:11px;margin-top:6px">Vitals, grip strength, postural tolerances, the patient questionnaire, outcome and sign-off are always included.</div>';
+    body.innerHTML = pemaHtml;
     return;
   }
   var classCfg = getApptClassCfg(client);
@@ -10680,7 +10774,14 @@ async function createAppointment() {
     // Requires the pema_config column (supabase/pema_das.sql) before deploy.
     if (assessmentType === 'pema') {
       var dasCb = document.querySelector('#appt-fce-config-body [data-pema-das]');
-      row.pema_config = { das: !!(dasCb && dasCb.checked) };
+      var pemaCfg = { das: !!(dasCb && dasCb.checked) };
+      // Section flags alongside the DAS flag (Item 64) — written explicitly
+      // on NEW bookings only; existing bookings keep their frozen config and
+      // read absent keys as ON
+      document.querySelectorAll('#appt-fce-config-body [data-pema-sec]').forEach(function(cb) {
+        pemaCfg[cb.getAttribute('data-pema-sec')] = cb.checked;
+      });
+      row.pema_config = pemaCfg;
     }
     await sbInsert('appointments', row);
 
@@ -11193,6 +11294,10 @@ async function startPEMA(btnEl, token) {
     // bookings created before the column existed default to off
     window._pemaDasEnabled = !!(apptRows && apptRows[0] && apptRows[0].pema_config && apptRows[0].pema_config.das);
     applyDasVisibility();
+    // Section modules (Item 64): absent config or absent keys mean ON —
+    // bookings frozen before the flags existed render the full PEMA
+    window._pemaSections = (apptRows && apptRows[0] && apptRows[0].pema_config) || null;
+    applyPemaSectionVisibility();
 
     // Manual handling weights resolve from the booking's classification via
     // the shared MH_TABLES — no table entry means no assessment, never a
@@ -14969,9 +15074,10 @@ function saveClinicianDataToStorage() {
     if (comments) data['ptol_comments_' + idx] = comments.value;
   });
 
-  // DAS enablement travels with the save so a local-banner resume shows the
-  // section again without re-reading the appointment
+  // DAS and section-module enablement travel with the save so a local-banner
+  // resume shows the right sections without re-reading the appointment
   data._dasEnabled = !!window._pemaDasEnabled;
+  data._pemaSections = window._pemaSections || null;
 
   // Which id'd fields currently hold machine-entered (prefilled) values, so
   // a restored assessment still distinguishes them from typed ones (Item 55)
@@ -15061,6 +15167,7 @@ function restoreClinicianData(data) {
   // DAS: re-apply enablement from the save, restyle chips from the hidden
   // inputs (stable keys), and rebuild its finding flags
   if (data._dasEnabled !== undefined) { window._pemaDasEnabled = !!data._dasEnabled; applyDasVisibility(); }
+  if (data._pemaSections !== undefined) { window._pemaSections = data._pemaSections; applyPemaSectionVisibility(); }
   if (typeof syncDasChips === 'function') { syncDasChips(); preFillDas(); }
   if (typeof syncUrineNotCollected === 'function') syncUrineNotCollected();
   if (typeof syncMhTechChips === 'function') syncMhTechChips();
