@@ -2791,7 +2791,7 @@
             </div>
             <div class="smart-field" style="margin-top:4px">
               <label style="font-size:11px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.04em;display:block;margin-bottom:6px">Audiometry Interpretation</label>
-              <textarea class="smart-textarea" placeholder="Clinical interpretation..."></textarea>
+              <textarea class="smart-textarea" id="audio-interp" placeholder="Clinical interpretation..."></textarea>
               <div class="prompt-chips">
                 <div class="prompt-chip" onclick="insertPrompt(this,'Audiometry within normal limits bilaterally. No significant hearing loss identified.')">Normal bilaterally</div>
                 <div class="prompt-chip" onclick="insertPrompt(this,'Mild high-frequency hearing loss identified in the right ear, consistent with noise-induced change. Baseline recorded. Employer to be advised.')">Mild NIHL — right</div>
@@ -2908,7 +2908,7 @@
             </div>
             <div class="smart-field" style="margin-top:14px">
               <label style="font-size:11px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.04em;display:block;margin-bottom:6px">Spirometry Interpretation</label>
-              <textarea class="smart-textarea" placeholder="Clinical interpretation..."></textarea>
+              <textarea class="smart-textarea" id="spiro-interp" placeholder="Clinical interpretation..."></textarea>
               <div class="prompt-chips">
                 <div class="prompt-chip" onclick="insertPrompt(this,'Spirometry within normal predicted range. No evidence of obstructive or restrictive pattern.')">Normal</div>
                 <div class="prompt-chip" onclick="insertPrompt(this,'Obstructive pattern identified. FEV1/FVC below lower limit of normal. Referral to GP recommended for further respiratory assessment.')">Obstructive — refer</div>
@@ -2963,7 +2963,7 @@
               </div>
             </div>
             <div class="smart-field">
-              <textarea class="smart-textarea" placeholder="Urinalysis interpretation..."></textarea>
+              <textarea class="smart-textarea" id="urine-interp" placeholder="Urinalysis interpretation..."></textarea>
               <div class="prompt-chips">
                 <div class="prompt-chip" onclick="insertPrompt(this,'Urinalysis — all parameters within normal limits. No abnormalities detected.')">All normal</div>
                 <div class="prompt-chip" onclick="insertPrompt(this,'Trace blood detected. Likely due to recent physical activity. Recommend repeat urinalysis via GP if persistent.')">Trace blood — follow up</div>
@@ -3092,7 +3092,7 @@
             <div style="font-size:12px;color:var(--mid);margin-bottom:12px">Tick plates passed. Note actual response for any incorrect plate.</div>
             <div id="ishihara-plates" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px"></div>
             <div class="smart-field">
-              <textarea class="smart-textarea" placeholder="Colour vision interpretation..."></textarea>
+              <textarea class="smart-textarea" id="colour-interp" placeholder="Colour vision interpretation..."></textarea>
               <div class="prompt-chips">
                 <div class="prompt-chip" onclick="insertPrompt(this,'Colour vision within normal limits. No colour discrimination deficiency identified on Ishihara 14-plate screening.')">Normal — no deficiency</div>
                 <div class="prompt-chip" onclick="insertPrompt(this,'Borderline colour vision result. Mild colour discrimination difficulty possible. Employer to note for colour-coded safety requirements in this role.')">Borderline — mild difficulty</div>
@@ -3118,7 +3118,7 @@
         <div class="clin-card" style="margin-top:14px">
           <div class="clin-card-header"><h3>ROM Additional Comments</h3></div>
           <div class="clin-card-body">
-            <textarea class="smart-textarea" placeholder="Overall ROM comments..."></textarea>
+            <textarea class="smart-textarea" id="rom-comments" placeholder="Overall ROM comments..."></textarea>
             <div class="prompt-chips">
               <div class="prompt-chip" onclick="insertPrompt(this,'Full range of motion maintained throughout all assessed joints. No pain, restriction or asymmetry noted.')">All full range — pain free</div>
               <div class="prompt-chip" onclick="insertPrompt(this,'ROM within functional limits for all assessed joints. Minor restriction noted as documented above. No significant clinical concern.')">Functional range — minor restriction</div>
@@ -3181,7 +3181,7 @@
             </div>
             <div class="smart-field" style="margin-top:16px">
               <label style="font-size:11px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.04em;display:block;margin-bottom:6px">Grip Strength Interpretation</label>
-              <textarea class="smart-textarea" placeholder="Interpretation..."></textarea>
+              <textarea class="smart-textarea" id="grip-interp" placeholder="Interpretation..."></textarea>
               <div class="prompt-chips">
                 <div class="prompt-chip" onclick="insertGripPrompt(this,'Grip strength within normal limits bilaterally — Right [R]%, Left [L]% of age-matched normative values. Consistent effort across all three trials (CV ≤15%). Bilateral symmetry within acceptable limits.')">Normal bilaterally</div>
                 <div class="prompt-chip" onclick="insertGripPrompt(this,'Reduced grip strength noted in the right hand — [R]% of age-matched normative values. Left [L]%. Finding documented for employer awareness. Employer to consider implications for roles requiring significant grip strength.')">Reduced — right</div>
@@ -3243,7 +3243,7 @@
               <div id="pema-fitness-chips" style="display:flex;gap:8px;flex-wrap:wrap"></div>
             </div>
             <div class="smart-field" style="margin-top:14px">
-              <textarea class="smart-textarea" placeholder="Step test comments..."></textarea>
+              <textarea class="smart-textarea" id="steptest-comments" placeholder="Step test comments..."></textarea>
               <div class="prompt-chips">
                 <div class="prompt-chip" onclick="insertPrompt(this,'3-minute step test completed without difficulty. Heart rate response appropriate. Good cardiovascular fitness demonstrated.')">Completed — good fitness</div>
                 <div class="prompt-chip" onclick="insertPrompt(this,'Step test completed. Heart rate approached but did not exceed testing limit. Average cardiovascular fitness for age.')">Average fitness</div>
@@ -3335,7 +3335,7 @@
           <div class="clin-card-body">
             <button onclick="refreshKeyFindings()" style="width:100%;padding:10px;background:var(--olive);color:white;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;margin-bottom:12px">↻ Refresh Findings — scan all sections for abnormal results</button>
             <div class="smart-field">
-              <textarea class="smart-textarea" style="min-height:120px" placeholder="Key findings summary..."></textarea>
+              <textarea class="smart-textarea" id="findings-summary" style="min-height:120px" placeholder="Key findings summary..."></textarea>
               <div class="prompt-chips">
                 <div class="prompt-chip" onclick="insertPrompt(this,'No abnormal findings identified across all assessment sections. All parameters within normal limits.')">All clear — no abnormal findings</div>
                 <div class="prompt-chip" onclick="refreshKeyFindings()">↻ Refresh from assessment data</div>
@@ -3380,7 +3380,7 @@
             </div>
             <div class="smart-field" style="margin-top:20px">
               <label style="font-size:11px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.04em;display:block;margin-bottom:6px">Recommendations / Restrictions (if applicable)</label>
-              <textarea class="smart-textarea" style="min-height:100px" placeholder="Detail any specific recommendations or restrictions here..."></textarea>
+              <textarea class="smart-textarea" id="outcome-recs" style="min-height:100px" placeholder="Detail any specific recommendations or restrictions here..."></textarea>
               <div class="prompt-chips">
                 <div class="prompt-chip" onclick="insertPrompt(this,'No restrictions or recommendations applicable. Full functional capacity demonstrated across all assessed parameters.')">No restrictions</div>
                 <div class="prompt-chip" onclick="insertPrompt(this,'Recommendation: Employer to be aware of pre-existing history as documented. No current functional limitation identified. Review recommended at 12 months.')">Pre-existing history — monitor</div>
@@ -5055,7 +5055,9 @@ function buildFlaggedItemsFromPatientData(data) {
         medBody +
         '<div class="smart-field">' +
           '<label style="font-size:11px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.04em;display:block;margin-bottom:6px">Clinical Notes / Follow-up</label>' +
-          '<textarea class="smart-textarea" placeholder="Add clinical notes after reviewing with patient..."></textarea>' +
+          // Item 66: stable title-derived id so the review notes persist through
+          // autosave/restore (titles are unique by construction — flagMap keys)
+          '<textarea class="smart-textarea" id="' + flagNoteId(flag.title) + '" placeholder="Add clinical notes after reviewing with patient..."></textarea>' +
           '<div class="prompt-chips">' + prompts + '</div>' +
         '</div>' +
       '</div>' +
@@ -5071,6 +5073,12 @@ function buildFlaggedItemsFromPatientData(data) {
     }
   });
   manualCards.forEach(function(c) { container.appendChild(c); });
+}
+
+// Stable autosave id from a flag card's title — name-derived, never
+// index-derived (Item 54 rule). Titles are unique within a build (flagMap).
+function flagNoteId(title) {
+  return 'flag-note-' + String(title || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 80);
 }
 
 function createManualFlagCard(saved) {
@@ -9946,10 +9954,10 @@ function renderMSK() {
 
     const slbHtml = isSlb ? (
       '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:12px">' +
-      '<div><label style="font-size:10px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.04em;display:block;margin-bottom:4px">Eyes Open — Left (sec)</label><input class="form-control slb-eo-l" placeholder="—" style="padding:8px 10px" oninput="preFillMSK()"></div>' +
-      '<div><label style="font-size:10px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.04em;display:block;margin-bottom:4px">Eyes Open — Right (sec)</label><input class="form-control slb-eo-r" placeholder="—" style="padding:8px 10px" oninput="preFillMSK()"></div>' +
-      '<div><label style="font-size:10px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.04em;display:block;margin-bottom:4px">Eyes Closed — Left (sec)</label><input class="form-control slb-ec-l" placeholder="—" style="padding:8px 10px" oninput="preFillMSK()"></div>' +
-      '<div><label style="font-size:10px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.04em;display:block;margin-bottom:4px">Eyes Closed — Right (sec)</label><input class="form-control slb-ec-r" placeholder="—" style="padding:8px 10px" oninput="preFillMSK()"></div>' +
+      '<div><label style="font-size:10px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.04em;display:block;margin-bottom:4px">Eyes Open — Left (sec)</label><input class="form-control slb-eo-l" id="slb-eo-l" placeholder="—" style="padding:8px 10px" oninput="preFillMSK()"></div>' +
+      '<div><label style="font-size:10px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.04em;display:block;margin-bottom:4px">Eyes Open — Right (sec)</label><input class="form-control slb-eo-r" id="slb-eo-r" placeholder="—" style="padding:8px 10px" oninput="preFillMSK()"></div>' +
+      '<div><label style="font-size:10px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.04em;display:block;margin-bottom:4px">Eyes Closed — Left (sec)</label><input class="form-control slb-ec-l" id="slb-ec-l" placeholder="—" style="padding:8px 10px" oninput="preFillMSK()"></div>' +
+      '<div><label style="font-size:10px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.04em;display:block;margin-bottom:4px">Eyes Closed — Right (sec)</label><input class="form-control slb-ec-r" id="slb-ec-r" placeholder="—" style="padding:8px 10px" oninput="preFillMSK()"></div>' +
       '</div>' +
       '<div style="margin-bottom:10px;font-size:11px;color:var(--mid);font-style:italic;padding:8px;background:var(--olive-ultra);border-radius:6px">Reference: Eyes open \u2014 capped at 30 sec; 30 sec = within normal limits, 15\u201329 sec = reduced, &lt;15 sec = significant deficit. Eyes closed \u2014 9 sec or greater = within normal limits, 5\u20138 sec = employer fall risk note, &lt;5 sec = restriction consideration. &gt;20% L/R asymmetry = clinically significant.</div>'
     ) : '';
@@ -9970,7 +9978,7 @@ function renderMSK() {
         slbHtml +
         '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">' + optsHtml + '</div>' +
         '<div class="smart-field">' +
-          '<textarea class="smart-textarea" style="min-height:52px" placeholder="Details / measurements..."></textarea>' +
+          '<textarea class="smart-textarea" id="msk-' + pemaSlug(t.name) + '-notes" style="min-height:52px" placeholder="Details / measurements..."></textarea>' +
           '<div class="prompt-chips">' + promptsHtml + '</div>' +
         '</div>' +
       '</div>';
@@ -10016,7 +10024,7 @@ function renderPosturalTol() {
           '<button class="option-chip" onclick="selectChip(this,\'unable-reason-' + safeId + '\')">Safety — Technique</button>' +
           '<button class="option-chip" onclick="selectChip(this,\'unable-reason-' + safeId + '\')">Other</button>' +
         '</div>' +
-        '<input style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px" placeholder="Body area affected / additional details...">' +
+        '<input id="ptol-' + safeId + '-unable-detail" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px" placeholder="Body area affected / additional details...">' +
       '</div>' +
       '<div class="postural-pain-detail" style="display:none;margin-top:8px">' +
         '<div style="font-size:10px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px">Pain Location</div>' +
@@ -10455,27 +10463,40 @@ function renderIshihara() {
   updateIshiharaScore();
 }
 
-function cycleIsh(el) {
-  if (!el.classList.contains('selected-normal') && !el.classList.contains('selected-fail')) {
+// Item 66: one styling path for taps AND restore, so a restored plate looks
+// exactly like a tapped one. state: 'selected-normal' | 'selected-fail' | null
+function applyIshState(el, state) {
+  el.classList.remove('selected-normal', 'selected-fail');
+  if (state === 'selected-normal') {
     el.classList.add('selected-normal');
-    el.classList.remove('selected-fail');
     el.style.background = 'var(--success)';
     el.style.color = 'white';
     el.style.borderColor = 'var(--success)';
-  } else if (el.classList.contains('selected-normal')) {
-    el.classList.remove('selected-normal');
+  } else if (state === 'selected-fail') {
     el.classList.add('selected-fail');
     el.style.background = 'var(--error)';
     el.style.color = 'white';
     el.style.borderColor = 'var(--error)';
   } else {
-    el.classList.remove('selected-normal', 'selected-fail');
     el.style.background = 'white';
     el.style.color = 'var(--black)';
     el.style.borderColor = 'var(--border)';
   }
+}
+
+function cycleIsh(el) {
+  if (!el.classList.contains('selected-normal') && !el.classList.contains('selected-fail')) {
+    applyIshState(el, 'selected-normal');
+  } else if (el.classList.contains('selected-normal')) {
+    applyIshState(el, 'selected-fail');
+  } else {
+    applyIshState(el, null);
+  }
   updateIshiharaScore();
   preFillVision();
+  // Plate taps are clicks on divs — no input event fires, so save explicitly
+  // (Item 66: plate states were lost on restore before this)
+  if (typeof saveClinicianDataToStorage === 'function') saveClinicianDataToStorage();
 }
 
 function updateIshiharaScore() {
@@ -15083,6 +15104,18 @@ function saveClinicianDataToStorage() {
   // a restored assessment still distinguishes them from typed ones (Item 55)
   data._prefilledIds = Array.from(document.querySelectorAll('#screen-clinician .prefilled'))
     .map(function(el) { return el.id; }).filter(Boolean);
+  // Typed narratives keep their hand-written marker across a restore, so the
+  // generators' canOverwrite guard still protects them afterwards (Item 66)
+  data._userEditedIds = Array.from(document.querySelectorAll('#screen-clinician .user-edited'))
+    .map(function(el) { return el.id; }).filter(Boolean);
+
+  // Ishihara plate results — tri-state divs, keyed by the plate number printed
+  // on the physical plate (data-plate-id), never by position (Item 66)
+  document.querySelectorAll('.ish-plate').forEach(function(p) {
+    var st = p.classList.contains('selected-normal') ? 'selected-normal' :
+             p.classList.contains('selected-fail')   ? 'selected-fail'   : null;
+    if (st) data['ish_' + p.getAttribute('data-plate-id')] = st;
+  });
 
   localStorage.setItem('aim_clinician_data',      JSON.stringify(data));
   localStorage.setItem('aim_clinician_timestamp', new Date().toISOString());
@@ -15191,6 +15224,20 @@ function restoreClinicianData(data) {
       if (el && el.value) el.classList.add('prefilled');
     });
   }
+  // Re-mark hand-written narratives BEFORE any generator below runs, or the
+  // prefills would overwrite restored typed text (Item 66)
+  if (Array.isArray(data._userEditedIds)) {
+    data._userEditedIds.forEach(function(id) {
+      var el = document.getElementById(id);
+      if (el && el.value) el.classList.add('user-edited');
+    });
+  }
+  // Ishihara plates (Item 66) — restore before preFillVision below, so the
+  // colour-vision narrative regenerates from the restored plate states
+  document.querySelectorAll('.ish-plate').forEach(function(p) {
+    var st = data['ish_' + p.getAttribute('data-plate-id')];
+    if (st === 'selected-normal' || st === 'selected-fail') applyIshState(p, st);
+  });
 
   // 6. Re-run all derived calculations
   if (typeof calcBMI            === 'function') calcBMI();
@@ -15201,6 +15248,13 @@ function restoreClinicianData(data) {
   if (typeof calcK10Score       === 'function') calcK10Score();
   if (typeof calcAUDITScore     === 'function') calcAUDITScore();
   if (typeof buildFlaggedItemsFromPatientData === 'function') buildFlaggedItemsFromPatientData({});
+  // The rebuild above recreates every flag card, so the review notes are
+  // re-applied by their stable title-derived ids afterwards (Item 66)
+  Object.keys(data).forEach(function(k) {
+    if (k.indexOf('flag-note-') !== 0 || !data[k]) return;
+    var ta = document.getElementById(k);
+    if (ta) { ta.value = data[k]; ta.classList.add('user-edited'); }
+  });
   if (typeof drawAudiogram      === 'function') setTimeout(drawAudiogram, 100);
   if (typeof calcHearingLossAMA  === 'function') setTimeout(calcHearingLossAMA, 150);
   if (typeof updateIshiharaScore === 'function') setTimeout(updateIshiharaScore, 200);
