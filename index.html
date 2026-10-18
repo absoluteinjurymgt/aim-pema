@@ -3904,7 +3904,7 @@ function otoNotable() {
 }
 
 // ─── SUPABASE REST HELPERS ──────────────────────────────────────────────────
-async function sbQuery(table, qs, method, body) {
+async function sbQuery(table, qs, method, body, represent) {
   var url = SUPABASE_URL + '/rest/v1/' + table + (qs ? '?' + qs : '');
   var patientMode = isPatientTokenUrl();
 
@@ -3913,7 +3913,7 @@ async function sbQuery(table, qs, method, body) {
       'apikey': SUPABASE_ANON_KEY,
       'Authorization': 'Bearer ' + bearer,
       'Content-Type': 'application/json',
-      'Prefer': (method === 'POST') ? 'return=representation' : ''
+      'Prefer': (method === 'POST' || represent) ? 'return=representation' : ''
     };
     if (patientMode) {
       var pt = getPatientUrlToken();
@@ -3926,8 +3926,15 @@ async function sbQuery(table, qs, method, body) {
 
   var bearer = SUPABASE_ANON_KEY;
   if (!patientMode) {
+    // Item 69(a): the clinician surface NEVER falls back to the anon key.
+    // Under RLS, anon reads return [] and anon PATCHes update 0 rows with a
+    // 2xx — a failed token refresh used to make every later call silently
+    // no-op while the app reported success (the Item 65 incident). No valid
+    // session means fail loudly and send the clinician to the login screen,
+    // exactly like the storage helpers.
     var jwt = await getAccessToken();
-    if (jwt) bearer = jwt;
+    if (!jwt) { showLoginScreen(); throw new Error('Session expired — please sign in again.'); }
+    bearer = jwt;
   }
   var res = await doFetch(bearer);
 
@@ -3950,6 +3957,18 @@ function sbSelect(table, qs)       { return sbQuery(table, qs, 'GET'); }
 function sbInsert(table, data)     { return sbQuery(table, '', 'POST', data); }
 function sbUpdate(table, qs, data) { return sbQuery(table, qs, 'PATCH', data); }
 function sbDelete(table, qs)       { return sbQuery(table, qs, 'DELETE'); }
+
+// Item 69(b): a status write that matches no rows is a FAILURE, never a
+// success. Prefer: return=representation makes PostgREST return the updated
+// rows, so zero rows back means nothing changed (removed appointment, bad
+// token, lost permissions) — the callers' existing error paths then fire.
+async function sbUpdateStrict(table, qs, data, what) {
+  var rows = await sbQuery(table, qs, 'PATCH', data, true);
+  if (!rows || !rows.length) {
+    throw new Error('The server accepted no update' + (what ? ' for ' + what : '') + ' — the record was not changed. Check your sign-in and try again.');
+  }
+  return rows;
+}
 
 // RPC call with the anon key — used by the patient token flow, whose entire
 // database surface is two SECURITY DEFINER functions (see supabase/rls_lockdown.sql)
@@ -8350,7 +8369,7 @@ async function finaliseAssessmentAsync() {
       prevPdf = (prevRows && prevRows[0] && prevRows[0].pdf_path) || null;
     } catch(e) {}
     try {
-      await sbUpdate('appointments', 'token=eq.' + token, { status: 'finalised', pdf_path: path, finalised_at: new Date().toISOString() });
+      await sbUpdateStrict('appointments', 'token=eq.' + token, { status: 'finalised', pdf_path: path, finalised_at: new Date().toISOString() }, 'finalise');
     } catch(e) {
       console.warn('[PEMA] finalise status update failed:', e);
       out.doc.save(out.filename); // status update failed — report would be stranded invisible in storage, so also download locally
@@ -8402,7 +8421,7 @@ async function markReportExported(btnEl, token) {
   if (!confirm(msg)) return;
   if (btnEl) { btnEl.textContent = 'Marking…'; btnEl.disabled = true; }
   try {
-    await sbUpdate('appointments', 'token=eq.' + token, { status: 'exported', exported_at: new Date().toISOString() });
+    await sbUpdateStrict('appointments', 'token=eq.' + token, { status: 'exported', exported_at: new Date().toISOString() }, 'export status');
     loadUpcomingAppointments();
   } catch(e) {
     alert('Failed: ' + e.message + '\n\nIf this mentions a missing exported_at column, run supabase/fce_phase4b_export_grace.sql in Supabase first.');
@@ -12386,21 +12405,57 @@ function saveFceDataDebounced() {
 var _fceSyncTimer = null;
 function syncFceDataToSupabase(token, data) {
   clearTimeout(_fceSyncTimer);
-  _fceSyncTimer = setTimeout(async function() {
-    try {
-      var jwt = await getAccessToken();
-      await fetch(SUPABASE_URL + '/rest/v1/clinician_progress', {
-        method: 'POST',
-        headers: {
-          'apikey': SUPABASE_ANON_KEY,
-          'Authorization': 'Bearer ' + (jwt || SUPABASE_ANON_KEY),
-          'Content-Type': 'application/json',
-          'Prefer': 'resolution=merge-duplicates'
-        },
-        body: JSON.stringify({ token: token, progress_data: data, updated_at: new Date().toISOString() })
-      });
-    } catch(e) { console.error('[FCE] progress sync failed:', e); }
-  }, 5000);
+  _fceSyncTimer = setTimeout(function() { pushProgressToCloud(token, data, 'FCE'); }, 5000);
+}
+
+// Item 69(c): the one place clinician progress reaches the server. Never sent
+// with the anon key (RLS would accept-and-drop it), the response status is
+// checked, and repeated failures raise a persistent banner — work keeps
+// saving locally either way, so the clinician is warned, not interrupted.
+async function pushProgressToCloud(token, data, tag) {
+  try {
+    var jwt = await getAccessToken();
+    if (!jwt) {
+      console.error('[' + tag + '] progress sync skipped — no valid session');
+      noteSyncResult(false);
+      return;
+    }
+    var res = await fetch(SUPABASE_URL + '/rest/v1/clinician_progress', {
+      method: 'POST',
+      headers: {
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': 'Bearer ' + jwt,
+        'Content-Type': 'application/json',
+        'Prefer': 'resolution=merge-duplicates'
+      },
+      body: JSON.stringify({ token: token, progress_data: data, updated_at: new Date().toISOString() })
+    });
+    if (!res.ok) console.error('[' + tag + '] progress sync failed: HTTP ' + res.status);
+    noteSyncResult(res.ok);
+  } catch(e) {
+    console.error('[' + tag + '] progress sync failed:', e);
+    noteSyncResult(false);
+  }
+}
+
+// Two consecutive failures raise the banner (one blip stays quiet);
+// the first success clears it.
+var _syncFailCount = 0;
+function noteSyncResult(ok) {
+  _syncFailCount = ok ? 0 : _syncFailCount + 1;
+  showSyncBanner(_syncFailCount >= 2);
+}
+function showSyncBanner(visible) {
+  var banner = document.getElementById('sync-banner');
+  if (!visible) { if (banner) banner.style.display = 'none'; return; }
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'sync-banner';
+    banner.style.cssText = 'background:#8b3a2f;color:#ffe3dd;font-size:13px;font-weight:600;padding:9px 16px;text-align:center;position:fixed;top:0;left:0;right:0;z-index:950;display:flex;align-items:center;justify-content:center;gap:8px;font-family:\'DM Sans\',sans-serif;box-shadow:0 2px 8px rgba(0,0,0,0.25)';
+    banner.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="#ffe3dd"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>Autosave is NOT reaching the server — work is saved on this device only. Check the connection or sign in again before leaving this device.';
+    document.body.appendChild(banner);
+  }
+  banner.style.display = 'flex';
 }
 
 function drawFceSig(canvasId, dataUrl) {
@@ -12530,7 +12585,7 @@ async function markFieldworkComplete(btn) {
       showToast('Already finalised — status unchanged.');
       return;
     }
-    await sbUpdate('appointments', 'token=eq.' + token, { status: 'fieldwork_complete' });
+    await sbUpdateStrict('appointments', 'token=eq.' + token, { status: 'fieldwork_complete' }, 'fieldwork status');
     if (apptObj) apptObj.status = 'fieldwork_complete';
     showToast('Fieldwork marked complete — write-up can continue any time.');
   } catch(e) {
@@ -13219,12 +13274,12 @@ async function finaliseFCEAsync() {
       var fceDob = (document.getElementById('fce-dob') || {}).value;
       if (fceDob) fceUpd.patient_dob = fceDob; // Item 63 — needs supabase/patient_dob.sql
       try {
-        await sbUpdate('appointments', 'token=eq.' + token, fceUpd);
+        await sbUpdateStrict('appointments', 'token=eq.' + token, fceUpd, 'finalise');
       } catch(eDob) {
         if (!fceUpd.patient_dob) throw eDob;
         delete fceUpd.patient_dob; // column not yet added — never block finalise on it
         console.warn('[FCE] patient_dob write-back skipped — run supabase/patient_dob.sql');
-        await sbUpdate('appointments', 'token=eq.' + token, fceUpd);
+        await sbUpdateStrict('appointments', 'token=eq.' + token, fceUpd, 'finalise');
       }
     } catch(e) {
       console.warn('[FCE] finalise status update failed:', e);
@@ -13264,7 +13319,7 @@ async function amendFCE(btnEl, token) {
     if (status === 'exported') {
       if (!confirm('This report has been exported. After refinalising, ensure the recipient receives the updated version.')) return;
     }
-    await sbUpdate('appointments', 'token=eq.' + token, { status: 'fieldwork_complete' });
+    await sbUpdateStrict('appointments', 'token=eq.' + token, { status: 'fieldwork_complete' }, 'amend');
     showToast('Reopened for amendment — refinalise when the changes are done.');
     loadUpcomingAppointments();
     if (aType === 'pefa') await startPEFA(null, token);
@@ -14375,12 +14430,12 @@ async function finalisePEFAAsync() {
       var pefaDob = (document.getElementById('pefa-dob') || {}).value;
       if (pefaDob) pefaUpd.patient_dob = pefaDob; // Item 63 — needs supabase/patient_dob.sql
       try {
-        await sbUpdate('appointments', 'token=eq.' + token, pefaUpd); // name corrections flow back (Item 60)
+        await sbUpdateStrict('appointments', 'token=eq.' + token, pefaUpd, 'finalise'); // name corrections flow back (Item 60)
       } catch(eDob) {
         if (!pefaUpd.patient_dob) throw eDob;
         delete pefaUpd.patient_dob; // column not yet added — never block finalise on it
         console.warn('[PEFA] patient_dob write-back skipped — run supabase/patient_dob.sql');
-        await sbUpdate('appointments', 'token=eq.' + token, pefaUpd);
+        await sbUpdateStrict('appointments', 'token=eq.' + token, pefaUpd, 'finalise');
       }
     } catch(e) {
       console.warn('[PEFA] finalise status update failed:', e);
@@ -15128,21 +15183,9 @@ function saveClinicianDataToStorage() {
 var _clinSyncTimer = null;
 function syncClinicianDataToSupabase(token, data) {
   clearTimeout(_clinSyncTimer);
-  _clinSyncTimer = setTimeout(async function() {
-    try {
-      var jwt = await getAccessToken();
-      await fetch(SUPABASE_URL + '/rest/v1/clinician_progress', {
-        method: 'POST',
-        headers: {
-          'apikey': SUPABASE_ANON_KEY,
-          'Authorization': 'Bearer ' + (jwt || SUPABASE_ANON_KEY),
-          'Content-Type': 'application/json',
-          'Prefer': 'resolution=merge-duplicates'
-        },
-        body: JSON.stringify({ token: token, progress_data: data, updated_at: new Date().toISOString() })
-      });
-    } catch(e) { console.error('[PEMA] Clinician sync failed:', e); }
-  }, 5000);
+  // Shared uploader (Item 69c): session-checked, res.ok-checked, banner on
+  // repeated failures
+  _clinSyncTimer = setTimeout(function() { pushProgressToCloud(token, data, 'PEMA'); }, 5000);
 }
 
 function restoreClinicianData(data) {
