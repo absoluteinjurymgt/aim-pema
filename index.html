@@ -3970,6 +3970,26 @@ async function sbUpdateStrict(table, qs, data, what) {
   return rows;
 }
 
+// Item 70: columns added by later migrations (patient_dob, amended_at) must
+// never block a status write — on failure the write retries without them,
+// one at a time, newest migration first. A failure with none left is real.
+async function sbUpdateStrictOptional(table, qs, data, optionalKeys, what) {
+  var attempt = {};
+  Object.keys(data).forEach(function(k) { attempt[k] = data[k]; });
+  for (;;) {
+    try { return await sbUpdateStrict(table, qs, attempt, what); }
+    catch (e) {
+      var dropped = null;
+      for (var i = 0; i < optionalKeys.length; i++) {
+        if (Object.prototype.hasOwnProperty.call(attempt, optionalKeys[i])) { dropped = optionalKeys[i]; break; }
+      }
+      if (!dropped) throw e;
+      delete attempt[dropped];
+      console.warn('[AIM] write retried without optional column "' + dropped + '" — run the matching supabase/ migration. Original error:', e.message);
+    }
+  }
+}
+
 // RPC call with the anon key — used by the patient token flow, whose entire
 // database surface is two SECURITY DEFINER functions (see supabase/rls_lockdown.sql)
 async function sbRpc(fn, args) {
@@ -8369,7 +8389,9 @@ async function finaliseAssessmentAsync() {
       prevPdf = (prevRows && prevRows[0] && prevRows[0].pdf_path) || null;
     } catch(e) {}
     try {
-      await sbUpdateStrict('appointments', 'token=eq.' + token, { status: 'finalised', pdf_path: path, finalised_at: new Date().toISOString() }, 'finalise');
+      // amended_at cleared — refinalise ends the mid-amend state (Item 70)
+      await sbUpdateStrictOptional('appointments', 'token=eq.' + token,
+        { status: 'finalised', pdf_path: path, finalised_at: new Date().toISOString(), amended_at: null }, ['amended_at'], 'finalise');
     } catch(e) {
       console.warn('[PEMA] finalise status update failed:', e);
       out.doc.save(out.filename); // status update failed — report would be stranded invisible in storage, so also download locally
@@ -11217,12 +11239,17 @@ function renderApptQueue(appts) {
 
     var isFieldworkDone = a.status === 'fieldwork_complete';
     var isExported = a.status === 'exported'; // exported rows of every type stay in the queue (Item 59)
+    // Item 70(c): a reopened (amended, not yet refinalised) assessment is NOT
+    // ordinary fieldwork — it was finalised once and must be refinalised
+    var isAmending = isFieldworkDone && !!a.amended_at;
 
     // FCE status progression: Pending → Fieldwork Complete → Finalised → Exported
     var badge = isFinalised
       ? '<span style="display:inline-block;background:#6d6f57;color:white;padding:3px 9px;border-radius:4px;font-size:11px;font-weight:600">📄 Finalised — report ready</span>'
       : isExported
       ? '<span style="display:inline-block;background:rgba(255,255,255,0.12);color:var(--light);padding:3px 9px;border-radius:4px;font-size:11px;font-weight:600">✓ Exported</span>'
+      : isAmending
+      ? '<span style="display:inline-block;background:#8b3a2f;color:white;padding:3px 9px;border-radius:4px;font-size:11px;font-weight:600">✎ Amend in progress — needs refinalising</span>'
       : isFieldworkDone
       ? '<span style="display:inline-block;background:#b8860b;color:white;padding:3px 9px;border-radius:4px;font-size:11px;font-weight:600">⏱ Fieldwork Complete — awaiting write-up</span>'
       : isClinOnly
@@ -13267,20 +13294,15 @@ async function finaliseFCEAsync() {
       // shows as needing re-export in the queue. The on-screen name fields
       // are the editable truth, so corrections flow back to the appointment
       // record (Item 60).
-      var fceUpd = { status: 'finalised', pdf_path: path, finalised_at: new Date().toISOString() };
+      var fceUpd = { status: 'finalised', pdf_path: path, finalised_at: new Date().toISOString(), amended_at: null }; // amended_at cleared — refinalise ends the mid-amend state (Item 70)
       var fceF = (document.getElementById('fce-firstname') || {}).value, fceL = (document.getElementById('fce-surname') || {}).value;
       if (fceF && fceF.trim()) fceUpd.patient_first_name = fceF.trim();
       if (fceL && fceL.trim()) fceUpd.patient_last_name = fceL.trim();
       var fceDob = (document.getElementById('fce-dob') || {}).value;
       if (fceDob) fceUpd.patient_dob = fceDob; // Item 63 — needs supabase/patient_dob.sql
-      try {
-        await sbUpdateStrict('appointments', 'token=eq.' + token, fceUpd, 'finalise');
-      } catch(eDob) {
-        if (!fceUpd.patient_dob) throw eDob;
-        delete fceUpd.patient_dob; // column not yet added — never block finalise on it
-        console.warn('[FCE] patient_dob write-back skipped — run supabase/patient_dob.sql');
-        await sbUpdateStrict('appointments', 'token=eq.' + token, fceUpd, 'finalise');
-      }
+      // patient_dob / amended_at columns not yet added must never block a
+      // finalise — the helper retries without them, newest migration first
+      await sbUpdateStrictOptional('appointments', 'token=eq.' + token, fceUpd, ['amended_at', 'patient_dob'], 'finalise');
     } catch(e) {
       console.warn('[FCE] finalise status update failed:', e);
       out.doc.save(out.filename);
@@ -13316,10 +13338,18 @@ async function amendFCE(btnEl, token) {
     var rows = await sbSelect('appointments', 'token=eq.' + token + '&select=status,assessment_type');
     var status = (rows && rows[0] && rows[0].status) || '';
     var aType = (rows && rows[0] && rows[0].assessment_type) || 'fce';
+    // Item 70(a): every amend un-finalises the report, so every amend confirms —
+    // the exported case keeps its stronger warning about the sent copy
     if (status === 'exported') {
-      if (!confirm('This report has been exported. After refinalising, ensure the recipient receives the updated version.')) return;
+      if (!confirm('This report has been exported. Amending will reopen it — after refinalising, ensure the recipient receives the updated version.\n\nContinue?')) return;
+    } else {
+      if (!confirm('This will reopen the finalised report. It must be refinalised before it can be exported.\n\nContinue?')) return;
     }
-    await sbUpdateStrict('appointments', 'token=eq.' + token, { status: 'fieldwork_complete' }, 'amend');
+    // Item 70(c): amended_at marks the booking as mid-amend in the queue until
+    // refinalise clears it (supabase/amend_tracking.sql — write retries
+    // without the column until the migration is run)
+    await sbUpdateStrictOptional('appointments', 'token=eq.' + token,
+      { status: 'fieldwork_complete', amended_at: new Date().toISOString() }, ['amended_at'], 'amend');
     showToast('Reopened for amendment — refinalise when the changes are done.');
     loadUpcomingAppointments();
     if (aType === 'pefa') await startPEFA(null, token);
@@ -14423,20 +14453,15 @@ async function finalisePEFAAsync() {
   }
   if (token) {
     try {
-      var pefaUpd = { status: 'finalised', pdf_path: path, finalised_at: new Date().toISOString() };
+      var pefaUpd = { status: 'finalised', pdf_path: path, finalised_at: new Date().toISOString(), amended_at: null }; // amended_at cleared — refinalise ends the mid-amend state (Item 70)
       var pefaF = (document.getElementById('pefa-firstname') || {}).value, pefaL = (document.getElementById('pefa-surname') || {}).value;
       if (pefaF && pefaF.trim()) pefaUpd.patient_first_name = pefaF.trim();
       if (pefaL && pefaL.trim()) pefaUpd.patient_last_name = pefaL.trim();
       var pefaDob = (document.getElementById('pefa-dob') || {}).value;
       if (pefaDob) pefaUpd.patient_dob = pefaDob; // Item 63 — needs supabase/patient_dob.sql
-      try {
-        await sbUpdateStrict('appointments', 'token=eq.' + token, pefaUpd, 'finalise'); // name corrections flow back (Item 60)
-      } catch(eDob) {
-        if (!pefaUpd.patient_dob) throw eDob;
-        delete pefaUpd.patient_dob; // column not yet added — never block finalise on it
-        console.warn('[PEFA] patient_dob write-back skipped — run supabase/patient_dob.sql');
-        await sbUpdateStrict('appointments', 'token=eq.' + token, pefaUpd, 'finalise');
-      }
+      // name corrections flow back (Item 60); patient_dob / amended_at columns
+      // not yet added must never block a finalise — retried without, newest first
+      await sbUpdateStrictOptional('appointments', 'token=eq.' + token, pefaUpd, ['amended_at', 'patient_dob'], 'finalise');
     } catch(e) {
       console.warn('[PEFA] finalise status update failed:', e);
       out.doc.save(out.filename);
