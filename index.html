@@ -8522,7 +8522,10 @@ function _ndChipsAll(sec, containerSel) {
   var groups = sec.querySelectorAll(containerSel);
   if (!groups.length) return { total: 0, sel: 0 };
   var sel = 0;
-  groups.forEach(function(g) { if (g.querySelector('.option-chip.selected-normal')) sel++; });
+  // Item 67: PEMA ROM/postural rows mark Pain/Limited/Abnormal with their own
+  // classes (selectROM), so any of the three states counts as rated. FCE/PEFA
+  // chips only ever carry selected-normal — unaffected.
+  groups.forEach(function(g) { if (g.querySelector('.option-chip.selected-normal, .option-chip.selected-pain, .option-chip.selected-limited')) sel++; });
   return { total: groups.length, sel: sel };
 }
 function _ndYnAll(sec, cls) {
@@ -8539,7 +8542,7 @@ function _ndAnyEntry(sec) {
     if (el.type === 'checkbox' || el.type === 'radio') { if (el.checked) any = true; return; }
     if (String(el.value || '').trim() !== '' && !el.readOnly) any = true;
   });
-  if (!any && sec.querySelector('.option-chip.selected-normal')) any = true;
+  if (!any && sec.querySelector('.option-chip.selected-normal, .option-chip.selected-pain, .option-chip.selected-limited')) any = true;
   if (!any && sec.querySelector('.yn-btn.selected-yes, .yn-btn.selected-no')) any = true;
   return any;
 }
