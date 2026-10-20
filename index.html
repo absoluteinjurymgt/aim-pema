@@ -9418,17 +9418,19 @@ function buildPDF() {
   twoCol('Self-Rated Health',healthRating,'Details',healthDetail||'—');
   twoCol('Last Seen by Doctor',val('last-doctor')||'Not recorded','GP / Medical Attendant',((val('gp-name')||'')+(val('gp-practice')?' — '+val('gp-practice'):'')||'Not recorded'));
 
-  const allergyDetail=document.getElementById('allergies-detail');
-  const allergyAns=allergyDetail?.classList.contains('visible')?'YES':'NO';
-  const allergyText=allergyDetail?.querySelector('textarea')?.value?.trim()||'—';
-  const drugDetail=document.getElementById('rec-drugs-detail');
-  const drugAns=drugDetail?.classList.contains('visible')?'YES':'NO';
-  const drugText=drugDetail?.querySelector('textarea')?.value?.trim()||'—';
+  // Item 76: answers are READ from the stored yn state via getYN (hoisted),
+  // never inferred from the detail field's visibility — an unanswered
+  // question previously printed as a denial the applicant never gave.
+  // Three states: 'YES — detail' / 'NO' / 'Not answered'.
+  const ghGroup=id=>document.getElementById(id)?.closest('.q-card')?.querySelector('.yn-group');
+  const allergyAns=getYN(ghGroup('allergies-detail'));
+  const allergyText=document.getElementById('allergies-detail')?.querySelector('textarea')?.value?.trim()||'—';
+  const drugAns=getYN(ghGroup('rec-drugs-detail'));
+  const drugText=document.getElementById('rec-drugs-detail')?.querySelector('textarea')?.value?.trim()||'—';
   twoCol('Known Allergies',allergyAns+(allergyAns==='YES'?' — '+allergyText:''),'Recreational Drug Use',drugAns+(drugAns==='YES'?' — '+drugText:''));
 
-  const hospDetail=document.getElementById('hospital-detail');
-  const hospAns=hospDetail?.classList.contains('visible')?'YES':'NO';
-  const hospText=hospDetail?.querySelector('textarea')?.value?.trim()||'—';
+  const hospAns=getYN(ghGroup('hospital-detail'));
+  const hospText=document.getElementById('hospital-detail')?.querySelector('textarea')?.value?.trim()||'—';
   fullRow('Previous Hospital Admissions (inpatient)',hospAns+(hospAns==='YES'?' — '+hospText:''));
   y+=4;
 
