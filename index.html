@@ -4514,10 +4514,15 @@ function savePatientDataToStorage() {
     const sig = getSigGlobal(id);
     if (sig) data['sig_' + id] = sig;
   });
-  document.querySelectorAll('.cy-btn.yes-sel').forEach(btn => {
+  // Item 75: BOTH condition answers persist — N was previously never stored
+  // (yes-only by construction), so an all-N checklist printed as unanswered.
+  // Absent keys remain the only 'not answered' state.
+  document.querySelectorAll('.cy-btn.yes-sel, .cy-btn.no-sel').forEach(btn => {
     const row = btn.closest('.condition-row');
     const text = row?.querySelector('.condition-text')?.textContent?.trim();
-    if (text) data['cond_yes_' + text] = true;
+    if (!text) return;
+    if (btn.classList.contains('yes-sel')) data['cond_yes_' + text] = true;
+    else data['cond_no_' + text] = true;
   });
   localStorage.setItem('aim_patient_data', JSON.stringify(data));
   localStorage.setItem('aim_patient_timestamp', new Date().toISOString());
@@ -4541,7 +4546,7 @@ function savePatientDataImmediate() {
 
 function restorePatientSession(data) {
   Object.keys(data).forEach(function(key) {
-    if (key.startsWith('yn_') || key.startsWith('checked_') || key.startsWith('sig_') || key.startsWith('cond_yes_')) return;
+    if (key.startsWith('yn_') || key.startsWith('checked_') || key.startsWith('sig_') || key.startsWith('cond_')) return;
     var el = document.getElementById(key);
     if (el && data[key] !== undefined) el.value = data[key];
   });
@@ -4582,13 +4587,16 @@ function restorePatientSession(data) {
     });
   });
   Object.keys(data).forEach(function(key) {
-    if (!key.startsWith('cond_yes_')) return;
-    var text = key.replace('cond_yes_', '');
+    // Item 75: explicit N restores too — absent keys stay unanswered
+    var isYes = key.startsWith('cond_yes_'), isNo = key.startsWith('cond_no_');
+    if (!isYes && !isNo) return;
+    var text = key.replace(isYes ? 'cond_yes_' : 'cond_no_', '');
     document.querySelectorAll('.condition-row').forEach(function(row) {
       var ct = row.querySelector('.condition-text');
       if (ct && ct.textContent.trim() === text) {
-        var yesBtn = row.querySelector('.cy-btn:first-child');
-        if (yesBtn) yesBtn.classList.add('yes-sel');
+        var btns = row.querySelectorAll('.cy-btn');
+        var btn = isYes ? btns[0] : btns[1];
+        if (btn) btn.classList.add(isYes ? 'yes-sel' : 'no-sel');
       }
     });
   });
@@ -5366,15 +5374,18 @@ function loadPatientDataIntoClinician() {
       if (container) { var ta = container.querySelector('textarea'); if (ta) ta.value = data[key]; }
     });
 
-    // 3. Restore condition (cy-btn) yes states
+    // 3. Restore condition (cy-btn) states — Item 75: explicit N restores too,
+    // so the report prints NO for a denial and '—' only for unanswered
     Object.keys(data).forEach(function(key) {
-      if (!key.startsWith('cond_yes_')) return;
-      const condText = key.slice(9);
+      const isYes = key.startsWith('cond_yes_'), isNo = key.startsWith('cond_no_');
+      if (!isYes && !isNo) return;
+      const condText = key.replace(isYes ? 'cond_yes_' : 'cond_no_', '');
       document.querySelectorAll('.condition-row').forEach(function(row) {
         const ct = row.querySelector('.condition-text');
         if (ct && ct.textContent.trim() === condText) {
-          const yesBtn = row.querySelector('.cy-btn');
-          if (yesBtn) yesBtn.classList.add('yes-sel');
+          const btns = row.querySelectorAll('.cy-btn');
+          const btn = isYes ? btns[0] : btns[1];
+          if (btn) btn.classList.add(isYes ? 'yes-sel' : 'no-sel');
         }
       });
     });
@@ -9563,7 +9574,9 @@ function buildPDF() {
 
   secHeader('Health Conditions Checklist');
   doc.setFontSize(7.5); doc.setFont('helvetica','italic'); doc.setTextColor(...MID);
-  doc.text('Patient-reported conditions. YES responses require clinical review and are noted below.',ML,y); y+=7;
+  // Item 75: three explicit states — YES / NO / not answered. The legend
+  // defines the dash so an unanswered row can never be read as a denial.
+  doc.text('Patient-reported conditions. YES responses require clinical review and are noted below. A dash means the question was not answered.',ML,y); y+=7;
 
   const condRows=document.querySelectorAll('#conditions-list .condition-row');
   const condW=[100,14,68];
@@ -11220,10 +11233,13 @@ function collectPatientFormData() {
   });
   var sig = getSigGlobal('sig-consent');
   if (sig) data['sig_sig-consent'] = sig;
-  document.querySelectorAll('.cy-btn.yes-sel').forEach(function(btn) {
+  // Item 75: BOTH answers submit — absent keys are the only 'not answered'
+  document.querySelectorAll('.cy-btn.yes-sel, .cy-btn.no-sel').forEach(function(btn) {
     var row = btn.closest('.condition-row');
     var ct = row && row.querySelector('.condition-text');
-    if (ct) data['cond_yes_' + ct.textContent.trim()] = true;
+    if (!ct) return;
+    if (btn.classList.contains('yes-sel')) data['cond_yes_' + ct.textContent.trim()] = true;
+    else data['cond_no_' + ct.textContent.trim()] = true;
   });
   // Save Epworth / K10 / AUDIT radio-dot selections by row index → selected column index
   [['epworth', '.radio-dot'], ['k10', '.radio-dot'], ['audit', '.audit-radio']].forEach(function(pair) {
