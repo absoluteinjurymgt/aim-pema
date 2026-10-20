@@ -4954,8 +4954,16 @@ function buildFlaggedItemsFromPatientData(data) {
     });
   }
 
-  const medDetail = document.getElementById('medication-detail');
-  if (medDetail?.classList.contains('visible')) {
+  // Item 77: medication screening keys off the stored ANSWER, never the
+  // detail field's visibility — and an unanswered medications question is
+  // itself a review item, never silently 'no medications'
+  const medCard = document.getElementById('medication-detail')?.closest('.q-card');
+  const medYes = !!medCard?.querySelector('.yn-btn.selected-yes');
+  const medNo = !!medCard?.querySelector('.yn-btn.selected-no');
+  if (!medYes && !medNo) {
+    flags.push({title: 'Medications question not answered', detail: 'The applicant did not answer the current-medications question. Confirm medication status before relying on the screening sections.', severity: 'medium'});
+  }
+  if (medYes) {
     const {flaggedCats, matchedMeds, allMeds} = screenMedications();
 
     const unmatched = allMeds.filter(function(m) { return !matchedMeds.includes(m); });
@@ -9618,10 +9626,13 @@ function buildPDF() {
     fullRow('Other Illnesses / Operations Not Listed Above',otherIll?.querySelector('textarea')?.value?.trim()||'—');
   }
 
-  const medDetail=document.getElementById('medication-detail');
-  const medVis=medDetail?.classList.contains('visible');
+  // Item 77: the answer is READ from the stored yn state (getYN, as Item 76)
+  // — an applicant who skipped the medications question previously printed
+  // 'None reported'. The detail field supplies the list on a yes only.
+  const medAns=getYN(ghGroup('medication-detail'));
+  const medList=document.getElementById('medication-detail')?.querySelector('textarea')?.value?.trim()||'—';
   y+=4;
-  fullRow('Current Medications',medVis?(medDetail?.querySelector('textarea')?.value?.trim()||'—'):'None reported');
+  fullRow('Current Medications',medAns+(medAns==='YES'?' — '+medList:''));
 
   newPage();
   secHeader('Pre-Assessment Baseline');
