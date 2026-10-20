@@ -6160,12 +6160,26 @@ function pemaMedicalScope() {
 function pemaVariantMedical() {
   return !!(window._pemaSections && window._pemaSections.variant === 'medical_only');
 }
-// Item 73: functional modules out of scope on a PARTIAL configuration — the
-// capacity outcome still applies (testing did occur), but the report must say
-// which functional modules it does not cover. Labels from PEMA_MODULES.
-function pemaExcludedFunctional() {
-  return PEMA_FUNCTIONAL_KEYS.filter(function(k) { return !pemaSectionOn(k); })
-    .map(function(k) { var m = PEMA_MODULES.find(function(x) { return x.key === k; }); return m ? m.label : k; });
+// Item 74: ONE source for the excluded-sections scope note on every report
+// (PEMA / FCE / PEFA) — independent copies of the same clinical statement are
+// the drift pattern that produced the prone-hold wording and manual handling
+// table divergences. enabledByKey maps each togglable key to whether it ran;
+// sectionDefs carries that type's {key, label} pairs; outcomeNoun names the
+// assertion the note qualifies ('outcome' or 'determination'). Returns null
+// when nothing is excluded, so a full configuration prints nothing.
+function scopeNoteFor(enabledByKey, sectionDefs, outcomeNoun) {
+  var excluded = sectionDefs
+    .filter(function(s) { return enabledByKey[s.key] === false; })
+    .map(function(s) { return s.label; });
+  if (!excluded.length) return null;
+  return 'Scope note: the following functional modules were not included in the scope of this assessment and are not covered by the ' + outcomeNoun + ' above: ' +
+    excluded.join('; ') + '. The ' + outcomeNoun + ' reflects the functional testing that was performed.';
+}
+// PEMA caller (Item 73): the four functional modules, labels from PEMA_MODULES
+function pemaScopeNote() {
+  var enabled = {};
+  PEMA_FUNCTIONAL_KEYS.forEach(function(k) { enabled[k] = pemaSectionOn(k); });
+  return scopeNoteFor(enabled, PEMA_MODULES.filter(function(m) { return PEMA_FUNCTIONAL_KEYS.indexOf(m.key) >= 0; }), 'outcome');
 }
 
 function pemaSectionOn(key) {
@@ -9893,14 +9907,14 @@ function buildPDF() {
     const naLines=doc.splitTextToSize('Functional capacity was not assessed: manual handling, climbing, step test and timed postural tolerance testing were not included in the scope of this assessment.',CW);
     doc.text(naLines,ML,y); y+=naLines.length*4+4;
   } else {
-    // Item 73: a PARTIAL configuration keeps the capacity outcome (testing
-    // did occur) but must name what it does not cover — italic scope note,
-    // never styled as a finding
-    const exclNames=pemaExcludedFunctional();
-    if(exclNames.length){
+    // Item 73/74: a PARTIAL configuration keeps the capacity outcome (testing
+    // did occur) but must name what it does not cover — italic scope note
+    // from the shared source, never styled as a finding
+    const pemaNote=pemaScopeNote();
+    if(pemaNote){
       checkY(12);
       doc.setFontSize(7.5); doc.setFont('helvetica','italic'); doc.setTextColor(...MID);
-      const exLines=doc.splitTextToSize('Scope note: the following functional modules were not included in the scope of this assessment and are not covered by the outcome above: ' + exclNames.join('; ') + '. The outcome reflects the functional testing that was performed.',CW);
+      const exLines=doc.splitTextToSize(pemaNote,CW);
       doc.text(exLines,ML,y); y+=exLines.length*4+4;
     }
   }
@@ -13363,10 +13377,18 @@ function buildFCEPDF() {
   doc.text('In the opinion of the assessor the applicant has:', ML, y); y += 6;
   var detSel = val('fce-determination');
   var detW = [14, 26, CW - 40];
-  // Never split the determination table across pages
+  // Item 74: disabled non-task sections are disclosed with the determination
+  // (the task list already documents which tasks were performed). Computed
+  // here so the note is kept on the SAME page as the table — the reader meets
+  // it together with the GREEN capacity assertion, never after a page turn.
+  var fceEnabled = {};
+  FCE_SECTIONS.forEach(function(s) { fceEnabled[s.key] = !(cfg && cfg.sections && cfg.sections[s.key] === false); });
+  var fceScopeNote = scopeNoteFor(fceEnabled, FCE_SECTIONS, 'determination');
+  var fceNoteLines = fceScopeNote ? doc.splitTextToSize(fceScopeNote, CW) : null;
+  // Never split the determination table (or its scope note) across pages
   var detTotalH = 6.5 + FCE_DETERMINATIONS.reduce(function(sum, d) {
     return sum + Math.max(11, doc.splitTextToSize(d.text, detW[2] - 5).length * 3.8 + 4.5);
-  }, 0);
+  }, 0) + (fceNoteLines ? fceNoteLines.length * 3.8 + 5 : 0);
   checkY(detTotalH + 4);
   doc.setFillColor.apply(doc, BLACK); doc.rect(ML, y, CW, 6.5, 'F');
   doc.setFontSize(7.5); doc.setFont('helvetica', 'bold'); doc.setTextColor(255, 255, 255);
@@ -13391,6 +13413,11 @@ function buildFCEPDF() {
     doc.text(lines, ML + detW[0] + detW[1] + 2.5, y + 4.5);
     y += rowH;
   });
+  if (fceNoteLines) {
+    y += 2;
+    doc.setFontSize(7.5); doc.setFont('helvetica', 'italic'); doc.setTextColor.apply(doc, MID);
+    doc.text(fceNoteLines, ML, y); y += fceNoteLines.length * 3.8 + 3;
+  }
   y += 6;
   checkY(8); doc.setFontSize(7); doc.setFont('helvetica', 'bold'); doc.setTextColor.apply(doc, MID);
   doc.text('COMMENTS (REQUIRED FOR AMBER OR RED DETERMINATIONS)', ML, y); y += 4;
@@ -15057,6 +15084,17 @@ function buildPEFAPDF() {
     var descLines = doc.splitTextToSize(outcome.desc, CW - 4);
     checkY(descLines.length * 3.8 + 3);
     doc.text(descLines, ML + 2, y); y += descLines.length * 3.8 + 4;
+  }
+  // Item 74: disabled sections are disclosed with the capacity outcome — all
+  // eight PEFA sections are functional, so every exclusion is named
+  var pefaEnabled = {};
+  PEFA_SECTIONS.forEach(function(s) { pefaEnabled[s.key] = !(cfg && cfg.sections && cfg.sections[s.key] === false); });
+  var pefaNote = scopeNoteFor(pefaEnabled, PEFA_SECTIONS, 'outcome');
+  if (pefaNote) {
+    doc.setFontSize(7.5); doc.setFont('helvetica', 'italic'); doc.setTextColor.apply(doc, MID);
+    var pnLines = doc.splitTextToSize(pefaNote, CW);
+    checkY(pnLines.length * 3.8 + 4);
+    doc.text(pnLines, ML, y); y += pnLines.length * 3.8 + 4;
   }
   subHdr('Recommendations / Restrictions');
   txtBlock(val('pefa-outcome-recs'));
