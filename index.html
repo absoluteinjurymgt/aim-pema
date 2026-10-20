@@ -9479,7 +9479,9 @@ function buildPDF() {
     checkedItems.push(el.textContent.trim());
   });
   if(checkedItems.length===0){
-    fullRow('Functional Difficulties','None reported');
+    // Item 78: states what was captured, never attributes a nil the applicant
+    // did not give — a blank tick-list is not a denial
+    fullRow('Functional Difficulties','No difficulties ticked');
   } else {
     fullRow('Activities with Difficulty',checkedItems.join(' · '));
     const funcDetail=document.querySelector('#ps-3 .detail-field.visible textarea')?.value?.trim();
@@ -9530,7 +9532,7 @@ function buildPDF() {
     respDiag.push(el.textContent.trim());
   });
   y+=4;
-  fullRow('Diagnosed Respiratory Conditions',respDiag.length?respDiag.join(' · '):'None reported');
+  fullRow('Diagnosed Respiratory Conditions',respDiag.length?respDiag.join(' · '):'No conditions ticked'); // Item 78: never a nil the applicant did not give
   const respDiagDetail=document.querySelector('#ps-4 .detail-field.visible textarea')?.value?.trim();
   if(respDiagDetail) fullRow('Details',respDiagDetail);
 
@@ -9619,12 +9621,13 @@ function buildPDF() {
     }
   });
 
-  const otherIll=document.getElementById('other-illness-detail');
-  const otherIllVis=otherIll?.classList.contains('visible');
-  if(otherIllVis){
-    y+=4;
-    fullRow('Other Illnesses / Operations Not Listed Above',otherIll?.querySelector('textarea')?.value?.trim()||'—');
-  }
+  // Item 78: the row always prints its stored yn answer — it used to vanish
+  // entirely when not answered, leaving unanswered and explicit-no
+  // indistinguishable by omission
+  const otherAns=getYN(ghGroup('other-illness-detail'));
+  const otherText=document.getElementById('other-illness-detail')?.querySelector('textarea')?.value?.trim()||'—';
+  y+=4;
+  fullRow('Other Illnesses / Operations Not Listed Above',otherAns+(otherAns==='YES'?' — '+otherText:''));
 
   // Item 77: the answer is READ from the stored yn state (getYN, as Item 76)
   // — an applicant who skipped the medications question previously printed
