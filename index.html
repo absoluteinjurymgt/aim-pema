@@ -6160,6 +6160,13 @@ function pemaMedicalScope() {
 function pemaVariantMedical() {
   return !!(window._pemaSections && window._pemaSections.variant === 'medical_only');
 }
+// Item 73: functional modules out of scope on a PARTIAL configuration — the
+// capacity outcome still applies (testing did occur), but the report must say
+// which functional modules it does not cover. Labels from PEMA_MODULES.
+function pemaExcludedFunctional() {
+  return PEMA_FUNCTIONAL_KEYS.filter(function(k) { return !pemaSectionOn(k); })
+    .map(function(k) { var m = PEMA_MODULES.find(function(x) { return x.key === k; }); return m ? m.label : k; });
+}
 
 function pemaSectionOn(key) {
   var cfg = window._pemaSections;
@@ -9885,6 +9892,17 @@ function buildPDF() {
     doc.setFontSize(8); doc.setFont('helvetica','bold'); doc.setTextColor(...CHARCOAL);
     const naLines=doc.splitTextToSize('Functional capacity was not assessed: manual handling, climbing, step test and timed postural tolerance testing were not included in the scope of this assessment.',CW);
     doc.text(naLines,ML,y); y+=naLines.length*4+4;
+  } else {
+    // Item 73: a PARTIAL configuration keeps the capacity outcome (testing
+    // did occur) but must name what it does not cover — italic scope note,
+    // never styled as a finding
+    const exclNames=pemaExcludedFunctional();
+    if(exclNames.length){
+      checkY(12);
+      doc.setFontSize(7.5); doc.setFont('helvetica','italic'); doc.setTextColor(...MID);
+      const exLines=doc.splitTextToSize('Scope note: the following functional modules were not included in the scope of this assessment and are not covered by the outcome above: ' + exclNames.join('; ') + '. The outcome reflects the functional testing that was performed.',CW);
+      doc.text(exLines,ML,y); y+=exLines.length*4+4;
+    }
   }
 
   const recs=(()=>{
