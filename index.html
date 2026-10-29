@@ -6359,7 +6359,14 @@ function autoSuggestOutcome() {
 }
 
 function highlightOutcomeTier(tier, reason) {
-  const options = document.querySelectorAll('.outcome-option');
+  // Item 79: the suggester re-runs on every input in the outcome section
+  // (400ms debounce), on chip taps, and on navigating away — and it used to
+  // strip the clinician's .selected each time, so the report printed the
+  // suggestion instead of their decision. A suggestion NEVER displaces an
+  // explicit selection. Also scoped to the PEMA outcome section — the
+  // unscoped query used to strip classes off FCE/PEFA outcome options too.
+  const options = document.querySelectorAll('#clin-outcome .outcome-option');
+  if (document.querySelector('#clin-outcome .outcome-option.selected')) return;
   options.forEach(function(o,i) { o.classList.remove('selected','suggested'); });
   const target = options[tier - 1];
   if (target) {
