@@ -5606,7 +5606,18 @@ function clearSig(canvasId, phId) {
 function insertPrompt(chipEl, text) {
   const field = chipEl.closest('.smart-field');
   const ta = field.querySelector('.smart-textarea');
-  if (ta) { ta.value = text; ta.focus(); }
+  if (!ta) return;
+  // Item 80: a canned phrase must never destroy hand-typed clinical notes.
+  // Typed text carries the user-edited marker (the input listeners set it;
+  // programmatic inserts do not), so a review/disposition chip APPENDS to it.
+  // Empty fields and machine or canned content are replaced as before, which
+  // keeps the switch-between-canned-phrases behaviour.
+  if (ta.value.trim() && ta.classList.contains('user-edited')) {
+    ta.value = ta.value.replace(/\s+$/, '') + '\n' + text;
+  } else {
+    ta.value = text;
+  }
+  ta.focus();
 }
 
 function calcHearingLossAMA() {
@@ -12664,6 +12675,9 @@ function saveFceDataToStorage() {
     var sig = getSigGlobal(id);
     if (sig) data['sig_' + id] = sig;
   });
+  // Typed narratives keep their hand-written marker across a restore (Item 80)
+  data._userEditedIds = Array.from(document.querySelectorAll('#screen-fce .smart-textarea.user-edited'))
+    .map(function(el) { return el.id; }).filter(Boolean);
   data['_token'] = window._currentFceToken;
   data['_type'] = 'fce';
   try {
@@ -12761,6 +12775,14 @@ function restoreFceData(data) {
     if (el.type === 'checkbox') el.checked = data[key] === '1';
     else el.value = data[key];
   });
+  // Item 80: restored hand-typed narratives keep their marker, so a prompt
+  // chip still appends to them instead of replacing them
+  if (Array.isArray(data._userEditedIds)) {
+    data._userEditedIds.forEach(function(id) {
+      var el = document.getElementById(id);
+      if (el && el.value) el.classList.add('user-edited');
+    });
+  }
   Object.keys(data).forEach(function(key) {
     if (key.indexOf('fchip_') !== 0) return;
     var oc = key.slice(6);
@@ -14524,6 +14546,9 @@ function savePefaDataToStorage() {
     var sig = getSigGlobal(id);
     if (sig) data['sig_' + id] = sig;
   });
+  // Typed narratives keep their hand-written marker across a restore (Item 80)
+  data._userEditedIds = Array.from(document.querySelectorAll('#screen-pefa .smart-textarea.user-edited'))
+    .map(function(el) { return el.id; }).filter(Boolean);
   data['_token'] = window._currentPefaToken;
   data['_type'] = 'pefa';
   try {
@@ -14547,6 +14572,14 @@ function restorePefaData(data) {
     if (el.type === 'checkbox' || el.type === 'radio') el.checked = data[key] === '1';
     else el.value = data[key];
   });
+  // Item 80: restored hand-typed narratives keep their marker, so a prompt
+  // chip still appends to them instead of replacing them
+  if (Array.isArray(data._userEditedIds)) {
+    data._userEditedIds.forEach(function(id) {
+      var el = document.getElementById(id);
+      if (el && el.value) el.classList.add('user-edited');
+    });
+  }
   Object.keys(data).forEach(function(key) {
     if (key.indexOf('pchip_') !== 0) return;
     var oc = key.slice(6);
@@ -15767,6 +15800,17 @@ document.addEventListener('DOMContentLoaded', () => {
     section._prefillTimer = setTimeout(function() {
       preFillSection(section.id);
     }, 400);
+  });
+
+  // Item 80: typed FCE/PEFA narratives carry the user-edited marker too, so a
+  // prompt chip appends to hand-typed notes there instead of replacing them
+  // (the marker was previously set only on the PEMA clinician screen)
+  ['screen-fce', 'screen-pefa'].forEach(function(sid) {
+    document.getElementById(sid)?.addEventListener('input', function(e) {
+      if (!e.target.classList || !e.target.classList.contains('smart-textarea')) return;
+      if (e.target.value.trim()) e.target.classList.add('user-edited');
+      else e.target.classList.remove('user-edited');
+    });
   });
 
   const today = clinicToday();
