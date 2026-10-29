@@ -4893,10 +4893,13 @@ function buildFlaggedItemsFromPatientData(data) {
 
   // Preserve clinical notes already entered — keyed by card title, not index
   const savedNotes = {};
+  const savedRevs = {}; // Item 81: review dispositions survive the rebuild too
   container.querySelectorAll('.clin-card:not(.manual-flag)').forEach(function(card) {
     const t = (card.querySelector('.clin-card-header h3')?.textContent || '').replace('⚑ ', '').trim();
     const n = card.querySelector('.smart-textarea')?.value || '';
     if (t && n.trim()) savedNotes[t] = n;
+    const rv = (card.querySelector('.flag-rev') || {}).value || '';
+    if (t && rv) savedRevs[t] = rv;
   });
   // Preserve manual flag cards — innerHTML rebuild would destroy them
   const manualCards = Array.from(container.querySelectorAll('.manual-flag'));
@@ -5117,6 +5120,14 @@ function buildFlaggedItemsFromPatientData(data) {
       '<div class="clin-card-body" style="background:'+bg+'">' +
         (flag.medFlag ? '<div style="font-size:11px;font-weight:700;color:'+col+';text-transform:uppercase;letter-spacing:0.04em;margin-bottom:8px">Disclosed: ' + flag.detail.replace('Disclosed: ','') + '</div>' : '') +
         medBody +
+        // Item 81(a): tri-state review disposition — separate from the notes
+        // and the prompt chips, so setting it never alters recorded text
+        '<div class="flag-rev-wrap" style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap">' +
+          '<span style="font-size:11px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.04em">Review</span>' +
+          '<input type="hidden" class="flag-rev" id="' + flagRevId(flag.title) + '">' +
+          '<button type="button" class="flag-rev-btn" data-rev="none" onclick="setFlagReview(this,\'none\')" style="border:1.5px solid var(--border);background:white;color:var(--charcoal);border-radius:16px;padding:7px 14px;font-size:12px;cursor:pointer;font-family:inherit;min-height:38px">Reviewed — no clinical concern</button>' +
+          '<button type="button" class="flag-rev-btn" data-rev="relevant" onclick="setFlagReview(this,\'relevant\')" style="border:1.5px solid var(--border);background:white;color:var(--charcoal);border-radius:16px;padding:7px 14px;font-size:12px;cursor:pointer;font-family:inherit;min-height:38px">Reviewed — clinically relevant</button>' +
+        '</div>' +
         '<div class="smart-field">' +
           '<label style="font-size:11px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.04em;display:block;margin-bottom:6px">Clinical Notes / Follow-up</label>' +
           // Item 66: stable title-derived id so the review notes persist through
@@ -5128,14 +5139,20 @@ function buildFlaggedItemsFromPatientData(data) {
     '</div>';
   }).join('');
 
-  // Restore preserved clinical notes (keyed by title) and re-append manual flags
+  // Restore preserved clinical notes and review dispositions (keyed by title)
+  // and re-append manual flags
   container.querySelectorAll('.clin-card:not(.manual-flag)').forEach(function(card) {
     const t = (card.querySelector('.clin-card-header h3')?.textContent || '').replace('⚑ ', '').trim();
     if (savedNotes[t]) {
       const ta = card.querySelector('.smart-textarea');
       if (ta) { ta.value = savedNotes[t]; ta.classList.add('user-edited'); }
     }
+    if (savedRevs[t]) {
+      const rv = card.querySelector('.flag-rev');
+      if (rv) rv.value = savedRevs[t];
+    }
   });
+  paintAllFlagReviews();
   manualCards.forEach(function(c) { container.appendChild(c); });
 }
 
@@ -5143,6 +5160,38 @@ function buildFlaggedItemsFromPatientData(data) {
 // index-derived (Item 54 rule). Titles are unique within a build (flagMap).
 function flagNoteId(title) {
   return 'flag-note-' + String(title || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 80);
+}
+// Item 81(a): the flag's review disposition — '' not reviewed | 'none'
+// reviewed, no clinical concern | 'relevant' reviewed, clinically relevant.
+// Hidden id'd input, so the ordinary id-based autosave/restore carries it.
+function flagRevId(title) {
+  return 'flag-rev-' + String(title || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 80);
+}
+// Item 81(b): setting a review state touches ONLY the hidden state input —
+// never the response, its detail, or the clinician's notes (Item 80's
+// append-not-replace chips are a separate control and unchanged). Tapping the
+// active state clears it back to not-reviewed.
+function setFlagReview(btn, state) {
+  var wrap = btn.closest('.flag-rev-wrap');
+  var hidden = wrap.querySelector('.flag-rev');
+  hidden.value = hidden.value === state ? '' : state;
+  paintFlagReview(wrap);
+  if (typeof updateNavDots === 'function') updateNavDots();
+  saveClinicianDataToStorage();
+}
+function paintFlagReview(wrap) {
+  var v = (wrap.querySelector('.flag-rev') || {}).value || '';
+  wrap.querySelectorAll('.flag-rev-btn').forEach(function(b) {
+    var on = b.getAttribute('data-rev') === v && v !== '';
+    var col = b.getAttribute('data-rev') === 'relevant' ? '#8b3a2f' : '#4a7c59';
+    b.style.background = on ? col : 'white';
+    b.style.color = on ? 'white' : 'var(--charcoal)';
+    b.style.borderColor = on ? col : 'var(--border)';
+    b.style.fontWeight = on ? '700' : '500';
+  });
+}
+function paintAllFlagReviews() {
+  document.querySelectorAll('#flagged-items .flag-rev-wrap').forEach(paintFlagReview);
 }
 
 function createManualFlagCard(saved) {
@@ -8124,13 +8173,15 @@ function generateAbnormalFindings() {
   (window._findingFlags || []).filter(function(f) { return f.section === 'Climbing'; })
     .forEach(function(f) { add('CLIMBING', f.finding, 'medium'); });
 
-  // QUESTIONNAIRE FLAGS — unresolved only, as "Disclosed: X (brief context)"
+  // QUESTIONNAIRE FLAGS — driven by the review disposition (Item 81e/h/i):
+  // 'relevant' is carried, '' (not reviewed — including every pre-Item-81
+  // save) is carried so nothing silently disappears, and only an explicit
+  // 'reviewed — no clinical concern' is excluded. This replaces the old
+  // dead text-match that looked for a phrase the chips never inserted.
   document.querySelectorAll('#flagged-items .clin-card:not(.manual-flag)').forEach(function(card) {
     var header = (card.querySelector('.clin-card-header h3')?.textContent || '').trim();
     if (!header || header.indexOf('No flagged items') !== -1 || header.indexOf('No patient questionnaire') !== -1) return;
-    var notes = (card.querySelector('.smart-textarea')?.value || '').trim().toLowerCase();
-    var isResolved = notes.includes('reviewed — no concern') || notes.includes('reviewed - no concern');
-    if (isResolved) return;
+    if (((card.querySelector('.flag-rev') || {}).value || '') === 'none') return;
     var detailText = (card.querySelector('.clin-card-body div[style*="font-style:italic"]')?.textContent || '')
       .replace(/^Patient detail:\s*/, '').replace(/[“”"]/g, '').trim();
     var brief = (detailText && detailText.length <= 60) ? ' (' + detailText + ')' : '';
@@ -8695,7 +8746,9 @@ async function saveMyProfile(btn) {
 // sections read amber immediately — by design. 'Optional' sections are never
 // listed in the finalise incompleteness summary.
 // ═════════════════════════════════════════════════════════════════════════════
-var NAVDOT_OPTIONAL = { 'clin-flagged': 1, 'fce-recs': 1 };
+// Item 81(g): clin-flagged is no longer optional — the finalise reminder's job
+// is to stop an assessment finalising with disclosures nobody reviewed
+var NAVDOT_OPTIONAL = { 'fce-recs': 1 };
 
 function _ndFilled(id) { var el = document.getElementById(id); return !!(el && String(el.value || '').trim() !== ''); }
 function _ndChipsAll(sec, containerSel) {
@@ -8715,6 +8768,15 @@ function _ndYnAll(sec, cls) {
   return { total: states.length, sel: ans };
 }
 function _ndVerdict(anyEntered, isComplete) { return isComplete ? 'complete' : anyEntered ? 'partial' : 'empty'; }
+// Item 81: the questionnaire-derived flag cards (manual flags and the
+// zero-flag placeholder excluded) — shared by the dot rule, the pending
+// tooltip and the PDF review section
+function _flagReviewCards(scope) {
+  return Array.from((scope || document).querySelectorAll('#flagged-items .clin-card:not(.manual-flag)')).filter(function(c) {
+    var h = (c.querySelector('.clin-card-header h3') || {}).textContent || '';
+    return h.indexOf('No flagged items') < 0 && h.indexOf('No patient questionnaire') < 0;
+  });
+}
 function _ndAnyEntry(sec) {
   var any = false;
   sec.querySelectorAll('input, select, textarea').forEach(function(el) {
@@ -8740,13 +8802,14 @@ function _ndGenericStatus(sec) {
 var NAVDOT_RULES = {
   // ── PEMA ──
   // Item 58: zero flagged responses means nothing to review — complete, not
-  // amber (the ID-confirm button used to register as "entry started" and
-  // strand the dot at partial with no textareas to ever fill)
+  // amber. Item 81(g): with dispositions, complete now means every
+  // questionnaire flag carries a review state (manual flags are the
+  // clinician's own findings and need no disposition).
   'clin-flagged': function(sec) {
-    var cards = sec.querySelectorAll('#flagged-items .clin-card');
+    var cards = _flagReviewCards(sec);
     if (!cards.length) return 'complete';
-    var noted = !!Array.from(sec.querySelectorAll('#flagged-items .smart-textarea')).find(function(t) { return t.value.trim(); });
-    return _ndVerdict(_ndAnyEntry(sec), noted);
+    var reviewed = cards.filter(function(c) { return ((c.querySelector('.flag-rev') || {}).value || '') !== ''; }).length;
+    return _ndVerdict(reviewed > 0 || _ndAnyEntry(sec), reviewed === cards.length);
   },
   'clin-vitals': function(sec) { return _ndVerdict(_ndAnyEntry(sec), _ndFilled('v-bp-sys') && _ndFilled('v-bp-dia') && _ndFilled('v-height') && _ndFilled('v-weight')); },
   'clin-audiometry': function(sec) {
@@ -8898,6 +8961,12 @@ var NAVDOT_RULES = {
 // the completion conditions in NAVDOT_RULES; shown as the nav item's tooltip
 // and in a toast when the dot itself is tapped.
 var NAVDOT_PENDING = {
+  // Item 81(g): the reminder names exactly the flags not yet reviewed
+  'clin-flagged': function(sec) {
+    return _flagReviewCards(sec)
+      .filter(function(c) { return ((c.querySelector('.flag-rev') || {}).value || '') === ''; })
+      .map(function(c) { return ((c.querySelector('.clin-card-header h3') || {}).textContent || '').replace('⚑ ', '').trim() + ' — review not recorded'; });
+  },
   'clin-vitals': function() {
     var m = [];
     if (!_ndFilled('v-bp-sys') || !_ndFilled('v-bp-dia')) m.push('blood pressure');
@@ -9611,6 +9680,9 @@ function buildPDF() {
   const condRows=document.querySelectorAll('#conditions-list .condition-row');
   const condW=[100,14,68];
   tblRow(['Condition','Y/N','Details'],condW,true);
+  // Item 81(c): the questionnaire prints NEUTRALLY — a YES is the patient's
+  // disclosure, not a finding, so the red row treatment is gone. Clinical
+  // weight is assigned in the Clinical Review of Flagged Responses section.
   condRows.forEach((row,i)=>{
     const text=row.querySelector('.condition-text')?.textContent?.trim()||'—';
     const yBtn=row.querySelector('.cy-btn.yes-sel');
@@ -9618,25 +9690,7 @@ function buildPDF() {
     const ans=yBtn?'YES':nBtn?'NO':'—';
     const detailInput=row.querySelector('input');
     const detail=yBtn?(detailInput?.value?.trim()||'—'):'';
-
-    if(yBtn){
-      checkY(8);
-      doc.setFillColor(253,240,238);
-      doc.setDrawColor(200,150,140); doc.setLineWidth(0.2);
-      doc.rect(ML,y,CW,7,'FD');
-      let x=ML;
-      const cols=[text,'YES',detail];
-      cols.forEach((col,ci)=>{
-        const w=condW[ci];
-        doc.setFontSize(7.5); doc.setFont('helvetica',ci===1?'bold':'normal');
-        doc.setTextColor(ci===1?WARNING[0]:CHARCOAL[0],ci===1?WARNING[1]:CHARCOAL[1],ci===1?WARNING[2]:CHARCOAL[2]);
-        doc.text(String(col||'—').substring(0,ci===0?55:ci===2?40:5),x+2,y+4.5);
-        if(ci<cols.length-1){ doc.setDrawColor(...BORDER_COL); doc.line(x+w,y,x+w,y+7); }
-        x+=w;
-      }); y+=7;
-    } else {
-      tblRow([text,ans,detail],condW,false,i%2===1);
-    }
+    tblRow([text,ans,detail],condW,false,i%2===1);
   });
 
   // Item 78: the row always prints its stored yn answer — it used to vanish
@@ -9654,6 +9708,29 @@ function buildPDF() {
   const medList=document.getElementById('medication-detail')?.querySelector('textarea')?.value?.trim()||'—';
   y+=4;
   fullRow('Current Medications',medAns+(medAns==='YES'?' — '+medList:''));
+
+  // Item 81(d): every questionnaire-derived flag with its review disposition
+  // and the clinician's note — reviewed-no-concern items still appear, because
+  // showing that each disclosure was considered is stronger than silence. A
+  // clinically relevant flag always prints here regardless of any edit to the
+  // Key Findings text (Item 81f). Prints nothing when there are no flags, so
+  // a no-flag report is unchanged.
+  const revCards=_flagReviewCards();
+  if(revCards.length){
+    y+=4;
+    secHeader('Clinical Review of Flagged Responses');
+    doc.setFontSize(7.5); doc.setFont('helvetica','italic'); doc.setTextColor(...MID);
+    doc.text('Each questionnaire disclosure as reviewed by the assessor. Clinically relevant items are carried to Key Assessment Findings.',ML,y); y+=7;
+    const rvW=[66,30,86];
+    tblRow(['Flagged response','Review','Clinician note'],rvW,true);
+    revCards.forEach((card,i)=>{
+      const title=(card.querySelector('.clin-card-header h3')?.textContent||'').replace('⚑ ','').trim();
+      const rev=(card.querySelector('.flag-rev')||{}).value||'';
+      const revLabel=rev==='relevant'?'Clinically relevant':rev==='none'?'No clinical concern':'NOT REVIEWED';
+      const note=(card.querySelector('.smart-textarea')?.value||'').trim()||'—';
+      tblRow([title,revLabel,note],rvW,false,i%2===1);
+    });
+  }
 
   newPage();
   secHeader('Pre-Assessment Baseline');
@@ -15626,13 +15703,20 @@ function restoreClinicianData(data) {
   if (typeof calcK10Score       === 'function') calcK10Score();
   if (typeof calcAUDITScore     === 'function') calcAUDITScore();
   if (typeof buildFlaggedItemsFromPatientData === 'function') buildFlaggedItemsFromPatientData({});
-  // The rebuild above recreates every flag card, so the review notes are
-  // re-applied by their stable title-derived ids afterwards (Item 66)
+  // The rebuild above recreates every flag card, so the review notes and the
+  // review dispositions are re-applied by their stable title-derived ids
+  // afterwards (Items 66/81)
   Object.keys(data).forEach(function(k) {
-    if (k.indexOf('flag-note-') !== 0 || !data[k]) return;
-    var ta = document.getElementById(k);
-    if (ta) { ta.value = data[k]; ta.classList.add('user-edited'); }
+    if (k.indexOf('flag-note-') === 0 && data[k]) {
+      var ta = document.getElementById(k);
+      if (ta) { ta.value = data[k]; ta.classList.add('user-edited'); }
+    }
+    if (k.indexOf('flag-rev-') === 0 && data[k]) {
+      var rv = document.getElementById(k);
+      if (rv) rv.value = data[k];
+    }
   });
+  if (typeof paintAllFlagReviews === 'function') paintAllFlagReviews();
   if (typeof drawAudiogram      === 'function') setTimeout(drawAudiogram, 100);
   if (typeof calcHearingLossAMA  === 'function') setTimeout(calcHearingLossAMA, 150);
   if (typeof updateIshiharaScore === 'function') setTimeout(updateIshiharaScore, 200);
