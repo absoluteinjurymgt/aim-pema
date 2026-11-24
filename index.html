@@ -1466,6 +1466,9 @@
   }
   .cy-btn.yes-sel { background: #fdf0ee; border-color: var(--error); color: var(--error); }
   .cy-btn.no-sel { background: var(--olive-pale); border-color: var(--olive); color: var(--olive-dark); }
+  /* Item 82: outstanding questions at a blocked submission attempt */
+  .q-missing { outline: 2px solid var(--error); outline-offset: 2px; border-radius: 8px; }
+  tr.q-missing { outline: none; background: #fdf0ee !important; box-shadow: inset 3px 0 0 var(--error); }
 
 
   .logo-upload-area {
@@ -2271,6 +2274,10 @@
         <div class="checkbox-item" onclick="toggleCheck(this)"><input type="checkbox"><div class="checkbox-box"></div><span class="checkbox-label">Confined spaces</span></div>
         <div class="checkbox-item" onclick="toggleCheck(this)"><input type="checkbox"><div class="checkbox-box"></div><span class="checkbox-label">Heights</span></div>
         <div class="checkbox-item" onclick="toggleCheck(this)"><input type="checkbox"><div class="checkbox-box"></div><span class="checkbox-label">Shift work / nights</span></div>
+        <!-- Item 82(c): the applicant's nil is deliberate, never inferred from
+             a blank list. Label text is the storage key, so the two lists'
+             None options carry distinct labels. -->
+        <div class="checkbox-item none-item" onclick="toggleCheck(this)" style="border-style:dashed"><input type="checkbox"><div class="checkbox-box"></div><span class="checkbox-label">None of these difficulties</span></div>
       </div>
       <div class="detail-field visible" style="margin-top:12px">
         <label>Please provide details for any ticked activities</label>
@@ -2322,6 +2329,8 @@
         <div class="checkbox-item" onclick="toggleCheck(this)"><input type="checkbox"><div class="checkbox-box"></div><span class="checkbox-label">Hay Fever</span></div>
         <div class="checkbox-item" onclick="toggleCheck(this)"><input type="checkbox"><div class="checkbox-box"></div><span class="checkbox-label">Other chest trouble</span></div>
         <div class="checkbox-item" onclick="toggleCheck(this)"><input type="checkbox"><div class="checkbox-box"></div><span class="checkbox-label">COPD</span></div>
+        <!-- Item 82(c) -->
+        <div class="checkbox-item none-item" onclick="toggleCheck(this)" style="border-style:dashed"><input type="checkbox"><div class="checkbox-box"></div><span class="checkbox-label">None of these conditions</span></div>
       </div>
       <div class="detail-field visible" style="margin-top:12px">
         <label>Please provide details for any ticked conditions</label>
@@ -5009,7 +5018,8 @@ function buildFlaggedItemsFromPatientData(data) {
   });
 
   // Respiratory diagnoses checkbox grid (ps-4 Q22 — asthma, COPD, TB etc.)
-  document.querySelectorAll('#ps-4 .checkbox-item.checked').forEach(function(item) {
+  // Item 82(c): the explicit 'None of these' tick is never a condition
+  document.querySelectorAll('#ps-4 .checkbox-item.checked:not(.none-item)').forEach(function(item) {
     const cond = item.querySelector('.checkbox-label')?.textContent?.trim() || '';
     if (!cond) return;
     const detail = item.closest('.q-card')?.querySelector('.detail-field textarea')?.value?.trim() || '';
@@ -5056,7 +5066,8 @@ function buildFlaggedItemsFromPatientData(data) {
     if (text) flags.push({title:'Condition reported: '+text, detail, severity:'medium'});
   });
 
-  const checked = Array.from(document.querySelectorAll('#ps-3 .checkbox-item.checked .checkbox-label')).map(function(el){ return el.textContent.trim(); });
+  // Item 82(c): the explicit 'None of these' tick is not a difficulty
+  const checked = Array.from(document.querySelectorAll('#ps-3 .checkbox-item.checked:not(.none-item) .checkbox-label')).map(function(el){ return el.textContent.trim(); });
   if (checked.length > 0) {
     flags.push({title:'Functional difficulties reported', detail:checked.join(', '), severity:'low'});
   }
@@ -5511,12 +5522,62 @@ function patientNav(dir) {
   const next = patientStep + dir;
   if (next < 0) return;
   if (next >= TOTAL_PATIENT_STEPS) {
+    // Item 82: the questionnaire does not accept incomplete answers — before
+    // Items 76/77 a skipped question silently printed as NO, and a live
+    // submission stored a whole Y/N block as nothing at all
+    if (!validatePatientQuestionnaire()) return;
     savePatientDataToStorage();
     if (window._tokenSubmitMode) { submitTokenQuestionnaire(); return; }
     showScreen('screen-complete');
     return;
   }
   gotoPatientSection(next);
+}
+
+// Item 82: every unanswered question, in document order. Each entry is the
+// element to mark and scroll to.
+function patientQuestionnaireGaps() {
+  const scope = document.getElementById('screen-patient');
+  const gaps = [];
+  // Every Y/N question (the whole q-card is marked)
+  scope.querySelectorAll('.yn-group').forEach(function(g) {
+    if (!g.querySelector('.selected-yes, .selected-no')) gaps.push(g.closest('.q-card') || g);
+  });
+  // Health conditions checklist — every row needs Y or N (Item 75 tri-state)
+  scope.querySelectorAll('#conditions-list .condition-row').forEach(function(row) {
+    if (!row.querySelector('.cy-btn.yes-sel, .cy-btn.no-sel')) gaps.push(row);
+  });
+  // Scored scales — a missing item invalidates the instrument (Item 82b)
+  [['epworth-body', '.radio-dot'], ['k10-body', '.radio-dot'], ['audit-body', '.audit-radio']].forEach(function(p) {
+    const tb = document.getElementById(p[0]);
+    if (!tb) return;
+    tb.querySelectorAll('tr').forEach(function(tr) {
+      if (!tr.querySelector(p[1] + '.selected')) gaps.push(tr);
+    });
+  });
+  // The two checkbox lists — ticked, or explicitly 'None of these' (Item 82c)
+  scope.querySelectorAll('.checkbox-grid').forEach(function(grid) {
+    if (!grid.querySelector('.checkbox-item.checked')) gaps.push(grid.closest('.q-card') || grid);
+  });
+  return gaps;
+}
+
+function validatePatientQuestionnaire() {
+  document.querySelectorAll('#screen-patient .q-missing').forEach(function(el) { el.classList.remove('q-missing'); });
+  const gaps = patientQuestionnaireGaps();
+  if (!gaps.length) return true;
+  gaps.forEach(function(el) { el.classList.add('q-missing'); });
+  // Jump to the step holding the first gap, then bring it into view
+  const section = gaps[0].closest('.form-section');
+  if (section) {
+    const idx = Array.prototype.indexOf.call(patientSections, section);
+    if (idx >= 0 && idx !== patientStep) gotoPatientSection(idx);
+  }
+  setTimeout(function() { gaps[0].scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 60);
+  alert(gaps.length === 1
+    ? '1 question still needs an answer. It is highlighted in red — please answer it, then press Submit again.'
+    : gaps.length + ' questions still need an answer. They are highlighted in red — please answer them, then press Submit again.');
+  return false;
 }
 
 function updatePatientNav() {
@@ -5539,6 +5600,23 @@ function toggleCheck(el) {
   el.classList.toggle('checked');
   const cb = el.querySelector('input[type="checkbox"]');
   if (cb) cb.checked = !cb.checked;
+  // Item 82(c): 'None of these' is mutually exclusive with the list — ticking
+  // it clears every other tick, and ticking any item clears it
+  const grid = el.parentElement;
+  if (grid && el.classList.contains('checked')) {
+    if (el.classList.contains('none-item')) {
+      grid.querySelectorAll('.checkbox-item.checked:not(.none-item)').forEach(function(o) {
+        o.classList.remove('checked');
+        const ocb = o.querySelector('input[type="checkbox"]'); if (ocb) ocb.checked = false;
+      });
+    } else {
+      const none = grid.querySelector('.none-item.checked');
+      if (none) {
+        none.classList.remove('checked');
+        const ncb = none.querySelector('input[type="checkbox"]'); if (ncb) ncb.checked = false;
+      }
+    }
+  }
 }
 
 function selectChip(el, group) {
@@ -9562,10 +9640,14 @@ function buildPDF() {
 
   secHeader('Functional Difficulties Reported');
   const checkedItems=[];
-  document.querySelectorAll('#ps-3 .checkbox-item.checked .checkbox-label').forEach(el=>{
+  document.querySelectorAll('#ps-3 .checkbox-item.checked:not(.none-item) .checkbox-label').forEach(el=>{
     checkedItems.push(el.textContent.trim());
   });
-  if(checkedItems.length===0){
+  // Item 82(c): an explicit 'None of these' is the applicant's own nil
+  const funcNone=!!document.querySelector('#ps-3 .checkbox-item.none-item.checked');
+  if(funcNone&&checkedItems.length===0){
+    fullRow('Functional Difficulties','None — confirmed by applicant');
+  } else if(checkedItems.length===0){
     // Item 78: states what was captured, never attributes a nil the applicant
     // did not give — a blank tick-list is not a denial
     fullRow('Functional Difficulties','No difficulties ticked');
@@ -9615,11 +9697,14 @@ function buildPDF() {
   });
 
   const respDiag=[];
-  document.querySelectorAll('#ps-4 .checkbox-item.checked .checkbox-label').forEach(el=>{
+  document.querySelectorAll('#ps-4 .checkbox-item.checked:not(.none-item) .checkbox-label').forEach(el=>{
     respDiag.push(el.textContent.trim());
   });
+  const respNone=!!document.querySelector('#ps-4 .checkbox-item.none-item.checked');
   y+=4;
-  fullRow('Diagnosed Respiratory Conditions',respDiag.length?respDiag.join(' · '):'No conditions ticked'); // Item 78: never a nil the applicant did not give
+  // Item 82(c): explicit None prints as the applicant's confirmed nil;
+  // Item 78 wording stays for older submissions without the key
+  fullRow('Diagnosed Respiratory Conditions',respDiag.length?respDiag.join(' · '):(respNone?'None — confirmed by applicant':'No conditions ticked'));
   const respDiagDetail=document.querySelector('#ps-4 .detail-field.visible textarea')?.value?.trim();
   if(respDiagDetail) fullRow('Details',respDiagDetail);
 
@@ -9636,40 +9721,45 @@ function buildPDF() {
     tblRow([sleepLabels[i],ans,detail||'—'],sleepW,false,i%2===1);
   });
 
-  // Read scores from live score display elements (most reliable)
+  // Item 82(b): a scored instrument prints a score ONLY when every item was
+  // answered — the item count is read from the rows themselves, so any
+  // incomplete stored scale (older submissions, any path past validation)
+  // prints the answered count and an explicit cannot-be-scored statement
+  // instead of an understated total.
   y+=4;
-  const epwScoreEl = document.getElementById('epworth-score');
-  const epwText = epwScoreEl?.textContent || '';
-  const epwMatch = epwText.match(/^(\d+)\/24/);
-  const epwScore = epwMatch ? parseInt(epwMatch[1]) : 0;
-  const epwDone = !!epwMatch;
+  const scaleAnswered=(bodyId,dotSel)=>{const tb=document.getElementById(bodyId);let a=0;if(tb)tb.querySelectorAll('tr').forEach(tr=>{if(tr.querySelector(dotSel+'.selected'))a++;});return a;};
+  const scaleRow=(label,score,outOf,answered,nItems,interp)=>{
+    if(answered===nItems&&score!==null) twoCol(label,score+'/'+outOf,'Interpretation',interp);
+    else if(answered>0) twoCol(label,answered+' of '+nItems+' items answered','Interpretation','Incomplete — scale cannot be scored');
+    else twoCol(label,'Not completed','Interpretation','Not completed');
+  };
+
+  const epwAnswered = scaleAnswered('epworth-body','.radio-dot');
+  const epwMatch = (document.getElementById('epworth-score')?.textContent || '').match(/^(\d+)\/24/);
+  const epwScore = epwMatch ? parseInt(epwMatch[1]) : null;
   const epwInterp = epwScore >= 16 ? 'Severe daytime sleepiness — clinical review recommended'
     : epwScore >= 12 ? 'Moderate sleepiness — further assessment indicated'
     : epwScore >= 10 ? 'Score 10 or more — possible daytime sleepiness'
     : 'Score within normal range';
-  twoCol('Epworth Sleepiness Score', epwDone ? epwScore+'/24' : 'Not completed', 'Interpretation', epwDone ? epwInterp : 'Not completed');
+  scaleRow('Epworth Sleepiness Score', epwScore, 24, epwAnswered, 8, epwInterp);
 
-  const k10ScoreEl = document.getElementById('k10-score');
-  const k10Text = k10ScoreEl?.textContent || '';
-  const k10Match = k10Text.match(/^(\d+)\/50/);
-  const k10Score = k10Match ? parseInt(k10Match[1]) : 0;
-  const k10Done = !!k10Match;
+  const k10Answered = scaleAnswered('k10-body','.radio-dot');
+  const k10Match = (document.getElementById('k10-score')?.textContent || '').match(/^(\d+)\/50/);
+  const k10Score = k10Match ? parseInt(k10Match[1]) : null;
   const k10Interp = k10Score >= 30 ? 'Severe distress — clinical review recommended'
     : k10Score >= 22 ? 'Moderate distress — further assessment recommended'
     : k10Score >= 16 ? 'Mild distress — monitor'
     : 'Likely well';
-  twoCol('K10 Psychological Distress Score', k10Done ? k10Score+'/50' : 'Not completed', 'Interpretation', k10Done ? k10Interp : 'Not completed');
+  scaleRow('K10 Psychological Distress Score', k10Score, 50, k10Answered, 10, k10Interp);
 
-  const audScoreEl = document.getElementById('audit-score');
-  const audText = audScoreEl?.textContent || '';
-  const audMatch = audText.match(/^(\d+)\/40/);
-  const audScore = audMatch ? parseInt(audMatch[1]) : 0;
-  const audDone = !!audMatch;
+  const audAnswered = scaleAnswered('audit-body','.audit-radio');
+  const audMatch = (document.getElementById('audit-score')?.textContent || '').match(/^(\d+)\/40/);
+  const audScore = audMatch ? parseInt(audMatch[1]) : null;
   const audInterp = audScore >= 20 ? 'Possible dependence — referral recommended'
     : audScore >= 16 ? 'Harmful use — further assessment recommended'
     : audScore >= 8 ? 'Risky or hazardous use — consider GP referral'
     : 'Low risk';
-  twoCol('AUDIT Score', audDone ? audScore+'/40' : 'Not completed', 'Interpretation', audDone ? audInterp : 'Not completed');
+  scaleRow('AUDIT Score', audScore, 40, audAnswered, 10, audInterp);
 
   secHeader('Health Conditions Checklist');
   doc.setFontSize(7.5); doc.setFont('helvetica','italic'); doc.setTextColor(...MID);
@@ -10628,7 +10718,8 @@ function calcEpworthScore() {
       scoreEl.textContent = total + '/24 — ' + cat;
       scoreEl.style.color = total >= 10 ? 'var(--error)' : 'var(--success)';
     } else {
-      scoreEl.textContent = total + '/24 (' + answered + '/8 answered)';
+      // Item 82(b): a partial total must never read as a score
+      scoreEl.textContent = answered === 0 ? 'Not completed' : answered + ' of 8 answered — incomplete, not scored';
       scoreEl.style.color = 'var(--mid)';
     }
   }
@@ -10650,7 +10741,8 @@ function calcK10Score() {
       scoreEl.textContent = total + '/50 — ' + cat;
       scoreEl.style.color = total >= 20 ? 'var(--error)' : 'var(--success)';
     } else {
-      scoreEl.textContent = total + '/50 (' + answered + '/10 answered)';
+      // Item 82(b): a partial K10 total UNDERSTATES distress — never a score
+      scoreEl.textContent = answered === 0 ? 'Not completed' : answered + ' of 10 answered — incomplete, not scored';
       scoreEl.style.color = 'var(--mid)';
     }
   }
@@ -10705,7 +10797,8 @@ function calcAUDITScore() {
       scoreEl.textContent = total + '/40 — ' + cat;
       scoreEl.style.color = total >= 8 ? 'var(--error)' : 'var(--success)';
     } else {
-      scoreEl.textContent = total + '/40 (' + answered + '/10 answered)';
+      // Item 82(b): a partial total must never read as a score
+      scoreEl.textContent = answered === 0 ? 'Not completed' : answered + ' of 10 answered — incomplete, not scored';
       scoreEl.style.color = 'var(--mid)';
     }
   }
@@ -15884,6 +15977,21 @@ document.addEventListener('DOMContentLoaded', () => {
     section._prefillTimer = setTimeout(function() {
       preFillSection(section.id);
     }, 400);
+  });
+
+  // Item 82: answering a highlighted question clears its outstanding mark
+  document.getElementById('screen-patient')?.addEventListener('click', function(e) {
+    var marked = e.target.closest && e.target.closest('.q-missing');
+    if (marked) setTimeout(function() {
+      // only clear once actually answered (the tap may have been elsewhere in the card)
+      var still = marked.matches('tr')
+        ? !marked.querySelector('.radio-dot.selected, .audit-radio.selected')
+        : marked.querySelector('.yn-group') ? !marked.querySelector('.selected-yes, .selected-no')
+        : marked.classList.contains('condition-row') ? !marked.querySelector('.yes-sel, .no-sel')
+        : marked.querySelector('.checkbox-grid') ? !marked.querySelector('.checkbox-item.checked')
+        : false;
+      if (!still) marked.classList.remove('q-missing');
+    }, 0);
   });
 
   // Item 80: typed FCE/PEFA narratives carry the user-edited marker too, so a
