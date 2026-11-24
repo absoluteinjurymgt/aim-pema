@@ -3609,6 +3609,76 @@ function applyNumericInputModes() {
   });
 }
 
+// Item 83: loading an assessment starts from a KNOWN-CLEAN state. The PEMA's
+// patient and clinician screens are static DOM (FCE and PEFA regenerate their
+// screens from the booking config on every load, so they reset by
+// construction) — and every restore path applies stored keys without clearing
+// controls the incoming assessment never answered, so opening assessment B
+// after A in one session carried A's selections into B. Every control is
+// reset BEFORE any stored data is applied: a value can only appear if it
+// belongs to the assessment being loaded.
+function resetAssessmentState() {
+  ['screen-patient', 'screen-clinician'].forEach(function(sid) {
+    var scope = document.getElementById(sid);
+    if (!scope) return;
+    scope.querySelectorAll('input, select, textarea').forEach(function(el) {
+      if (el.type === 'checkbox' || el.type === 'radio') { el.checked = false; return; }
+      if (el.tagName === 'SELECT') { el.selectedIndex = 0; return; }
+      el.value = '';
+      el.classList.remove('user-edited', 'prefilled');
+    });
+    scope.querySelectorAll('.yn-btn').forEach(function(b) { b.classList.remove('selected-yes', 'selected-no'); });
+    scope.querySelectorAll('.cy-btn').forEach(function(b) { b.className = 'cy-btn'; });
+    scope.querySelectorAll('.option-chip').forEach(function(c) { c.classList.remove('selected-normal', 'selected-pain', 'selected-limited'); });
+    scope.querySelectorAll('.checkbox-item.checked').forEach(function(i) { i.classList.remove('checked'); });
+    scope.querySelectorAll('.radio-dot.selected, .audit-radio.selected').forEach(function(d) { d.classList.remove('selected'); });
+    scope.querySelectorAll('.detail-field.visible').forEach(function(d) { d.classList.remove('visible'); });
+    scope.querySelectorAll('.q-missing').forEach(function(el) { el.classList.remove('q-missing'); });
+  });
+  // Widget repaints read the now-empty hidden inputs
+  document.querySelectorAll('.ish-plate').forEach(function(p) { if (typeof applyIshState === 'function') applyIshState(p, null); });
+  if (typeof paintAllFlagReviews === 'function') paintAllFlagReviews();
+  if (typeof syncIdVerification === 'function') syncIdVerification();
+  if (typeof otoSyncButtons === 'function') otoSyncButtons();
+  if (typeof syncSpiroUsable === 'function') syncSpiroUsable();
+  if (typeof syncDasChips === 'function') syncDasChips();
+  if (typeof syncUrineNotCollected === 'function') syncUrineNotCollected();
+  // Outcome selection and suggestion belong to the previous assessment
+  document.querySelectorAll('#clin-outcome .outcome-option').forEach(function(o) {
+    o.classList.remove('selected', 'suggested');
+    if (typeof clearOutcomeColour === 'function') clearOutcomeColour(o);
+  });
+  var sugBanner = document.getElementById('outcome-suggestion-banner');
+  if (sugBanner) sugBanner.remove();
+  // Signatures
+  ['sig-consent', 'sig-assessor'].forEach(function(id) {
+    var c = document.getElementById(id);
+    if (c && c.getContext) { try { c.getContext('2d').clearRect(0, 0, c.width, c.height); } catch(e) {} }
+    var ph = document.getElementById(id + '-ph');
+    if (ph) ph.style.display = 'flex';
+  });
+  // Manual flag cards are the previous assessment's clinician findings
+  document.querySelectorAll('#flagged-items .manual-flag').forEach(function(c) { c.remove(); });
+  // Conditional detail rows back to hidden
+  document.querySelectorAll('#screen-clinician [id^="pain-row-"], #screen-clinician .postural-pain-detail, #screen-clinician [id^="unable-"], #screen-patient [id$="-detail"][style*="display"]').forEach(function(d) {
+    if (d.id && d.id.indexOf('cond-') === 0) d.style.display = 'none';
+    else if (!d.classList.contains('detail-field')) d.style.display = 'none';
+  });
+  // In-memory assessment state
+  window._findingFlags = [];
+  window._patientDOB = null;
+  window._bpElevated = false; window._bpOverridden = false; window._hasBetaBlocker = false;
+  // Re-apply the boot-time prefills the clears removed: signature dates and
+  // the assessor's cached profile (clinic fields are placeholder-only)
+  var today = (typeof clinicToday === 'function') ? clinicToday() : '';
+  if (today) document.querySelectorAll('#screen-patient input[type="date"], #screen-clinician input[type="date"]').forEach(function(el) { if (!el.value) el.value = today; });
+  if (typeof prefillPemaAssessor === 'function') prefillPemaAssessor();
+  // Derived displays recompute from the now-empty fields
+  ['calcBMI', 'calcMaxHR', 'calcEpworthScore', 'calcK10Score', 'calcAUDITScore', 'calcHearingLossAMA', 'drawAudiogram', 'updateIshiharaScore'].forEach(function(fn) {
+    try { if (typeof window[fn] === 'function') window[fn](); } catch(e) {}
+  });
+}
+
 // Fills static markup from CLINIC. data-clinic="name" sets an element's text;
 // data-clinic-ph="name" sets an input's placeholder. Prose keeps the clinic
 // name as an inline <span data-clinic="name"></span> so the copy stays readable.
@@ -11768,6 +11838,9 @@ async function startPEMA(btnEl, token) {
     }
     var data = rows[0].response_data;
     window._currentToken = token;
+    // Item 83: known-clean state BEFORE anything of this assessment is applied
+    // — a second assessment in the same session must carry nothing of the first
+    resetAssessmentState();
     localStorage.setItem('aim_patient_data', JSON.stringify(data));
 
     var apptRows = null;
