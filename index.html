@@ -7566,10 +7566,15 @@ function preFillAudiometry() {
     }
   }
   // Item 87 (supersedes Item 39's wording; the screened frequencies stay):
-  // ONE collated sentence naming every dip, grouped by ear, with ONE
-  // recommendation driven by the deepest dip — 26–40 dB monitor, above 40 dB
-  // formal audiological assessment (the Mild/Moderate boundary of the same
-  // AS/NZS band table). Measured values only: the bands are defined for the
+  // ONE collated sentence naming every dip, grouped by ear. Item 89: the
+  // recommendation follows the CLASSIFICATION, never the dip depth —
+  // occupational audiometry is a surveillance programme, and the response to
+  // a notch at baseline is to record and monitor it, not to refer. A normal
+  // PTA with dips recommends monitoring regardless of depth (the depth is
+  // conveyed by the measured value); a Mild-or-worse PTA keeps its own
+  // classification wording and recommendation, with the dips named
+  // additionally. Escalation beyond monitoring is a clinical decision, not a
+  // generated one. Measured values only: the bands are defined for the
   // four-frequency average, so no single frequency is ever given a band name.
   if (anyDips) {
     var fmtDip = function(d) { return d.f + ' Hz (' + d.v + ' dB)'; };
@@ -7578,10 +7583,10 @@ function preFillAudiometry() {
     if (dipsL.length) earParts.push('at ' + joinNat(dipsL.map(fmtDip)) + ' in the left ear');
     if (dipsR.length) earParts.push('at ' + joinNat(dipsR.map(fmtDip)) + ' in the right ear');
     var allDips = dipsL.concat(dipsR);
-    var deepest = Math.max.apply(null, allDips.map(function(d) { return d.v; }));
-    var recText = deepest > 40 ? 'Formal audiological assessment is recommended.' : 'This pattern warrants monitoring on subsequent audiometric review.';
+    var anyAbnormalCls = (L && L.cls !== 'Normal') || (R && R.cls !== 'Normal');
+    var recText = anyAbnormalCls ? '' : ' This pattern warrants monitoring on subsequent audiometric review.';
     var refsNormal = (!dipsL.length || (L.ref !== null && L.ref <= 25)) && (!dipsR.length || (R.ref !== null && R.ref <= 25));
-    var tail = refsNormal ? ', with thresholds at adjacent frequencies within normal limits. ' : ', relative to the 1000–2000 Hz reference thresholds. ';
+    var tail = refsNormal ? ', with thresholds at adjacent frequencies within normal limits.' : ', relative to the 1000–2000 Hz reference thresholds.';
     var dipText = (allDips.length === 1 ? 'A threshold dip is noted ' : 'Threshold dips are noted ') + earParts.join(', and ') + tail + recText;
     text = text ? text + ' ' + dipText : dipText;
     // ONE consolidated flag: presence (not count) drives the outcome
@@ -7589,7 +7594,7 @@ function preFillAudiometry() {
     var flagBits = [];
     if (dipsL.length) flagBits.push('L ' + dipsL.map(fmtDip).join(', '));
     if (dipsR.length) flagBits.push('R ' + dipsR.map(fmtDip).join(', '));
-    window._findingFlags.push({ section: 'Audiometry', finding: 'Threshold dips — ' + flagBits.join('; '), rec: deepest > 40 ? 'Formal audiological assessment recommended.' : 'Monitor on subsequent audiometric review.' });
+    window._findingFlags.push({ section: 'Audiometry', finding: 'Threshold dips — ' + flagBits.join('; '), rec: 'Monitor on subsequent audiometric review.' });
   }
 
   // Otoscopy sits alongside the threshold result, carrying its own validity
@@ -8335,16 +8340,17 @@ function generateAbnormalFindings() {
     if (clsL && clsL.cls !== 'Normal') add('AUDIOMETRY', clsL.cls + ' left ear hearing loss identified — baseline documented', clsL.cls === 'Mild' ? 'medium' : 'high');
     if (clsR && clsR.cls !== 'Normal') add('AUDIOMETRY', clsR.cls + ' right ear hearing loss identified — baseline documented', clsR.cls === 'Mild' ? 'medium' : 'high');
   }
-  // Item 87(f): threshold dips collated to ONE line, the recommendation tier
-  // set by the deepest dip (26–40 dB monitor; above 40 dB formal assessment)
+  // Item 87(f)/89: threshold dips collated to ONE line. The recommendation is
+  // always monitoring — a baseline screen supports recording and surveillance,
+  // never a generated referral; a Mild-or-worse PTA carries its own
+  // classification line above with its own severity.
   var kfDipL = (clsL && clsL.dips) || [], kfDipR = (clsR && clsR.dips) || [];
   if (kfDipL.length || kfDipR.length) {
     var fmtKf = function(d) { return d.f + ' Hz (' + d.v + ' dB)'; };
     var kfBits = [];
     if (kfDipL.length) kfBits.push('L ' + kfDipL.map(fmtKf).join(', '));
     if (kfDipR.length) kfBits.push('R ' + kfDipR.map(fmtKf).join(', '));
-    var kfDeepest = Math.max.apply(null, kfDipL.concat(kfDipR).map(function(d) { return d.v; }));
-    add('AUDIOMETRY', 'Threshold dips — ' + kfBits.join('; ') + '. ' + (kfDeepest > 40 ? 'Formal audiological assessment recommended.' : 'Monitor on subsequent audiometric review.'), kfDeepest > 40 ? 'high' : 'medium');
+    add('AUDIOMETRY', 'Threshold dips — ' + kfBits.join('; ') + '. Monitor on subsequent audiometric review.', 'medium');
   }
 
   // OTOSCOPY — notable findings, with the validity caveat where it applies
