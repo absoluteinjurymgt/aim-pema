@@ -5947,17 +5947,20 @@ function calcHearingLossAMA() {
     });
     if (elClass) { elClass.textContent = cls + ' (PTA ' + Math.round(pta) + ' dB)'; elClass.style.color = color; }
     if (elDetail) elDetail.textContent = elevated.length ? 'Elevated: ' + elevated.join(', ') : '';
-    // Noise-notch screen (Item 39): flag 3000/4000/6000 Hz sitting 20 dB or
-    // more below the better (lower) of 1000 and 2000 Hz — the classic
-    // noise-induced pattern that four-frequency averaging conceals. The
-    // classification itself is unchanged; this is an additive observation.
+    // Noise-notch screen (Item 39, tightened by Item 87): flag 3000/4000/6000
+    // Hz sitting 20 dB or more below the better (lower) of 1000 and 2000 Hz
+    // AND above 25 dB absolute — 25 dB is the Normal/Mild boundary of the
+    // AS/NZS 1269.4 bands the overall classification already uses, so the dip
+    // test and the classification apply the same definition of abnormal. A
+    // perfectly normal 25 dB threshold never flags, however good the
+    // low-frequency reference. The classification itself is unchanged.
     var refCandidates = [parseFloat(inputs[1] ? inputs[1].value : ''), parseFloat(inputs[3] ? inputs[3].value : '')].filter(function(v) { return !isNaN(v); });
     var ref = refCandidates.length ? Math.min.apply(null, refCandidates) : null;
     var dips = [];
     if (ref !== null) {
       [[4, 3000], [5, 4000], [6, 6000]].forEach(function(p) {
         var v = parseFloat(inputs[p[0]] ? inputs[p[0]].value : '');
-        if (!isNaN(v) && v - ref >= 20) dips.push({ f: p[1], v: v });
+        if (!isNaN(v) && v - ref >= 20 && v > 25) dips.push({ f: p[1], v: v });
       });
     }
     return { cls: cls, pta: Math.round(pta), elevated: elevated, dips: dips, ref: ref };
@@ -7531,10 +7534,15 @@ function preFillAudiometry() {
   window._findingFlags = window._findingFlags || [];
   var text = '';
   var ppeNote = 'Pre-existing hearing change noted and baseline recorded. Hearing PPE required in all noise-exposed environments. Audiometric surveillance at 12 months recommended. Screening classification only — formal % loss assessment (NAL Report 118) requires audiologist evaluation.';
+  // Item 87(e): the unqualified clean-bill sentence is suppressed whenever a
+  // dip is flagged — it would be contradicted by the dip sentence that follows.
+  // The PTA statement with its values stays.
+  var dipsL = (L && L.dips) || [], dipsR = (R && R.dips) || [];
+  var anyDips = dipsL.length + dipsR.length > 0;
 
   if (L && R) {
     if (L.cls === 'Normal' && R.cls === 'Normal') {
-      text = 'Pure tone audiometry within normal limits bilaterally (L: ' + L.pta + ' dB PTA, R: ' + R.pta + ' dB PTA). No significant hearing loss identified at screening. Baseline recorded.';
+      text = 'Pure tone audiometry within normal limits bilaterally (L: ' + L.pta + ' dB PTA, R: ' + R.pta + ' dB PTA).' + (anyDips ? '' : ' No significant hearing loss identified at screening.') + ' Baseline recorded.';
     } else {
       var parts = [];
       if (L.cls !== 'Normal') {
@@ -7557,21 +7565,32 @@ function preFillAudiometry() {
       window._findingFlags.push({section:'Audiometry', finding:side.charAt(0).toUpperCase()+side.slice(1)+' ear: '+lr.cls+' hearing loss (PTA '+lr.pta+' dB)', rec:'Hearing PPE required. Audiometric surveillance recommended.'});
     }
   }
-  // Item 39: a 3–6 kHz threshold dip is reported even when the averaged
-  // classification is Normal — the classification sentence above stays
-  // exactly as it is and runs first; this observation is additive.
-  function dipSentences(ear, side) {
-    if (!ear || !ear.dips || !ear.dips.length) return '';
-    return ear.dips.map(function(d) {
-      window._findingFlags.push({ section: 'Audiometry', finding: side.charAt(0).toUpperCase() + side.slice(1) + ' ear: threshold dip at ' + d.f + ' Hz (' + d.v + ' dB)', rec: 'Monitor on subsequent audiometric review.' });
-      var adjacent = ear.ref !== null && ear.ref <= 25
-        ? 'with thresholds at adjacent frequencies within normal limits'
-        : 'relative to the 1000–2000 Hz reference (' + ear.ref + ' dB)';
-      return 'A threshold dip is noted at ' + d.f + ' Hz in the ' + side + ' ear (' + d.v + ' dB), ' + adjacent + '. This pattern warrants monitoring on subsequent audiometric review.';
-    }).join(' ');
+  // Item 87 (supersedes Item 39's wording; the screened frequencies stay):
+  // ONE collated sentence naming every dip, grouped by ear, with ONE
+  // recommendation driven by the deepest dip — 26–40 dB monitor, above 40 dB
+  // formal audiological assessment (the Mild/Moderate boundary of the same
+  // AS/NZS band table). Measured values only: the bands are defined for the
+  // four-frequency average, so no single frequency is ever given a band name.
+  if (anyDips) {
+    var fmtDip = function(d) { return d.f + ' Hz (' + d.v + ' dB)'; };
+    var joinNat = function(arr) { return arr.length === 1 ? arr[0] : arr.slice(0, -1).join(', ') + ' and ' + arr[arr.length - 1]; };
+    var earParts = [];
+    if (dipsL.length) earParts.push('at ' + joinNat(dipsL.map(fmtDip)) + ' in the left ear');
+    if (dipsR.length) earParts.push('at ' + joinNat(dipsR.map(fmtDip)) + ' in the right ear');
+    var allDips = dipsL.concat(dipsR);
+    var deepest = Math.max.apply(null, allDips.map(function(d) { return d.v; }));
+    var recText = deepest > 40 ? 'Formal audiological assessment is recommended.' : 'This pattern warrants monitoring on subsequent audiometric review.';
+    var refsNormal = (!dipsL.length || (L.ref !== null && L.ref <= 25)) && (!dipsR.length || (R.ref !== null && R.ref <= 25));
+    var tail = refsNormal ? ', with thresholds at adjacent frequencies within normal limits. ' : ', relative to the 1000–2000 Hz reference thresholds. ';
+    var dipText = (allDips.length === 1 ? 'A threshold dip is noted ' : 'Threshold dips are noted ') + earParts.join(', and ') + tail + recText;
+    text = text ? text + ' ' + dipText : dipText;
+    // ONE consolidated flag: presence (not count) drives the outcome
+    // suggestion and the recommendations prefill
+    var flagBits = [];
+    if (dipsL.length) flagBits.push('L ' + dipsL.map(fmtDip).join(', '));
+    if (dipsR.length) flagBits.push('R ' + dipsR.map(fmtDip).join(', '));
+    window._findingFlags.push({ section: 'Audiometry', finding: 'Threshold dips — ' + flagBits.join('; '), rec: deepest > 40 ? 'Formal audiological assessment recommended.' : 'Monitor on subsequent audiometric review.' });
   }
-  var dipText = [dipSentences(L, 'left'), dipSentences(R, 'right')].filter(Boolean).join(' ');
-  if (dipText) text = text ? text + ' ' + dipText : dipText;
 
   // Otoscopy sits alongside the threshold result, carrying its own validity
   // caveat. Its key-findings entries are raised in generateAbnormalFindings(),
@@ -8315,6 +8334,17 @@ function generateAbnormalFindings() {
   } else {
     if (clsL && clsL.cls !== 'Normal') add('AUDIOMETRY', clsL.cls + ' left ear hearing loss identified — baseline documented', clsL.cls === 'Mild' ? 'medium' : 'high');
     if (clsR && clsR.cls !== 'Normal') add('AUDIOMETRY', clsR.cls + ' right ear hearing loss identified — baseline documented', clsR.cls === 'Mild' ? 'medium' : 'high');
+  }
+  // Item 87(f): threshold dips collated to ONE line, the recommendation tier
+  // set by the deepest dip (26–40 dB monitor; above 40 dB formal assessment)
+  var kfDipL = (clsL && clsL.dips) || [], kfDipR = (clsR && clsR.dips) || [];
+  if (kfDipL.length || kfDipR.length) {
+    var fmtKf = function(d) { return d.f + ' Hz (' + d.v + ' dB)'; };
+    var kfBits = [];
+    if (kfDipL.length) kfBits.push('L ' + kfDipL.map(fmtKf).join(', '));
+    if (kfDipR.length) kfBits.push('R ' + kfDipR.map(fmtKf).join(', '));
+    var kfDeepest = Math.max.apply(null, kfDipL.concat(kfDipR).map(function(d) { return d.v; }));
+    add('AUDIOMETRY', 'Threshold dips — ' + kfBits.join('; ') + '. ' + (kfDeepest > 40 ? 'Formal audiological assessment recommended.' : 'Monitor on subsequent audiometric review.'), kfDeepest > 40 ? 'high' : 'medium');
   }
 
   // OTOSCOPY — notable findings, with the validity caveat where it applies
