@@ -1469,9 +1469,6 @@
   /* Item 82: outstanding questions at a blocked submission attempt */
   .q-missing { outline: 2px solid var(--error); outline-offset: 2px; border-radius: 8px; }
   tr.q-missing { outline: none; background: #fdf0ee !important; box-shadow: inset 3px 0 0 var(--error); }
-  /* Item 84: 'Unsure' — a genuine third state on four AIM questions only */
-  .yn-btn.selected-unsure { background: #fef6e8; border-color: var(--warning); color: var(--warning); }
-  .cy-btn.unsure-sel { background: #fef6e8; border-color: var(--warning); color: var(--warning); }
 
 
   .logo-upload-area {
@@ -2106,8 +2103,6 @@
       <div class="yn-group">
         <button class="yn-btn" onclick="toggleYN(this,'hazardous','yes')">Yes</button>
         <button class="yn-btn" onclick="toggleYN(this,'hazardous','no')">No</button>
-        <!-- Item 84: an applicant may genuinely not know what they were exposed to -->
-        <button class="yn-btn" onclick="toggleYN(this,'hazardous','unsure')">Unsure</button>
       </div>
       <div class="detail-field" id="hazardous-detail">
         <label>Please provide details including approximate dates of exposure</label>
@@ -3632,7 +3627,7 @@ function resetAssessmentState() {
       el.value = '';
       el.classList.remove('user-edited', 'prefilled');
     });
-    scope.querySelectorAll('.yn-btn').forEach(function(b) { b.classList.remove('selected-yes', 'selected-no', 'selected-unsure'); });
+    scope.querySelectorAll('.yn-btn').forEach(function(b) { b.classList.remove('selected-yes', 'selected-no'); });
     scope.querySelectorAll('.cy-btn').forEach(function(b) { b.className = 'cy-btn'; });
     scope.querySelectorAll('.option-chip').forEach(function(c) { c.classList.remove('selected-normal', 'selected-pain', 'selected-limited'); });
     scope.querySelectorAll('.checkbox-item.checked').forEach(function(i) { i.classList.remove('checked'); });
@@ -4583,9 +4578,9 @@ function savePatientDataToStorage() {
   document.querySelectorAll('#screen-patient input, #screen-patient select, #screen-patient textarea').forEach(el => {
     if (el.id) data[el.id] = el.value;
   });
-  document.querySelectorAll('#screen-patient .yn-btn.selected-yes, #screen-patient .yn-btn.selected-no, #screen-patient .yn-btn.selected-unsure').forEach(btn => {
+  document.querySelectorAll('#screen-patient .yn-btn.selected-yes, #screen-patient .yn-btn.selected-no').forEach(btn => {
     const group = btn.getAttribute('onclick')?.match(/toggleYN\(this,'([^']+)'/)?.[1];
-    if (group) data['yn_' + group] = btn.classList.contains('selected-yes') ? 'yes' : btn.classList.contains('selected-no') ? 'no' : 'unsure';
+    if (group) data['yn_' + group] = btn.classList.contains('selected-yes') ? 'yes' : 'no';
   });
   document.querySelectorAll('#screen-patient .checkbox-item.checked .checkbox-label').forEach(el => {
     data['checked_' + el.textContent.trim()] = true;
@@ -4600,14 +4595,12 @@ function savePatientDataToStorage() {
   });
   // Item 75: BOTH condition answers persist — N was previously never stored
   // (yes-only by construction), so an all-N checklist printed as unanswered.
-  // Absent keys remain the only 'not answered' state. Item 84 adds the
-  // explicit Unsure third state on the two UNSURE_CONDITIONS rows.
-  document.querySelectorAll('.cy-btn.yes-sel, .cy-btn.no-sel, .cy-btn.unsure-sel').forEach(btn => {
+  // Absent keys remain the only 'not answered' state.
+  document.querySelectorAll('.cy-btn.yes-sel, .cy-btn.no-sel').forEach(btn => {
     const row = btn.closest('.condition-row');
     const text = row?.querySelector('.condition-text')?.textContent?.trim();
     if (!text) return;
     if (btn.classList.contains('yes-sel')) data['cond_yes_' + text] = true;
-    else if (btn.classList.contains('unsure-sel')) data['cond_unsure_' + text] = true;
     else data['cond_no_' + text] = true;
   });
   localStorage.setItem('aim_patient_data', JSON.stringify(data));
@@ -4656,14 +4649,11 @@ function restorePatientSession(data) {
       var oc = btn.getAttribute('onclick') || '';
       if (oc.indexOf("'" + group + "'") === -1) return;
       if (answer === 'yes') {
-        btn.classList.remove('selected-no', 'selected-unsure');
+        btn.classList.remove('selected-no');
         btn.classList.toggle('selected-yes', btn.textContent.trim().toLowerCase() === 'yes');
       } else if (answer === 'no') {
-        btn.classList.remove('selected-yes', 'selected-unsure');
+        btn.classList.remove('selected-yes');
         btn.classList.toggle('selected-no', btn.textContent.trim().toLowerCase() === 'no');
-      } else if (answer === 'unsure') { // Item 84
-        btn.classList.remove('selected-yes', 'selected-no');
-        btn.classList.toggle('selected-unsure', btn.textContent.trim().toLowerCase() === 'unsure');
       }
     });
   });
@@ -4676,17 +4666,16 @@ function restorePatientSession(data) {
     });
   });
   Object.keys(data).forEach(function(key) {
-    // Item 75: explicit N restores too — absent keys stay unanswered.
-    // Item 84: explicit Unsure restores to the third button.
-    var isYes = key.startsWith('cond_yes_'), isNo = key.startsWith('cond_no_'), isUns = key.startsWith('cond_unsure_');
-    if (!isYes && !isNo && !isUns) return;
-    var text = key.replace(isYes ? 'cond_yes_' : isNo ? 'cond_no_' : 'cond_unsure_', '');
+    // Item 75: explicit N restores too — absent keys stay unanswered
+    var isYes = key.startsWith('cond_yes_'), isNo = key.startsWith('cond_no_');
+    if (!isYes && !isNo) return;
+    var text = key.replace(isYes ? 'cond_yes_' : 'cond_no_', '');
     document.querySelectorAll('.condition-row').forEach(function(row) {
       var ct = row.querySelector('.condition-text');
       if (ct && ct.textContent.trim() === text) {
         var btns = row.querySelectorAll('.cy-btn');
-        var btn = isYes ? btns[0] : isNo ? btns[1] : btns[2];
-        if (btn) btn.classList.add(isYes ? 'yes-sel' : isNo ? 'no-sel' : 'unsure-sel');
+        var btn = isYes ? btns[0] : btns[1];
+        if (btn) btn.classList.add(isYes ? 'yes-sel' : 'no-sel');
       }
     });
   });
@@ -4984,15 +4973,12 @@ function buildFlaggedItemsFromPatientData(data) {
   // Preserve clinical notes already entered — keyed by card title, not index
   const savedNotes = {};
   const savedRevs = {}; // Item 81: review dispositions survive the rebuild too
-  const savedRes = {};  // Item 84: assessor-recorded answers survive it too (by stable id)
   container.querySelectorAll('.clin-card:not(.manual-flag)').forEach(function(card) {
     const t = (card.querySelector('.clin-card-header h3')?.textContent || '').replace('⚑ ', '').trim();
     const n = card.querySelector('.smart-textarea')?.value || '';
     if (t && n.trim()) savedNotes[t] = n;
     const rv = (card.querySelector('.flag-rev') || {}).value || '';
     if (t && rv) savedRevs[t] = rv;
-    const ur = card.querySelector('.unsure-res');
-    if (ur && ur.value) savedRes[ur.id] = ur.value;
   });
   // Preserve manual flag cards — innerHTML rebuild would destroy them
   const manualCards = Array.from(container.querySelectorAll('.manual-flag'));
@@ -5150,20 +5136,6 @@ function buildFlaggedItemsFromPatientData(data) {
     if (text) flags.push({title:'Condition reported: '+text, detail, severity:'medium'});
   });
 
-  // Item 84: Unsure answers surface for in-room resolution — the same
-  // treatment as a flagged response, with the assessor's recorded answer
-  // stored apart from the applicant's own response (which stays 'unsure')
-  const UNSURE_FLAG_DETAIL = 'The applicant could not answer yes or no. Resolve with the applicant and record the answer below.';
-  document.querySelectorAll('#screen-patient .yn-btn.selected-unsure').forEach(function(btn) {
-    const grp = (btn.getAttribute('onclick') || '').match(/toggleYN\(this,'([^']+)'/)?.[1] || '';
-    const label = btn.closest('.q-card')?.querySelector('.q-label')?.textContent?.replace(/^\d+\s*/, '').trim() || grp;
-    if (grp) flags.push({title: 'Unsure — ' + label, detail: UNSURE_FLAG_DETAIL, severity: 'medium', unsureKey: grp});
-  });
-  document.querySelectorAll('#conditions-list .cy-btn.unsure-sel').forEach(function(btn) {
-    const text = btn.closest('.condition-row')?.querySelector('.condition-text')?.textContent?.trim() || '';
-    if (text) flags.push({title: 'Unsure — ' + text, detail: UNSURE_FLAG_DETAIL, severity: 'medium', unsureKey: text});
-  });
-
   // Item 82(c): the explicit 'None of these' tick is not a difficulty
   const checked = Array.from(document.querySelectorAll('#ps-3 .checkbox-item.checked:not(.none-item) .checkbox-label')).map(function(el){ return el.textContent.trim(); });
   if (checked.length > 0) {
@@ -5229,15 +5201,6 @@ function buildFlaggedItemsFromPatientData(data) {
       '<div class="clin-card-body" style="background:'+bg+'">' +
         (flag.medFlag ? '<div style="font-size:11px;font-weight:700;color:'+col+';text-transform:uppercase;letter-spacing:0.04em;margin-bottom:8px">Disclosed: ' + flag.detail.replace('Disclosed: ','') + '</div>' : '') +
         medBody +
-        // Item 84: the assessor records the answer the applicant could not
-        // give — attributed to the assessment, never to the applicant
-        (flag.unsureKey ?
-          '<div class="unsure-res-wrap" style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap">' +
-            '<span style="font-size:11px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.04em">Answer recorded at assessment</span>' +
-            '<input type="hidden" class="unsure-res" id="' + unsureResId(flag.unsureKey) + '">' +
-            '<button type="button" class="unsure-res-btn" data-res="no" onclick="setUnsureRes(this,\'no\')" style="border:1.5px solid var(--border);background:white;color:var(--charcoal);border-radius:16px;padding:7px 14px;font-size:12px;cursor:pointer;font-family:inherit;min-height:38px">No — confirmed with applicant</button>' +
-            '<button type="button" class="unsure-res-btn" data-res="yes" onclick="setUnsureRes(this,\'yes\')" style="border:1.5px solid var(--border);background:white;color:var(--charcoal);border-radius:16px;padding:7px 14px;font-size:12px;cursor:pointer;font-family:inherit;min-height:38px">Yes — confirmed with applicant</button>' +
-          '</div>' : '') +
         // Item 81(a): tri-state review disposition — separate from the notes
         // and the prompt chips, so setting it never alters recorded text
         '<div class="flag-rev-wrap" style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap">' +
@@ -5269,8 +5232,6 @@ function buildFlaggedItemsFromPatientData(data) {
       const rv = card.querySelector('.flag-rev');
       if (rv) rv.value = savedRevs[t];
     }
-    const ur = card.querySelector('.unsure-res');
-    if (ur && savedRes[ur.id]) ur.value = savedRes[ur.id];
   });
   paintAllFlagReviews();
   manualCards.forEach(function(c) { container.appendChild(c); });
@@ -5312,30 +5273,6 @@ function paintFlagReview(wrap) {
 }
 function paintAllFlagReviews() {
   document.querySelectorAll('#flagged-items .flag-rev-wrap').forEach(paintFlagReview);
-  document.querySelectorAll('#flagged-items .unsure-res-wrap').forEach(paintUnsureRes);
-}
-// Item 84: an Unsure answer is resolved in the room. The resolution is the
-// ASSESSOR'S recorded answer — stored separately from the applicant's
-// response (which stays 'unsure'), in a stable id so autosave carries it.
-function unsureResId(key) {
-  return 'unsure-res-' + String(key || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 80);
-}
-function setUnsureRes(btn, val) {
-  var wrap = btn.closest('.unsure-res-wrap');
-  var hidden = wrap.querySelector('.unsure-res');
-  hidden.value = hidden.value === val ? '' : val;
-  paintUnsureRes(wrap);
-  saveClinicianDataToStorage();
-}
-function paintUnsureRes(wrap) {
-  var v = (wrap.querySelector('.unsure-res') || {}).value || '';
-  wrap.querySelectorAll('.unsure-res-btn').forEach(function(b) {
-    var on = b.getAttribute('data-res') === v && v !== '';
-    b.style.background = on ? 'var(--olive)' : 'white';
-    b.style.color = on ? 'white' : 'var(--charcoal)';
-    b.style.borderColor = on ? 'var(--olive)' : 'var(--border)';
-    b.style.fontWeight = on ? '700' : '500';
-  });
 }
 
 function createManualFlagCard(saved) {
@@ -5556,7 +5493,7 @@ function loadPatientDataIntoClinician() {
         return m && m[1] === group;
       });
       if (!btns.length) return;
-      btns.forEach(function(b) { b.classList.remove('selected-yes', 'selected-no', 'selected-unsure'); });
+      btns.forEach(function(b) { b.classList.remove('selected-yes', 'selected-no'); });
       if (val === 'yes') {
         const yesBtn = btns.find(function(b) { return b.textContent.trim().toLowerCase() === 'yes'; }) || btns[0];
         yesBtn.classList.add('selected-yes');
@@ -5565,9 +5502,6 @@ function loadPatientDataIntoClinician() {
       } else if (val === 'no') {
         const noBtn = btns.find(function(b) { return b.textContent.trim().toLowerCase() === 'no'; }) || btns[btns.length - 1];
         noBtn.classList.add('selected-no');
-      } else if (val === 'unsure') { // Item 84
-        const unsBtn = btns.find(function(b) { return b.textContent.trim().toLowerCase() === 'unsure'; });
-        if (unsBtn) unsBtn.classList.add('selected-unsure');
       }
     });
 
@@ -5579,18 +5513,17 @@ function loadPatientDataIntoClinician() {
     });
 
     // 3. Restore condition (cy-btn) states — Item 75: explicit N restores too,
-    // so the report prints NO for a denial and '—' only for unanswered.
-    // Item 84: explicit Unsure restores to the third button.
+    // so the report prints NO for a denial and '—' only for unanswered
     Object.keys(data).forEach(function(key) {
-      const isYes = key.startsWith('cond_yes_'), isNo = key.startsWith('cond_no_'), isUns = key.startsWith('cond_unsure_');
-      if (!isYes && !isNo && !isUns) return;
-      const condText = key.replace(isYes ? 'cond_yes_' : isNo ? 'cond_no_' : 'cond_unsure_', '');
+      const isYes = key.startsWith('cond_yes_'), isNo = key.startsWith('cond_no_');
+      if (!isYes && !isNo) return;
+      const condText = key.replace(isYes ? 'cond_yes_' : 'cond_no_', '');
       document.querySelectorAll('.condition-row').forEach(function(row) {
         const ct = row.querySelector('.condition-text');
         if (ct && ct.textContent.trim() === condText) {
           const btns = row.querySelectorAll('.cy-btn');
-          const btn = isYes ? btns[0] : isNo ? btns[1] : btns[2];
-          if (btn) btn.classList.add(isYes ? 'yes-sel' : isNo ? 'no-sel' : 'unsure-sel');
+          const btn = isYes ? btns[0] : btns[1];
+          if (btn) btn.classList.add(isYes ? 'yes-sel' : 'no-sel');
         }
       });
     });
@@ -5676,14 +5609,13 @@ function patientNav(dir) {
 function patientQuestionnaireGaps() {
   const scope = document.getElementById('screen-patient');
   const gaps = [];
-  // Every Y/N question (the whole q-card is marked) — Item 84's explicit
-  // Unsure satisfies completeness
+  // Every Y/N question (the whole q-card is marked)
   scope.querySelectorAll('.yn-group').forEach(function(g) {
-    if (!g.querySelector('.selected-yes, .selected-no, .selected-unsure')) gaps.push(g.closest('.q-card') || g);
+    if (!g.querySelector('.selected-yes, .selected-no')) gaps.push(g.closest('.q-card') || g);
   });
-  // Health conditions checklist — every row needs Y, N or an explicit Unsure
+  // Health conditions checklist — every row needs Y or N (Item 75 tri-state)
   scope.querySelectorAll('#conditions-list .condition-row').forEach(function(row) {
-    if (!row.querySelector('.cy-btn.yes-sel, .cy-btn.no-sel, .cy-btn.unsure-sel')) gaps.push(row);
+    if (!row.querySelector('.cy-btn.yes-sel, .cy-btn.no-sel')) gaps.push(row);
   });
   // Scored scales — a missing item invalidates the instrument (Item 82b)
   [['epworth-body', '.radio-dot'], ['k10-body', '.radio-dot'], ['audit-body', '.audit-radio']].forEach(function(p) {
@@ -5729,7 +5661,7 @@ function updatePatientNav() {
 function toggleYN(btn, fieldId, val) {
   const group = btn.parentElement;
   group.querySelectorAll('.yn-btn').forEach(b => b.className = 'yn-btn');
-  btn.classList.add(val === 'yes' ? 'selected-yes' : val === 'unsure' ? 'selected-unsure' : 'selected-no');
+  btn.classList.add(val === 'yes' ? 'selected-yes' : 'selected-no');
   const detail = document.getElementById(fieldId+'-detail');
   if (detail) detail.classList.toggle('visible', val === 'yes');
 }
@@ -9666,6 +9598,11 @@ function buildPDF() {
 
   newPage();
   secHeader('Patient Questionnaire — Applicant Details');
+  // Item 86: one self-report statement where the reader first meets the
+  // questionnaire content — it covers every questionnaire section that
+  // follows, so it is not repeated per section
+  doc.setFontSize(7.5); doc.setFont('helvetica','italic'); doc.setTextColor(...MID);
+  doc.text(doc.splitTextToSize('Responses in this section are as disclosed by the applicant and reflect their own knowledge at the time of completion.',CW),ML,y); y+=6;
 
   const ptGender=val('pt-gender')||'—';
   const ptEmail=val('pt-email')||'—';
@@ -9751,8 +9688,7 @@ function buildPDF() {
     if(!groupEl) return '—';
     const yes=groupEl.querySelector('.selected-yes');
     const no=groupEl.querySelector('.selected-no');
-    const uns=groupEl.querySelector('.selected-unsure'); // Item 84
-    return yes?'YES':no?'NO':uns?'Unsure':'Not answered';
+    return yes?'YES':no?'NO':'Not answered';
   }
   function getYNDetail(groupEl){
     if(!groupEl) return '';
@@ -9761,16 +9697,6 @@ function buildPDF() {
       return next.querySelector('textarea')?.value?.trim()||'';
     }
     return '';
-  }
-  // Item 84: an assessor-recorded answer replaces an applicant's Unsure in
-  // the table, attributed to the assessment — never to the applicant. An
-  // unresolved Unsure prints as Unsure.
-  function applyUnsureResolution(card, ans, detail){
-    if(ans!=='Unsure') return {ans:ans, detail:detail};
-    const g=(card.querySelector('.yn-btn')?.getAttribute('onclick')||'').match(/toggleYN\(this,'([^']+)'/)?.[1]||'';
-    const res=(document.getElementById(unsureResId(g))||{}).value||'';
-    if(!res) return {ans:'Unsure', detail:detail};
-    return {ans:res.toUpperCase(), detail:'Recorded by assessor at assessment'+(detail?' — '+detail:'')};
   }
 
   const whSection=document.getElementById('ps-2');
@@ -9781,8 +9707,9 @@ function buildPDF() {
   whCards.forEach((card,i)=>{
     if(i>=whLabels.length) return;
     const grp=card.querySelector('.yn-group');
-    const r=applyUnsureResolution(card,getYN(grp),getYNDetail(grp));
-    tblRow([whLabels[i],r.ans,r.detail||'—'],whW,false,i%2===1);
+    const ans=getYN(grp);
+    const detail=getYNDetail(grp);
+    tblRow([whLabels[i],ans,detail||'—'],whW,false,i%2===1);
   });
   y+=6;
 
@@ -9864,8 +9791,9 @@ function buildPDF() {
   sleepCards.forEach((card,i)=>{
     if(i>=sleepLabels.length) return;
     const grp=card.querySelector('.yn-group');
-    const r=applyUnsureResolution(card,getYN(grp),getYNDetail(grp));
-    tblRow([sleepLabels[i],r.ans,r.detail||'—'],sleepW,false,i%2===1);
+    const ans=getYN(grp);
+    const detail=getYNDetail(grp);
+    tblRow([sleepLabels[i],ans,detail||'—'],sleepW,false,i%2===1);
   });
 
   // Item 82(b): a scored instrument prints a score ONLY when every item was
@@ -9924,16 +9852,9 @@ function buildPDF() {
     const text=row.querySelector('.condition-text')?.textContent?.trim()||'—';
     const yBtn=row.querySelector('.cy-btn.yes-sel');
     const nBtn=row.querySelector('.cy-btn.no-sel');
-    const uBtn=row.querySelector('.cy-btn.unsure-sel');
-    let ans=yBtn?'YES':nBtn?'NO':uBtn?'Unsure':'—';
+    const ans=yBtn?'YES':nBtn?'NO':'—';
     const detailInput=row.querySelector('input');
-    let detail=yBtn?(detailInput?.value?.trim()||'—'):'';
-    // Item 84: an assessor-recorded answer replaces the applicant's Unsure,
-    // attributed to the assessment; unresolved stays Unsure
-    if(uBtn){
-      const res=(document.getElementById(unsureResId(text))||{}).value||'';
-      if(res){ ans=res.toUpperCase(); detail='Recorded by assessor at assessment'; }
-    }
+    const detail=yBtn?(detailInput?.value?.trim()||'—'):'';
     tblRow([text,ans,detail],condW,false,i%2===1);
   });
 
@@ -10807,7 +10728,6 @@ function renderSleepQs() {
       <div class="yn-group">
         <button class="yn-btn" onclick="toggleYN(this,'sleep-${i}','yes')">Yes</button>
         <button class="yn-btn" onclick="toggleYN(this,'sleep-${i}','no')">No</button>
-        ${i === 3 ? `<button class="yn-btn" onclick="toggleYN(this,'sleep-${i}','unsure')">Unsure</button>` : ''}
       </div>
       <div class="detail-field" id="sleep-${i}-detail">
         <label>Please provide details</label>
@@ -10963,10 +10883,6 @@ const conditions = [
   'Previous adverse reaction to anaesthetic / anaesthetic complications',
   'Arthritis, joint pain or swelling','Numb fingers or hands','Carpal tunnel syndrome','Tennis/golfers elbow','Tendonitis','Wrist pain, injury or ganglion','Repetitive strain (RSI) or overuse','Knee injury, swelling or pain','Back pain or disc problem','Sciatica or leg pain','Neck pain, stiff neck or whiplash','Shoulder pain, tendonitis or frozen shoulder','Hip pain','Treatment on back or neck','Back or neck x-ray or scan','Depression','Fear or phobias (travel, confined spaces)','Anxiety, nervous illness or breakdown','Mental illness (Schizophrenia, Bipolar)','Conflict or stress at work requiring treatment','Frequent diarrhoea, IBS or bowel condition','Frequent heartburn, ulcers or pancreatitis','Hypertension (high blood pressure)','Heart attack or angina','Chest pain','Abnormal blood test — cardiac','Rheumatic fever or heart murmur','Stroke or TIA','Epilepsy, fits, blackouts','Dizzy spells, fainting or unconsciousness','Migraines, regular headaches or head injuries','Tinnitus or ringing in the ears','Hearing loss or difficulties','Problems with ears, nose, throat or sinuses','Eye problems or colour blindness','Diabetes','Blood clots or varicose veins','Allergy (grasses, pollens, stings, chemicals)','Hernia','Hepatitis or liver problems','Kidney, bladder or prostate problems','Skin conditions, dermatitis or eczema','Thyroid problem','Cancer or tumour of any type','Iron deficiency or bleeding disorder','Feet problems or plantar fasciitis',
 ];
-// Item 84: the ONLY conditions an applicant may genuinely not be able to
-// answer yes or no — childhood diagnoses and test results they were never
-// told. Nothing else gets an Unsure.
-const UNSURE_CONDITIONS = ['Abnormal blood test — cardiac', 'Rheumatic fever or heart murmur'];
 function renderConditions() {
   const cont = document.getElementById('conditions-list');
   if (!cont) return;
@@ -10976,7 +10892,6 @@ function renderConditions() {
       <div class="condition-yn">
         <button class="cy-btn" onclick="selectCond(this,'y','cond-${i}')">Y</button>
         <button class="cy-btn" onclick="selectCond(this,'n','cond-${i}')">N</button>
-        ${UNSURE_CONDITIONS.indexOf(c) >= 0 ? `<button class="cy-btn" title="Unsure — not known to applicant" onclick="selectCond(this,'u','cond-${i}')">?</button>` : ''}
       </div>
       <div id="cond-${i}-detail" style="display:none"><input style="width:100%;padding:5px 8px;border:1px solid var(--border);border-radius:5px;font-size:12px;font-family:'DM Sans',sans-serif;outline:none" placeholder="Details..."></div>
     </div>
@@ -10985,7 +10900,7 @@ function renderConditions() {
 function selectCond(btn, val, group) {
   const row = btn.closest('.condition-row');
   row.querySelectorAll('.cy-btn').forEach(b => b.className = 'cy-btn');
-  btn.classList.add(val === 'y' ? 'yes-sel' : val === 'u' ? 'unsure-sel' : 'no-sel');
+  btn.classList.add(val === 'y' ? 'yes-sel' : 'no-sel');
   const detail = document.getElementById(group+'-detail');
   if (detail) detail.style.display = val === 'y' ? 'block' : 'none';
 }
@@ -11584,9 +11499,9 @@ function collectPatientFormData() {
   document.querySelectorAll('#screen-patient input, #screen-patient select, #screen-patient textarea').forEach(function(el) {
     if (el.id) data[el.id] = el.value;
   });
-  document.querySelectorAll('#screen-patient .yn-btn.selected-yes, #screen-patient .yn-btn.selected-no, #screen-patient .yn-btn.selected-unsure').forEach(function(btn) {
+  document.querySelectorAll('#screen-patient .yn-btn.selected-yes, #screen-patient .yn-btn.selected-no').forEach(function(btn) {
     var m = (btn.getAttribute('onclick') || '').match(/toggleYN\(this,'([^']+)'/);
-    if (m) data['yn_' + m[1]] = btn.classList.contains('selected-yes') ? 'yes' : btn.classList.contains('selected-no') ? 'no' : 'unsure';
+    if (m) data['yn_' + m[1]] = btn.classList.contains('selected-yes') ? 'yes' : 'no';
   });
   document.querySelectorAll('#screen-patient .checkbox-item.checked .checkbox-label').forEach(function(el) {
     data['checked_' + el.textContent.trim()] = true;
@@ -11597,14 +11512,12 @@ function collectPatientFormData() {
   });
   var sig = getSigGlobal('sig-consent');
   if (sig) data['sig_sig-consent'] = sig;
-  // Item 75: BOTH answers submit — absent keys are the only 'not answered'.
-  // Item 84: the two UNSURE_CONDITIONS rows may submit an explicit Unsure.
-  document.querySelectorAll('.cy-btn.yes-sel, .cy-btn.no-sel, .cy-btn.unsure-sel').forEach(function(btn) {
+  // Item 75: BOTH answers submit — absent keys are the only 'not answered'
+  document.querySelectorAll('.cy-btn.yes-sel, .cy-btn.no-sel').forEach(function(btn) {
     var row = btn.closest('.condition-row');
     var ct = row && row.querySelector('.condition-text');
     if (!ct) return;
     if (btn.classList.contains('yes-sel')) data['cond_yes_' + ct.textContent.trim()] = true;
-    else if (btn.classList.contains('unsure-sel')) data['cond_unsure_' + ct.textContent.trim()] = true;
     else data['cond_no_' + ct.textContent.trim()] = true;
   });
   // Save Epworth / K10 / AUDIT radio-dot selections by row index → selected column index
@@ -15972,10 +15885,6 @@ function restoreClinicianData(data) {
     if (k.indexOf('flag-rev-') === 0 && data[k]) {
       var rv = document.getElementById(k);
       if (rv) rv.value = data[k];
-    }
-    if (k.indexOf('unsure-res-') === 0 && data[k]) { // Item 84
-      var ur = document.getElementById(k);
-      if (ur) ur.value = data[k];
     }
   });
   if (typeof paintAllFlagReviews === 'function') paintAllFlagReviews();
