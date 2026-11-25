@@ -7534,15 +7534,46 @@ function preFillAudiometry() {
   window._findingFlags = window._findingFlags || [];
   var text = '';
   var ppeNote = 'Pre-existing hearing change noted and baseline recorded. Hearing PPE required in all noise-exposed environments. Audiometric surveillance at 12 months recommended. Screening classification only — formal % loss assessment (NAL Report 118) requires audiologist evaluation.';
-  // Item 87(e): the unqualified clean-bill sentence is suppressed whenever a
-  // dip is flagged — it would be contradicted by the dip sentence that follows.
-  // The PTA statement with its values stays.
   var dipsL = (L && L.dips) || [], dipsR = (R && R.dips) || [];
   var anyDips = dipsL.length + dipsR.length > 0;
+  var anyAbnormalCls = (L && L.cls !== 'Normal') || (R && R.cls !== 'Normal');
+
+  // Item 87 shape, Item 89 recommendation, Item 88 placement: ONE collated
+  // sentence naming every dip by its measured value (the bands are defined
+  // for the four-frequency average, so no single frequency is ever given a
+  // band name). Monitoring is recommended only when the classification is
+  // normal — escalation beyond monitoring is a clinical decision, not a
+  // generated one — and the sentence sits with the findings, BEFORE the
+  // NAL Report 118 caveat, never after it.
+  var dipSentence = '', flagBits = [];
+  if (anyDips) {
+    var fmtDip = function(d) { return d.f + ' Hz (' + d.v + ' dB)'; };
+    var joinNat = function(arr) { return arr.length === 1 ? arr[0] : arr.slice(0, -1).join(', ') + ' and ' + arr[arr.length - 1]; };
+    var earParts = [];
+    if (dipsL.length) earParts.push('at ' + joinNat(dipsL.map(fmtDip)) + ' in the left ear');
+    if (dipsR.length) earParts.push('at ' + joinNat(dipsR.map(fmtDip)) + ' in the right ear');
+    var refsNormal = (!dipsL.length || (L.ref !== null && L.ref <= 25)) && (!dipsR.length || (R.ref !== null && R.ref <= 25));
+    var tail = refsNormal ? ', with thresholds at adjacent frequencies within normal limits.' : ', relative to the 1000–2000 Hz reference thresholds.';
+    dipSentence = ((dipsL.length + dipsR.length) === 1 ? 'A threshold dip is noted ' : 'Threshold dips are noted ') + earParts.join(', and ') + tail;
+    if (dipsL.length) flagBits.push('L ' + dipsL.map(fmtDip).join(', '));
+    if (dipsR.length) flagBits.push('R ' + dipsR.map(fmtDip).join(', '));
+    // ONE consolidated flag: presence (not count) drives the outcome
+    // suggestion and the recommendations prefill
+    window._findingFlags.push({ section: 'Audiometry', finding: 'Threshold dips — ' + flagBits.join('; '), rec: 'Monitor on subsequent audiometric review.' });
+  }
+  var monitorRec = 'This pattern warrants monitoring on subsequent audiometric review.';
+  // Item 88(2): the dip is linked to the averages with a contrastive
+  // connective so the paragraph reads as one finding, not two competing ones
+  var dipClauseLower = dipSentence ? dipSentence.charAt(0).toLowerCase() + dipSentence.slice(1) : '';
 
   if (L && R) {
-    if (L.cls === 'Normal' && R.cls === 'Normal') {
-      text = 'Pure tone audiometry within normal limits bilaterally (L: ' + L.pta + ' dB PTA, R: ' + R.pta + ' dB PTA).' + (anyDips ? '' : ' No significant hearing loss identified at screening.') + ' Baseline recorded.';
+    if (!anyAbnormalCls) {
+      // Item 88(1): a statement about the AVERAGES, never the audiogram —
+      // the four-frequency PTA excludes 3000 and 6000 Hz, where dips live
+      var opening = 'Four-frequency pure tone averages are within normal limits bilaterally (L: ' + L.pta + ' dB, R: ' + R.pta + ' dB).';
+      text = anyDips
+        ? opening + ' However, ' + dipClauseLower + ' ' + monitorRec + ' Baseline recorded.'
+        : opening + ' No significant hearing loss identified at screening. Baseline recorded.';
     } else {
       var parts = [];
       if (L.cls !== 'Normal') {
@@ -7553,48 +7584,23 @@ function preFillAudiometry() {
         parts.push(R.cls + ' hearing loss — right ear (PTA ' + R.pta + ' dB)' + (R.elevated.length ? '; elevated at ' + R.elevated.join(', ') : ''));
         window._findingFlags.push({section:'Audiometry', finding:'Right ear: ' + R.cls + ' hearing loss (PTA ' + R.pta + ' dB)', rec:'Hearing PPE required. Audiometric surveillance at 12 months recommended.'});
       }
-      text = parts.join('. ') + '. ' + ppeNote;
+      // Item 88(4): findings first, caveats last — the dip sentence precedes
+      // the ppeNote (whose tail is the NAL Report 118 caveat). No second
+      // recommendation: the classification's surveillance wording stands.
+      text = parts.join('. ') + '. ' + (anyDips ? dipSentence + ' ' : '') + ppeNote;
     }
   } else {
     var lr = L || R;
     var side = L ? 'left' : 'right';
     if (lr.cls === 'Normal') {
-      text = 'Pure tone audiometry within normal limits — ' + side + ' ear (PTA ' + lr.pta + ' dB). Baseline recorded.';
+      var opening1 = 'Four-frequency pure tone average is within normal limits — ' + side + ' ear (' + lr.pta + ' dB).';
+      text = anyDips
+        ? opening1 + ' However, ' + dipClauseLower + ' ' + monitorRec + ' Baseline recorded.'
+        : opening1 + ' Baseline recorded.';
     } else {
-      text = lr.cls + ' hearing loss — ' + side + ' ear (PTA ' + lr.pta + ' dB)' + (lr.elevated.length ? '; elevated at ' + lr.elevated.join(', ') : '') + '. ' + ppeNote;
+      text = lr.cls + ' hearing loss — ' + side + ' ear (PTA ' + lr.pta + ' dB)' + (lr.elevated.length ? '; elevated at ' + lr.elevated.join(', ') : '') + '. ' + (anyDips ? dipSentence + ' ' : '') + ppeNote;
       window._findingFlags.push({section:'Audiometry', finding:side.charAt(0).toUpperCase()+side.slice(1)+' ear: '+lr.cls+' hearing loss (PTA '+lr.pta+' dB)', rec:'Hearing PPE required. Audiometric surveillance recommended.'});
     }
-  }
-  // Item 87 (supersedes Item 39's wording; the screened frequencies stay):
-  // ONE collated sentence naming every dip, grouped by ear. Item 89: the
-  // recommendation follows the CLASSIFICATION, never the dip depth —
-  // occupational audiometry is a surveillance programme, and the response to
-  // a notch at baseline is to record and monitor it, not to refer. A normal
-  // PTA with dips recommends monitoring regardless of depth (the depth is
-  // conveyed by the measured value); a Mild-or-worse PTA keeps its own
-  // classification wording and recommendation, with the dips named
-  // additionally. Escalation beyond monitoring is a clinical decision, not a
-  // generated one. Measured values only: the bands are defined for the
-  // four-frequency average, so no single frequency is ever given a band name.
-  if (anyDips) {
-    var fmtDip = function(d) { return d.f + ' Hz (' + d.v + ' dB)'; };
-    var joinNat = function(arr) { return arr.length === 1 ? arr[0] : arr.slice(0, -1).join(', ') + ' and ' + arr[arr.length - 1]; };
-    var earParts = [];
-    if (dipsL.length) earParts.push('at ' + joinNat(dipsL.map(fmtDip)) + ' in the left ear');
-    if (dipsR.length) earParts.push('at ' + joinNat(dipsR.map(fmtDip)) + ' in the right ear');
-    var allDips = dipsL.concat(dipsR);
-    var anyAbnormalCls = (L && L.cls !== 'Normal') || (R && R.cls !== 'Normal');
-    var recText = anyAbnormalCls ? '' : ' This pattern warrants monitoring on subsequent audiometric review.';
-    var refsNormal = (!dipsL.length || (L.ref !== null && L.ref <= 25)) && (!dipsR.length || (R.ref !== null && R.ref <= 25));
-    var tail = refsNormal ? ', with thresholds at adjacent frequencies within normal limits.' : ', relative to the 1000–2000 Hz reference thresholds.';
-    var dipText = (allDips.length === 1 ? 'A threshold dip is noted ' : 'Threshold dips are noted ') + earParts.join(', and ') + tail + recText;
-    text = text ? text + ' ' + dipText : dipText;
-    // ONE consolidated flag: presence (not count) drives the outcome
-    // suggestion and the recommendations prefill
-    var flagBits = [];
-    if (dipsL.length) flagBits.push('L ' + dipsL.map(fmtDip).join(', '));
-    if (dipsR.length) flagBits.push('R ' + dipsR.map(fmtDip).join(', '));
-    window._findingFlags.push({ section: 'Audiometry', finding: 'Threshold dips — ' + flagBits.join('; '), rec: 'Monitor on subsequent audiometric review.' });
   }
 
   // Otoscopy sits alongside the threshold result, carrying its own validity
@@ -8331,25 +8337,35 @@ function generateAbnormalFindings() {
   var hrRest = parseInt(document.getElementById('v-hr')?.value || '');
   if (!isNaN(hrRest) && hrRest > 100) add('VITALS', 'Resting tachycardia recorded (' + hrRest + ' bpm)', 'medium');
 
-  // AUDIOMETRY — one summary line per abnormal ear, detail stays in section/PDF
+  // AUDIOMETRY — Item 88(3): exactly ONE line whenever any audiometry finding
+  // exists. A classification finding and dips merge into a single line, with
+  // no second recommendation (the classification already carries its
+  // surveillance wording); dips alone keep their monitoring line, because
+  // there it IS the sole recommendation.
   var clsL = window._audioClassLeft, clsR = window._audioClassRight;
+  var kfDipL = (clsL && clsL.dips) || [], kfDipR = (clsR && clsR.dips) || [];
+  var fmtKf = function(d) { return d.f + ' Hz (' + d.v + ' dB)'; };
+  var kfBits = [];
+  if (kfDipL.length) kfBits.push('L ' + kfDipL.map(fmtKf).join(', '));
+  if (kfDipR.length) kfBits.push('R ' + kfDipR.map(fmtKf).join(', '));
+  var kfDipPhrase = kfBits.length ? 'threshold dip' + ((kfDipL.length + kfDipR.length) > 1 ? 's' : '') + ' ' + kfBits.join('; ') : '';
+  var kfClassText = '', kfClassSev = 'medium';
   if (clsL && clsL.cls !== 'Normal' && clsR && clsR.cls !== 'Normal') {
     var worst = ['Marked','Moderate','Mild'].find(function(c) { return clsL.cls === c || clsR.cls === c; });
-    add('AUDIOMETRY', worst + ' bilateral hearing loss identified — baseline documented', worst === 'Mild' ? 'medium' : 'high');
-  } else {
-    if (clsL && clsL.cls !== 'Normal') add('AUDIOMETRY', clsL.cls + ' left ear hearing loss identified — baseline documented', clsL.cls === 'Mild' ? 'medium' : 'high');
-    if (clsR && clsR.cls !== 'Normal') add('AUDIOMETRY', clsR.cls + ' right ear hearing loss identified — baseline documented', clsR.cls === 'Mild' ? 'medium' : 'high');
+    kfClassText = worst + ' bilateral hearing loss identified';
+    kfClassSev = worst === 'Mild' ? 'medium' : 'high';
+  } else if (clsL && clsL.cls !== 'Normal') {
+    kfClassText = clsL.cls + ' left ear hearing loss identified';
+    kfClassSev = clsL.cls === 'Mild' ? 'medium' : 'high';
+  } else if (clsR && clsR.cls !== 'Normal') {
+    kfClassText = clsR.cls + ' right ear hearing loss identified';
+    kfClassSev = clsR.cls === 'Mild' ? 'medium' : 'high';
   }
-  // Item 87(f)/89: threshold dips collated to ONE line. The recommendation is
-  // always monitoring — a baseline screen supports recording and surveillance,
-  // never a generated referral; a Mild-or-worse PTA carries its own
-  // classification line above with its own severity.
-  var kfDipL = (clsL && clsL.dips) || [], kfDipR = (clsR && clsR.dips) || [];
-  if (kfDipL.length || kfDipR.length) {
-    var fmtKf = function(d) { return d.f + ' Hz (' + d.v + ' dB)'; };
-    var kfBits = [];
-    if (kfDipL.length) kfBits.push('L ' + kfDipL.map(fmtKf).join(', '));
-    if (kfDipR.length) kfBits.push('R ' + kfDipR.map(fmtKf).join(', '));
+  if (kfClassText && kfDipPhrase) {
+    add('AUDIOMETRY', kfClassText + ', with ' + kfDipPhrase + ' — baseline documented', kfClassSev);
+  } else if (kfClassText) {
+    add('AUDIOMETRY', kfClassText + ' — baseline documented', kfClassSev);
+  } else if (kfDipPhrase) {
     add('AUDIOMETRY', 'Threshold dips — ' + kfBits.join('; ') + '. Monitor on subsequent audiometric review.', 'medium');
   }
 
