@@ -5592,16 +5592,21 @@ function patientNav(dir) {
   const next = patientStep + dir;
   if (next < 0) return;
   if (next >= TOTAL_PATIENT_STEPS) {
-    // Item 82: the questionnaire does not accept incomplete answers — before
-    // Items 76/77 a skipped question silently printed as NO, and a live
-    // submission stored a whole Y/N block as nothing at all
-    if (!validatePatientQuestionnaire()) return;
-    savePatientDataToStorage();
-    if (window._tokenSubmitMode) { submitTokenQuestionnaire(); return; }
-    showScreen('screen-complete');
+    // Item 82: the questionnaire does not accept incomplete answers.
+    // Item 85: the applicant finishes only what they missed, inline, in one
+    // focused view — never a fix-one-resubmit-repeat loop.
+    const gaps = patientQuestionnaireGaps();
+    if (gaps.length) { enterCompletionView(gaps); return; }
+    completePatientSubmission();
     return;
   }
   gotoPatientSection(next);
+}
+
+function completePatientSubmission() {
+  savePatientDataToStorage();
+  if (window._tokenSubmitMode) { submitTokenQuestionnaire(); return; }
+  showScreen('screen-complete');
 }
 
 // Item 82: every unanswered question, in document order. Each entry is the
@@ -5632,22 +5637,123 @@ function patientQuestionnaireGaps() {
   return gaps;
 }
 
-function validatePatientQuestionnaire() {
-  document.querySelectorAll('#screen-patient .q-missing').forEach(function(el) { el.classList.remove('q-missing'); });
-  const gaps = patientQuestionnaireGaps();
-  if (!gaps.length) return true;
-  gaps.forEach(function(el) { el.classList.add('q-missing'); });
-  // Jump to the step holding the first gap, then bring it into view
-  const section = gaps[0].closest('.form-section');
-  if (section) {
-    const idx = Array.prototype.indexOf.call(patientSections, section);
-    if (idx >= 0 && idx !== patientStep) gotoPatientSection(idx);
+// ─── Item 85: focused completion view ────────────────────────────────────────
+// The REAL DOM nodes of the unanswered questions are MOVED into the view
+// (never duplicated), so every handler, storage path and conditional detail
+// field behaves exactly as on the original step — then moved home. A hidden
+// placeholder holds each node's exact slot.
+var _completionMoves = [];
+
+function gapAnswered(el) {
+  if (el.matches('tr')) return !!el.querySelector('.radio-dot.selected, .audit-radio.selected');
+  if (el.classList.contains('condition-row')) return !!el.querySelector('.cy-btn.yes-sel, .cy-btn.no-sel');
+  if (el.querySelector('.yn-group')) return !!el.querySelector('.selected-yes, .selected-no');
+  if (el.querySelector('.checkbox-grid')) return !!el.querySelector('.checkbox-item.checked');
+  return true;
+}
+
+function enterCompletionView(gaps) {
+  exitCompletionView(false); // never stack two views
+  // Questionnaire order, not gap-type order
+  gaps = gaps.slice().sort(function(a, b) {
+    return (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) ? -1 : 1;
+  });
+  var view = document.createElement('div');
+  view.id = 'completion-view';
+  // z-index above the recovery banner (9999) so nothing overlaps the view
+  view.style.cssText = 'position:fixed;inset:0;background:#f4f4ef;z-index:10100;overflow-y:auto;-webkit-overflow-scrolling:touch';
+  view.innerHTML =
+    '<div style="max-width:760px;margin:0 auto;padding:18px 16px 110px">' +
+      '<h2 style="font-family:\'DM Serif Display\',serif;color:var(--charcoal,#1a1a18);font-size:22px;margin:4px 0 2px">Almost done</h2>' +
+      '<p style="color:var(--mid);font-size:14px;margin:0 0 16px">Answer the questions below to finish — everything else is already complete.</p>' +
+      '<div id="completion-list"></div>' +
+    '</div>' +
+    '<div style="position:fixed;left:0;right:0;bottom:0;background:white;border-top:1px solid var(--border);padding:12px 16px;display:flex;gap:10px;align-items:center;justify-content:space-between;z-index:10101">' +
+      '<button id="completion-back" class="btn btn-ghost" style="min-height:44px">← Back to form</button>' +
+      '<span id="completion-count" style="font-size:13px;color:var(--mid);font-weight:600;white-space:nowrap"></span>' +
+      '<button id="completion-submit" class="btn btn-primary" style="min-height:44px">Submit ✓</button>' +
+    '</div>';
+  document.body.appendChild(view);
+  var list = view.querySelector('#completion-list');
+  gaps.forEach(function(el) {
+    var section = el.closest('.form-section');
+    var secName = section ? ((section.querySelector('.section-title') || {}).textContent || '').trim() : '';
+    var wrap = document.createElement('div');
+    wrap.className = 'completion-item';
+    wrap.style.cssText = 'background:white;border:1.5px solid var(--warning);border-radius:10px;padding:12px;margin-bottom:12px;transition:border-color 0.2s,opacity 0.2s';
+    wrap.innerHTML = '<div style="font-size:10px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px">' + secName + '</div>';
+    if (el.matches('tr')) {
+      // Scale row — carries its scale's stem and the response-option header,
+      // since a row is meaningless without them
+      var table = el.closest('table');
+      var stem = ((table.closest('.q-card')?.querySelector('.q-label') || {}).textContent || '').trim();
+      var stemDiv = document.createElement('div');
+      stemDiv.style.cssText = 'font-size:13px;font-weight:600;color:var(--charcoal);margin-bottom:8px';
+      stemDiv.textContent = stem;
+      wrap.appendChild(stemDiv);
+      var ph = document.createElement('tr'); ph.hidden = true;
+      el.parentNode.insertBefore(ph, el);
+      var mini = document.createElement('table');
+      mini.className = table.className;
+      mini.style.width = '100%';
+      mini.appendChild(table.querySelector('thead').cloneNode(true));
+      var tb = document.createElement('tbody');
+      tb.appendChild(el);
+      mini.appendChild(tb);
+      var scroller = document.createElement('div'); scroller.style.overflowX = 'auto';
+      scroller.appendChild(mini);
+      wrap.appendChild(scroller);
+      _completionMoves.push({ el: el, home: ph });
+    } else {
+      var ph2 = document.createElement('div'); ph2.hidden = true;
+      el.parentNode.insertBefore(ph2, el);
+      wrap.appendChild(el);
+      _completionMoves.push({ el: el, home: ph2 });
+    }
+    wrap._gapEl = el;
+    list.appendChild(wrap);
+  });
+  function refresh() {
+    var left = 0;
+    list.querySelectorAll('.completion-item').forEach(function(w) {
+      if (gapAnswered(w._gapEl)) { w.style.borderColor = '#4a7c59'; w.style.opacity = '0.65'; }
+      else { w.style.borderColor = 'var(--warning)'; w.style.opacity = '1'; left++; }
+    });
+    view.querySelector('#completion-count').textContent = left === 0 ? 'All answered ✓' : left + ' to go';
+    var sub = view.querySelector('#completion-submit');
+    sub.disabled = left > 0;
+    sub.style.opacity = left > 0 ? '0.45' : '1';
   }
-  setTimeout(function() { gaps[0].scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 60);
-  alert(gaps.length === 1
-    ? '1 question still needs an answer. It is highlighted in red — please answer it, then press Submit again.'
-    : gaps.length + ' questions still need an answer. They are highlighted in red — please answer them, then press Submit again.');
-  return false;
+  view.addEventListener('click', function() { setTimeout(refresh, 0); });
+  view.addEventListener('input', function() { setTimeout(refresh, 0); });
+  refresh();
+  view.querySelector('#completion-back').onclick = function() { exitCompletionView(true); };
+  view.querySelector('#completion-submit').onclick = function() {
+    exitCompletionView(true); // answers made here are kept and saved
+    var remaining = patientQuestionnaireGaps();
+    if (remaining.length) { enterCompletionView(remaining); return; } // belt — button is disabled until complete
+    completePatientSubmission();
+  };
+}
+
+// Moving the nodes home never loses anything answered in the view — they ARE
+// the original controls; save runs once they are back inside #screen-patient
+// (the collectors scope to it).
+function exitCompletionView(save) {
+  var view = document.getElementById('completion-view');
+  _completionMoves.forEach(function(m) {
+    if (m.home.parentNode) m.home.parentNode.replaceChild(m.el, m.home);
+  });
+  _completionMoves = [];
+  if (view) view.remove();
+  if (save) {
+    savePatientDataToStorage();
+    // Scale score displays recount their tbody rows — correct them now the
+    // rows are home
+    ['calcEpworthScore', 'calcK10Score', 'calcAUDITScore'].forEach(function(fn) {
+      try { if (typeof window[fn] === 'function') window[fn](); } catch(e) {}
+    });
+  }
 }
 
 function updatePatientNav() {
@@ -16055,21 +16161,6 @@ document.addEventListener('DOMContentLoaded', () => {
     section._prefillTimer = setTimeout(function() {
       preFillSection(section.id);
     }, 400);
-  });
-
-  // Item 82: answering a highlighted question clears its outstanding mark
-  document.getElementById('screen-patient')?.addEventListener('click', function(e) {
-    var marked = e.target.closest && e.target.closest('.q-missing');
-    if (marked) setTimeout(function() {
-      // only clear once actually answered (the tap may have been elsewhere in the card)
-      var still = marked.matches('tr')
-        ? !marked.querySelector('.radio-dot.selected, .audit-radio.selected')
-        : marked.querySelector('.yn-group') ? !marked.querySelector('.selected-yes, .selected-no')
-        : marked.classList.contains('condition-row') ? !marked.querySelector('.yes-sel, .no-sel')
-        : marked.querySelector('.checkbox-grid') ? !marked.querySelector('.checkbox-item.checked')
-        : false;
-      if (!still) marked.classList.remove('q-missing');
-    }, 0);
   });
 
   // Item 80: typed FCE/PEFA narratives carry the user-edited marker too, so a
